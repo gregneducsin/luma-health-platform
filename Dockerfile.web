@@ -22,7 +22,7 @@ FROM nginx:alpine AS web
 # Restrict which env vars envsubst is allowed to touch in the template below —
 # nginx's own runtime variables ($host, $scheme, etc.) use the same ${...}
 # syntax and must never be substituted at container-start time.
-ENV NGINX_ENVSUBST_FILTER=^API_UPSTREAM$
+ENV NGINX_ENVSUBST_FILTER=^(API_UPSTREAM|NGINX_RESOLVER)$
 COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
 
 # nginx.conf.template's /api proxy target is filled in at container start by
