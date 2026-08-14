@@ -4,4 +4,5 @@
 export * from "./schemas/auth.js";
 export * from "./schemas/customers.js";
 export * from "./schemas/purchases.js";
+export * from "./schemas/webhooks.js";
 export * from "./crypto.js";
