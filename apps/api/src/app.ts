@@ -10,6 +10,9 @@ import healthRouter from "./routes/health.routes.js";
 import { createAuthRouter } from "./routes/auth.routes.js";
 import { createCustomersRouter } from "./routes/customers.routes.js";
 import { createPurchasesRouter } from "./routes/purchases.routes.js";
+import { createEmployeesRouter } from "./routes/payroll/employees.routes.js";
+import { createPayrollWeeksRouter } from "./routes/payroll/weeks.routes.js";
+import { createMarketingSpendRouter } from "./routes/payroll/marketing-spend.routes.js";
 import { createGhlLeadWebhookRouter } from "./routes/webhooks/ghl-lead.routes.js";
 import { createBaskOrderWebhookRouter } from "./routes/webhooks/bask-order.routes.js";
 import { createBaskQuestionnaireWebhookRouter } from "./routes/webhooks/bask-questionnaire.routes.js";
@@ -45,6 +48,9 @@ export function createApp(): Express {
   app.use("/api/app/auth", createAuthRouter());
   app.use("/api/app/customers", createCustomersRouter());
   app.use("/api/app/purchases", createPurchasesRouter());
+  app.use("/api/app/payroll/employees", createEmployeesRouter());
+  app.use("/api/app/payroll/weeks", createPayrollWeeksRouter());
+  app.use("/api/app/payroll/marketing-spend", createMarketingSpendRouter());
 
   // Webhook routes: shared-secret header auth (see webhookAuth.ts), never
   // session- or CSRF-authenticated — these callers aren't browsers and carry
