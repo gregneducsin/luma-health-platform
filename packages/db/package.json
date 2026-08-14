@@ -5,10 +5,11 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./schema": "./src/schema/index.ts"
+    "./schema": "./src/schema/index.ts",
+    "./migrate": "./src/migrate.ts"
   },
   "scripts": {
-    "generate": "drizzle-kit generate --config ./drizzle.config.ts",
+    "generate": "node ./scripts/generate.mjs",
     "migrate": "tsx src/migrate.ts",
     "seed": "tsx src/seed.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",

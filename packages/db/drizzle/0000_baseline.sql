@@ -236,23 +236,23 @@ CREATE TABLE "payroll_weeks" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE "app_users" ADD CONSTRAINT "app_users_employee_id_employees_id_fk" FOREIGN KEY ("employee_id") REFERENCES "public"."employees"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "password_reset_tokens" ADD CONSTRAINT "password_reset_tokens_user_id_app_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."app_users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "user_audit_events" ADD CONSTRAINT "user_audit_events_actor_user_id_app_users_id_fk" FOREIGN KEY ("actor_user_id") REFERENCES "public"."app_users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "user_audit_events" ADD CONSTRAINT "user_audit_events_target_user_id_app_users_id_fk" FOREIGN KEY ("target_user_id") REFERENCES "public"."app_users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "user_invitation_tokens" ADD CONSTRAINT "user_invitation_tokens_user_id_app_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."app_users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "user_sessions" ADD CONSTRAINT "user_sessions_user_id_app_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."app_users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "external_identities" ADD CONSTRAINT "external_identities_person_id_customers_id_fk" FOREIGN KEY ("person_id") REFERENCES "public"."customers"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "purchase_classification_audits" ADD CONSTRAINT "purchase_classification_audits_purchase_id_purchases_id_fk" FOREIGN KEY ("purchase_id") REFERENCES "public"."purchases"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "purchases" ADD CONSTRAINT "purchases_customer_id_fk" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "failed_payment_events" ADD CONSTRAINT "failed_payment_events_person_id_customers_id_fk" FOREIGN KEY ("person_id") REFERENCES "public"."customers"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "failed_payment_events" ADD CONSTRAINT "failed_payment_events_recovered_purchase_id_purchases_id_fk" FOREIGN KEY ("recovered_purchase_id") REFERENCES "public"."purchases"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "questionnaire_events" ADD CONSTRAINT "questionnaire_events_person_id_customers_id_fk" FOREIGN KEY ("person_id") REFERENCES "public"."customers"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "webhook_events" ADD CONSTRAINT "webhook_events_person_id_customers_id_fk" FOREIGN KEY ("person_id") REFERENCES "public"."customers"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "employee_bonuses" ADD CONSTRAINT "employee_bonuses_payroll_week_id_payroll_weeks_id_fk" FOREIGN KEY ("payroll_week_id") REFERENCES "public"."payroll_weeks"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "employee_bonuses" ADD CONSTRAINT "employee_bonuses_employee_id_employees_id_fk" FOREIGN KEY ("employee_id") REFERENCES "public"."employees"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "employee_weekly_hours" ADD CONSTRAINT "employee_weekly_hours_payroll_week_id_payroll_weeks_id_fk" FOREIGN KEY ("payroll_week_id") REFERENCES "public"."payroll_weeks"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "employee_weekly_hours" ADD CONSTRAINT "employee_weekly_hours_employee_id_employees_id_fk" FOREIGN KEY ("employee_id") REFERENCES "public"."employees"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "app_users" ADD CONSTRAINT "app_users_employee_id_employees_id_fk" FOREIGN KEY ("employee_id") REFERENCES "employees"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "password_reset_tokens" ADD CONSTRAINT "password_reset_tokens_user_id_app_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "app_users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "user_audit_events" ADD CONSTRAINT "user_audit_events_actor_user_id_app_users_id_fk" FOREIGN KEY ("actor_user_id") REFERENCES "app_users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "user_audit_events" ADD CONSTRAINT "user_audit_events_target_user_id_app_users_id_fk" FOREIGN KEY ("target_user_id") REFERENCES "app_users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "user_invitation_tokens" ADD CONSTRAINT "user_invitation_tokens_user_id_app_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "app_users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "user_sessions" ADD CONSTRAINT "user_sessions_user_id_app_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "app_users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "external_identities" ADD CONSTRAINT "external_identities_person_id_customers_id_fk" FOREIGN KEY ("person_id") REFERENCES "customers"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "purchase_classification_audits" ADD CONSTRAINT "purchase_classification_audits_purchase_id_purchases_id_fk" FOREIGN KEY ("purchase_id") REFERENCES "purchases"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "purchases" ADD CONSTRAINT "purchases_customer_id_fk" FOREIGN KEY ("customer_id") REFERENCES "customers"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "failed_payment_events" ADD CONSTRAINT "failed_payment_events_person_id_customers_id_fk" FOREIGN KEY ("person_id") REFERENCES "customers"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "failed_payment_events" ADD CONSTRAINT "failed_payment_events_recovered_purchase_id_purchases_id_fk" FOREIGN KEY ("recovered_purchase_id") REFERENCES "purchases"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "questionnaire_events" ADD CONSTRAINT "questionnaire_events_person_id_customers_id_fk" FOREIGN KEY ("person_id") REFERENCES "customers"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "webhook_events" ADD CONSTRAINT "webhook_events_person_id_customers_id_fk" FOREIGN KEY ("person_id") REFERENCES "customers"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "employee_bonuses" ADD CONSTRAINT "employee_bonuses_payroll_week_id_payroll_weeks_id_fk" FOREIGN KEY ("payroll_week_id") REFERENCES "payroll_weeks"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "employee_bonuses" ADD CONSTRAINT "employee_bonuses_employee_id_employees_id_fk" FOREIGN KEY ("employee_id") REFERENCES "employees"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "employee_weekly_hours" ADD CONSTRAINT "employee_weekly_hours_payroll_week_id_payroll_weeks_id_fk" FOREIGN KEY ("payroll_week_id") REFERENCES "payroll_weeks"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "employee_weekly_hours" ADD CONSTRAINT "employee_weekly_hours_employee_id_employees_id_fk" FOREIGN KEY ("employee_id") REFERENCES "employees"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 CREATE UNIQUE INDEX "app_users_normalized_email_key" ON "app_users" USING btree ("normalized_email");--> statement-breakpoint
 CREATE UNIQUE INDEX "app_users_employee_id_key" ON "app_users" USING btree ("employee_id");--> statement-breakpoint
 CREATE INDEX "app_users_role_idx" ON "app_users" USING btree ("role");--> statement-breakpoint
