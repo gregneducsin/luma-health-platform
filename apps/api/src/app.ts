@@ -8,6 +8,8 @@ import { createGeneralLimiter } from "./middleware/rateLimit.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import healthRouter from "./routes/health.routes.js";
 import { createAuthRouter } from "./routes/auth.routes.js";
+import { createCustomersRouter } from "./routes/customers.routes.js";
+import { createPurchasesRouter } from "./routes/purchases.routes.js";
 
 export function createApp(): Express {
   const app = express();
@@ -39,6 +41,8 @@ export function createApp(): Express {
   // /webhooks/* router (Phase 5) is authenticated by shared-secret header
   // instead and must never have CSRF applied to it.
   app.use("/api/app/auth", createAuthRouter());
+  app.use("/api/app/customers", createCustomersRouter());
+  app.use("/api/app/purchases", createPurchasesRouter());
 
   app.use(errorHandler);
 
