@@ -199,6 +199,26 @@ describe("Webhooks", () => {
       expect(rows[0].status).toBe("abandoned");
       expect(rows[0].abandonedAt).not.toBeNull();
     });
+
+    it("categorizes a customer created directly from an abandoned questionnaire (no prior GHL lead)", async () => {
+      const payload = {
+        eventId: "bask-q-evt-abandoned-only",
+        externalPersonId: "bask-person-abandoned-only",
+        email: "abandoned-cart@example.com",
+        firstName: "Cart",
+        lastName: "Abandoner",
+        questionnaireId: "QUEST-2",
+        status: "abandoned" as const,
+        occurredAt: new Date().toISOString(),
+      };
+      const res = await request(app).post("/api/webhooks/bask-questionnaire").set("x-webhook-secret", QUESTIONNAIRE_SECRET).send(payload);
+      expect(res.status).toBe(200);
+
+      const { db, customersTable } = await import("@luma/db");
+      const { eq } = await import("drizzle-orm");
+      const [customer] = await db.select().from(customersTable).where(eq(customersTable.email, "abandoned-cart@example.com"));
+      expect(customer.leadType).toBe("Bask abandoned cart");
+    });
   });
 
   describe("Bask payment-failed", () => {

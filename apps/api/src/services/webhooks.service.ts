@@ -185,6 +185,16 @@ export async function handleBaskOrderWebhook(payload: BaskOrderWebhookRequest): 
   return { duplicate: false };
 }
 
+// Only used at customer-creation time (findOrCreateCustomerByExternalIdentity
+// never overwrites leadType on an existing match) — reflects the funnel
+// stage of whichever questionnaire event happens to arrive first for a
+// person who isn't already a customer.
+const BASK_QUESTIONNAIRE_LEAD_TYPES: Record<BaskQuestionnaireWebhookRequest["status"], string> = {
+  started: "Bask questionnaire started",
+  abandoned: "Bask abandoned cart",
+  submitted: "Bask questionnaire submitted",
+};
+
 export async function handleBaskQuestionnaireWebhook(payload: BaskQuestionnaireWebhookRequest): Promise<{ duplicate: boolean }> {
   const recorded = await recordWebhookEventIfNew("bask_questionnaire", payload.eventId, payload);
   if (!recorded) return { duplicate: true };
@@ -197,6 +207,7 @@ export async function handleBaskQuestionnaireWebhook(payload: BaskQuestionnaireW
       firstName: payload.firstName,
       lastName: payload.lastName,
       leadReceivedDate: occurredDate(payload.occurredAt),
+      leadType: BASK_QUESTIONNAIRE_LEAD_TYPES[payload.status],
     });
 
     const now = new Date(payload.occurredAt);
