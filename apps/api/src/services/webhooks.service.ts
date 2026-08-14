@@ -64,6 +64,7 @@ export async function findOrCreateCustomerByExternalIdentity(params: {
   lastName?: string;
   phone?: string;
   leadReceivedDate: string;
+  leadType?: string;
 }): Promise<{ id: string }> {
   return db.transaction(async (tx) => {
     const [byIdentity] = await tx
@@ -85,6 +86,7 @@ export async function findOrCreateCustomerByExternalIdentity(params: {
               email: params.email,
               phone: params.phone,
               leadReceivedDate: params.leadReceivedDate,
+              leadType: params.leadType ?? "Other / Unknown",
               leadCreatedAt: new Date(),
             })
             .returning({ id: customersTable.id })
@@ -133,6 +135,7 @@ export async function handleGhlLeadWebhook(payload: GhlLeadWebhookRequest): Prom
       lastName: payload.lastName,
       phone: payload.phone,
       leadReceivedDate: occurredDate(payload.occurredAt),
+      leadType: payload.leadType,
     });
     await markWebhookEventProcessed(recorded.id, customerId);
   } catch (err) {

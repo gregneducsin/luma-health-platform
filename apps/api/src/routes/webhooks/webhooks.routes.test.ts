@@ -86,6 +86,26 @@ describe("Webhooks", () => {
         .send({ eventId: "bad" }); // missing required fields
       expect(res.status).toBe(400);
     });
+
+    it("persists the payload's leadType onto the created customer", async () => {
+      const payload = {
+        eventId: "ghl-evt-leadtype",
+        contactId: "ghl-contact-leadtype",
+        firstName: "Lead",
+        lastName: "Typed",
+        email: "leadtype@example.com",
+        leadType: "web-form",
+        occurredAt: new Date().toISOString(),
+      };
+
+      const res = await request(app).post("/api/webhooks/ghl-lead").set("x-webhook-secret", GHL_SECRET).send(payload);
+      expect(res.status).toBe(200);
+
+      const { db, customersTable } = await import("@luma/db");
+      const { eq } = await import("drizzle-orm");
+      const [customer] = await db.select().from(customersTable).where(eq(customersTable.email, "leadtype@example.com"));
+      expect(customer.leadType).toBe("web-form");
+    });
   });
 
   describe("Bask order", () => {
