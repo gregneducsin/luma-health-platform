@@ -4,7 +4,7 @@ WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
 
-COPY package.json pnpm-workspace.yaml tsconfig.json tsconfig.base.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json tsconfig.base.json ./
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/db/package.json packages/db/package.json
 COPY apps/api/package.json apps/api/package.json
