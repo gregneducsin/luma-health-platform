@@ -38,7 +38,8 @@ services:
       context: .
       target: web
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     ports:
       - "5173:80"
 

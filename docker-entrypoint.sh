@@ -6,10 +6,10 @@
 set -e
 
 echo "entrypoint: running migrations..."
-node_modules/.bin/tsx packages/db/src/migrate.ts
+packages/db/node_modules/.bin/tsx packages/db/src/migrate.ts
 
 echo "entrypoint: seeding bootstrap admins..."
-node_modules/.bin/tsx packages/db/src/seed.ts
+packages/db/node_modules/.bin/tsx packages/db/src/seed.ts
 
 echo "entrypoint: starting API server..."
 exec node --enable-source-maps apps/api/dist/index.mjs
