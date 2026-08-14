@@ -79,6 +79,10 @@ docker compose up          # Postgres + API + dashboard, full local stack
 docker compose up -d db    # just Postgres, for running apps natively
 ```
 
-`Dockerfile` builds the API as a production container. The dashboard is a
-static build — serve `apps/web/dist` from any static file host or CDN behind
-your reverse proxy.
+`Dockerfile.api` and `Dockerfile.web` each build one deployable image
+(separate files, not one multi-stage Dockerfile with a `target`, so hosts
+that can't select a build target — e.g. Railway — still work). The web
+image's nginx config proxies `/api/*` to the API service; which hostname
+that is comes from the `API_UPSTREAM` env var at container start (see
+`nginx.conf.template`) — docker-compose sets it to `api:3001`, other hosts
+set it to whatever they call the API service internally.

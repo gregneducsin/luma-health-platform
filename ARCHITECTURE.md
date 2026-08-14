@@ -69,5 +69,5 @@ chosen specifically so it won't require reworking these foundations later:
 
 - Texting/SMS/AI messaging — separate future phase (see above).
 - A specific hosting provider or managed Postgres provider — the code only
-  requires a standard `DATABASE_URL` and a portable Dockerfile, so this
+  requires a standard `DATABASE_URL` and portable Dockerfiles, so this
   decision can be made independently, later.

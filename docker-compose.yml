@@ -18,7 +18,7 @@ services:
   api:
     build:
       context: .
-      target: api
+      dockerfile: Dockerfile.api
     depends_on:
       db:
         condition: service_healthy
@@ -36,10 +36,12 @@ services:
   web:
     build:
       context: .
-      target: web
+      dockerfile: Dockerfile.web
     depends_on:
       api:
         condition: service_healthy
+    environment:
+      API_UPSTREAM: api:3001
     ports:
       - "5173:80"
 
