@@ -30,3 +30,15 @@ export function createGeneralLimiter(): RateLimitRequestHandler {
     legacyHeaders: false,
   });
 }
+
+// Tighter than the general limiter — each request can run a multi-turn LLM
+// tool-use loop, so it's meaningfully more expensive than a normal API call.
+export function createAiAssistantLimiter(): RateLimitRequestHandler {
+  return rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many assistant requests. Please wait a bit and try again." },
+  });
+}

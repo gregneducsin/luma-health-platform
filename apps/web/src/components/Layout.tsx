@@ -2,6 +2,7 @@ import { type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useCurrentUser, useLogout } from "../hooks/useAuth";
 import { Button } from "./ui";
+import { AiAssistantWidget } from "./AiAssistantWidget";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard" },
@@ -47,6 +48,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+      {data?.user && (data.user.role === "admin" || data.user.role === "manager") && <AiAssistantWidget />}
     </div>
   );
 }

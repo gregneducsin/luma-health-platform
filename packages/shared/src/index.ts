@@ -7,5 +7,6 @@ export * from "./schemas/purchases.js";
 export * from "./schemas/webhooks.js";
 export * from "./schemas/payroll.js";
 export * from "./schemas/questionnaires.js";
+export * from "./schemas/ai-assistant.js";
 export * from "./crypto.js";
 export * from "./calc/payroll.js";
