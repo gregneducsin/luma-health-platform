@@ -71,13 +71,27 @@ function SummaryBar() {
 }
 
 export function OrdersPage() {
-  const { data, isLoading } = usePurchasesList({ limit: 50 });
+  const [orderClassification, setOrderClassification] = useState("");
+  const { data, isLoading } = usePurchasesList({
+    limit: 50,
+    orderClassification: (orderClassification || undefined) as "first_order" | "recurring" | undefined,
+  });
 
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-gray-900">Orders</h1>
 
       <SummaryBar />
+
+      <select
+        className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+        value={orderClassification}
+        onChange={(e) => setOrderClassification(e.target.value)}
+      >
+        <option value="">All Orders</option>
+        <option value="first_order">New (first order)</option>
+        <option value="recurring">Recurring</option>
+      </select>
 
       <Card className="overflow-x-auto p-0">
         {isLoading ? (

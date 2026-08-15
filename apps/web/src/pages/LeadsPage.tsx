@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "wouter";
-import { useCustomersList, useCreateCustomer, useCustomersSummary, useLeadTypes } from "../hooks/useCustomers";
+import { useCustomersList, useCreateCustomer, useCustomersSummary, useLeadTypes, useQuestionnaireIds } from "../hooks/useCustomers";
 import { Badge, Button, Card, ErrorText, Field, Input } from "../components/ui";
 import { ApiError } from "../hooks/useAuth";
 import type { CustomersSummaryQuery } from "@luma/shared";
@@ -96,7 +96,7 @@ export function LeadsPage() {
   const [search, setSearch] = useState("");
   const [leadType, setLeadType] = useState("");
   const [purchaseStatus, setPurchaseStatus] = useState("");
-  const [questionnaireStatus, setQuestionnaireStatus] = useState("");
+  const [questionnaireId, setQuestionnaireId] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [sortBy, setSortBy] = useState<SortBy>("leadReceivedDate");
@@ -113,11 +113,12 @@ export function LeadsPage() {
   }
 
   const { data: leadTypesData } = useLeadTypes();
+  const { data: questionnaireIdsData } = useQuestionnaireIds();
   const { data, isLoading } = useCustomersList({
     search: search || undefined,
     leadType: leadType || undefined,
     purchaseStatus: (purchaseStatus || undefined) as "purchased" | "not_purchased" | undefined,
-    questionnaireStatus: (questionnaireStatus || undefined) as "started" | "abandoned" | "submitted" | undefined,
+    questionnaireId: questionnaireId || undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
     sortBy,
@@ -161,13 +162,15 @@ export function LeadsPage() {
         </select>
         <select
           className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
-          value={questionnaireStatus}
-          onChange={(e) => setQuestionnaireStatus(e.target.value)}
+          value={questionnaireId}
+          onChange={(e) => setQuestionnaireId(e.target.value)}
         >
           <option value="">All Questionnaires</option>
-          <option value="started">Started</option>
-          <option value="abandoned">Abandoned</option>
-          <option value="submitted">Submitted</option>
+          {questionnaireIdsData?.questionnaireIds.map((qid) => (
+            <option key={qid} value={qid}>
+              {qid}
+            </option>
+          ))}
         </select>
         <div className="flex items-center gap-1.5">
           <span className="text-sm text-gray-500">Lead received</span>

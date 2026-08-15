@@ -44,6 +44,7 @@ export const listPurchasesQuerySchema = z.object({
   sortDir: z.enum(["asc", "desc"]).default("desc"),
   limit: z.coerce.number().int().min(1).max(100).default(25),
   offset: z.coerce.number().int().min(0).default(0),
+  orderClassification: purchaseClassificationSchema.optional(),
 });
 export type ListPurchasesQuery = z.infer<typeof listPurchasesQuerySchema>;
 

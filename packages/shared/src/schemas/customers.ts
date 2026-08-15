@@ -35,7 +35,11 @@ export const listCustomersQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
   leadType: z.string().trim().min(1).optional(),
   purchaseStatus: z.enum(["purchased", "not_purchased"]).optional(),
-  questionnaireStatus: z.enum(["started", "abandoned", "submitted"]).optional(),
+  // Filters to customers with a questionnaire_events row for this specific
+  // questionnaire ID (e.g. Bask's numeric questionnaire ID) — not a status
+  // bucket, since the same person can have events across several distinct
+  // questionnaires.
+  questionnaireId: z.string().trim().min(1).optional(),
   // Inclusive range filter on leadReceivedDate — the same business date the
   // dashboard summary tiles filter by, not the DB row's createdAt.
   dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD").optional(),

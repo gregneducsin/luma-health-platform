@@ -17,8 +17,9 @@ const SORT_COLUMNS = {
 
 /** Order-level list across all customers, for the Orders tab. */
 export async function listPurchases(query: ListPurchasesQuery) {
-  const { sortBy, sortDir, limit, offset } = query;
+  const { sortBy, sortDir, limit, offset, orderClassification } = query;
   const orderFn = sortDir === "asc" ? asc : desc;
+  const whereCondition = orderClassification ? eq(purchasesTable.orderClassification, orderClassification) : undefined;
 
   const rows = await db
     .select({
@@ -29,11 +30,12 @@ export async function listPurchases(query: ListPurchasesQuery) {
     })
     .from(purchasesTable)
     .innerJoin(customersTable, eq(customersTable.id, purchasesTable.customerId))
+    .where(whereCondition)
     .orderBy(orderFn(SORT_COLUMNS[sortBy]))
     .limit(limit)
     .offset(offset);
 
-  const [{ total }] = await db.select({ total: sql<number>`count(*)::int` }).from(purchasesTable);
+  const [{ total }] = await db.select({ total: sql<number>`count(*)::int` }).from(purchasesTable).where(whereCondition);
 
   return { purchases: rows, total };
 }

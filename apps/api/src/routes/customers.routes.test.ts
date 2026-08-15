@@ -136,7 +136,7 @@ describe("Customers CRUD", () => {
     expect(res.status).toBe(404);
   });
 
-  it("filters by leadType, purchaseStatus, and questionnaireStatus", async () => {
+  it("filters by leadType, purchaseStatus, and questionnaireId", async () => {
     await seedUser("admin6@example.com", "admin");
     const { agent, csrf } = await loginAgent(app, "admin6@example.com");
 
@@ -165,7 +165,7 @@ describe("Customers CRUD", () => {
     expect(notPurchasedOnly.body.total).toBe(1);
     expect(notPurchasedOnly.body.customers[0].id).toBe(nonPurchaser.body.customer.id);
 
-    // questionnaireStatus filter + the field being surfaced on the list itself
+    // questionnaireId filter + the status field still being surfaced on the list itself
     const { db, questionnaireEventsTable } = await import("@luma/db");
     await db.insert(questionnaireEventsTable).values({
       personId: nonPurchaser.body.customer.id,
@@ -173,10 +173,14 @@ describe("Customers CRUD", () => {
       status: "abandoned",
       lastEventAt: new Date(),
     });
-    const byQuestionnaireStatus = await agent.get("/api/app/customers").query({ leadType: "Referral Filter Test", questionnaireStatus: "abandoned" });
-    expect(byQuestionnaireStatus.body.total).toBe(1);
-    expect(byQuestionnaireStatus.body.customers[0].id).toBe(nonPurchaser.body.customer.id);
-    expect(byQuestionnaireStatus.body.customers[0].questionnaireStatus).toBe("abandoned");
+    const byQuestionnaireId = await agent.get("/api/app/customers").query({ leadType: "Referral Filter Test", questionnaireId: "Q-FILT-1" });
+    expect(byQuestionnaireId.body.total).toBe(1);
+    expect(byQuestionnaireId.body.customers[0].id).toBe(nonPurchaser.body.customer.id);
+    expect(byQuestionnaireId.body.customers[0].questionnaireStatus).toBe("abandoned");
+
+    // A different questionnaire ID shouldn't match this customer's event.
+    const byOtherQuestionnaireId = await agent.get("/api/app/customers").query({ leadType: "Referral Filter Test", questionnaireId: "Q-DOES-NOT-EXIST" });
+    expect(byOtherQuestionnaireId.body.total).toBe(0);
   });
 
   it("filters by leadReceivedDate range (dateFrom/dateTo), and sorts by leadReceivedDate/lastName", async () => {
@@ -325,6 +329,44 @@ describe("Customers lead-types", () => {
   });
 });
 
+describe("Customers questionnaire-ids", () => {
+  let app: ReturnType<typeof createApp>;
+
+  beforeAll(() => {
+    app = createApp();
+  });
+
+  it("returns distinct questionnaire IDs, not statuses", async () => {
+    await seedUser("admin-qids@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "admin-qids@example.com");
+
+    const one = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Q", lastName: "One", email: "q-one@example.com", leadReceivedDate: "2026-01-01" });
+    const two = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Q", lastName: "Two", email: "q-two@example.com", leadReceivedDate: "2026-01-01" });
+
+    const { db, questionnaireEventsTable } = await import("@luma/db");
+    await db.insert(questionnaireEventsTable).values([
+      { personId: one.body.customer.id, questionnaireId: "Q-DISTINCT-9914", status: "submitted", lastEventAt: new Date() },
+      { personId: two.body.customer.id, questionnaireId: "Q-DISTINCT-9914", status: "abandoned", lastEventAt: new Date() },
+    ]);
+
+    const res = await agent.get("/api/app/customers/questionnaire-ids");
+    expect(res.status).toBe(200);
+    const occurrences = res.body.questionnaireIds.filter((qid: string) => qid === "Q-DISTINCT-9914");
+    expect(occurrences).toHaveLength(1); // distinct, not once per event/customer
+  });
+
+  it("rejects unauthenticated requests", async () => {
+    const res = await request(app).get("/api/app/customers/questionnaire-ids");
+    expect(res.status).toBe(401);
+  });
+});
+
 describe("Purchases", () => {
   let app: ReturnType<typeof createApp>;
 
@@ -395,6 +437,37 @@ describe("Purchases", () => {
     const row = res.body.purchases.find((p: { orderNumber: string }) => p.orderNumber === "ORD-LIST-1");
     expect(row.customerFirstName).toBe("Order");
     expect(row.customerLastName).toBe("Placer");
+  });
+
+  it("filters by orderClassification (first_order vs recurring)", async () => {
+    await seedUser("admin-order-class-filter@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "admin-order-class-filter@example.com");
+
+    const customerRes = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Class", lastName: "Filter", email: "class-filter@example.com", leadReceivedDate: "2026-01-01" });
+    const customerId = customerRes.body.customer.id;
+
+    const firstOrder = await agent
+      .post(`/api/app/customers/${customerId}/purchases`)
+      .set("x-csrf-token", csrf)
+      .send({ purchaseDate: "2026-01-01", orderNumber: "ORD-CLASS-1", productName: "Thing", amountPaid: "10.00" });
+    expect(firstOrder.body.purchase.orderClassification).toBe("first_order");
+
+    const recurringOrder = await agent
+      .post(`/api/app/customers/${customerId}/purchases`)
+      .set("x-csrf-token", csrf)
+      .send({ purchaseDate: "2026-01-02", orderNumber: "ORD-CLASS-2", productName: "Thing", amountPaid: "20.00" });
+    expect(recurringOrder.body.purchase.orderClassification).toBe("recurring");
+
+    const firstOnly = await agent.get("/api/app/purchases").query({ orderClassification: "first_order", limit: 100 });
+    expect(firstOnly.body.purchases.some((p: { orderNumber: string }) => p.orderNumber === "ORD-CLASS-1")).toBe(true);
+    expect(firstOnly.body.purchases.some((p: { orderNumber: string }) => p.orderNumber === "ORD-CLASS-2")).toBe(false);
+
+    const recurringOnly = await agent.get("/api/app/purchases").query({ orderClassification: "recurring", limit: 100 });
+    expect(recurringOnly.body.purchases.some((p: { orderNumber: string }) => p.orderNumber === "ORD-CLASS-2")).toBe(true);
+    expect(recurringOnly.body.purchases.some((p: { orderNumber: string }) => p.orderNumber === "ORD-CLASS-1")).toBe(false);
   });
 
   it("rejects unauthenticated requests to the purchases list", async () => {

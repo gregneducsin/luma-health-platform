@@ -20,7 +20,7 @@ const questionnaireStatusSubquery = sql<string | null>`(
 )`;
 
 export async function listCustomers(query: ListCustomersQuery) {
-  const { search, sortBy, sortDir, limit, offset, leadType, purchaseStatus, questionnaireStatus, dateFrom, dateTo } = query;
+  const { search, sortBy, sortDir, limit, offset, leadType, purchaseStatus, questionnaireId, dateFrom, dateTo } = query;
 
   const conditions = [
     search
@@ -32,8 +32,8 @@ export async function listCustomers(query: ListCustomersQuery) {
         )
       : undefined,
     leadType ? eq(customersTable.leadType, leadType) : undefined,
-    questionnaireStatus
-      ? sql`exists (select 1 from ${questionnaireEventsTable} where ${questionnaireEventsTable.personId} = ${customersTable.id} and ${questionnaireEventsTable.status} = ${questionnaireStatus})`
+    questionnaireId
+      ? sql`exists (select 1 from ${questionnaireEventsTable} where ${questionnaireEventsTable.personId} = ${customersTable.id} and ${questionnaireEventsTable.questionnaireId} = ${questionnaireId})`
       : undefined,
     dateFrom ? sql`${customersTable.leadReceivedDate} >= ${dateFrom}` : undefined,
     dateTo ? sql`${customersTable.leadReceivedDate} <= ${dateTo}` : undefined,
@@ -131,6 +131,14 @@ export async function getCustomersSummary(query: CustomersSummaryQuery) {
 export async function listDistinctLeadTypes() {
   const rows = await db.selectDistinct({ leadType: customersTable.leadType }).from(customersTable).orderBy(customersTable.leadType);
   return rows.map((r) => r.leadType);
+}
+
+export async function listDistinctQuestionnaireIds() {
+  const rows = await db
+    .selectDistinct({ questionnaireId: questionnaireEventsTable.questionnaireId })
+    .from(questionnaireEventsTable)
+    .orderBy(questionnaireEventsTable.questionnaireId);
+  return rows.map((r) => r.questionnaireId);
 }
 
 export async function getCustomer(id: string) {

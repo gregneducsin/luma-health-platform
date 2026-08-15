@@ -42,6 +42,13 @@ export function useLeadTypes() {
   });
 }
 
+export function useQuestionnaireIds() {
+  return useQuery({
+    queryKey: ["customers", "questionnaire-ids"],
+    queryFn: () => api.get<{ questionnaireIds: string[] }>("/api/app/customers/questionnaire-ids"),
+  });
+}
+
 export function usePurchasesList(query: Partial<ListPurchasesQuery>) {
   return useQuery({
     queryKey: ["purchases", "list", query],
