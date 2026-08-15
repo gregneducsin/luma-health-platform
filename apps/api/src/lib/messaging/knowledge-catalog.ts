@@ -1,0 +1,568 @@
+/**
+ * Approved knowledge catalog for the Claude interactive bot-preview.
+ *
+ * Entries with enabledForPreview: true are injected into the Claude system
+ * prompt during bot-test sessions. Claude may ONLY reference content from
+ * this catalog — any response that cites a topic not in the permitted set is
+ * rejected by the post-check (UNKNOWN_KNOWLEDGE_TOPIC).
+ *
+ * All entries marked lucySourceVersion: "lucy-knowledge-v1" are derived from
+ * the immutable source document stored in lucy-knowledge-source.ts, which was
+ * approved by medical staff and legal counsel. Their legalStatus, pricing,
+ * clinical statements, and approved response examples must remain consistent
+ * with that source document.
+ *
+ * Legal status meanings:
+ *   "approved"                       — cleared for all environments.
+ *   "pending_user_clinical_approval" — dev/preview only; must NOT appear in
+ *                                      production templates or be deployed.
+ *
+ * No database imports. No outbound messaging SDK imports.
+ */
+
+// No database imports. No outbound SMS SDK imports.
+
+export interface KnowledgeTopic {
+  readonly key: string;
+  /** Exact approved copy. Claude may paraphrase if allowedParaphrase is true. */
+  readonly approvedText: string;
+  readonly allowedParaphrase: boolean;
+  readonly legalStatus: "approved" | "pending_user_clinical_approval";
+  readonly clinicalStatus: "approved" | "pending_clinical_review";
+  /** ISO date string — when this entry was last reviewed. */
+  readonly lastReviewedDate: string;
+  /** Content categories Claude must never add when using this topic. */
+  readonly prohibitedClaims: readonly string[];
+  /** Whether this topic is passed to Claude during the preview session. */
+  readonly enabledForPreview: boolean;
+  /**
+   * Version of the Lucy knowledge source document this entry is derived from.
+   * Undefined for entries not yet sourced from the Lucy document.
+   */
+  readonly lucySourceVersion?: string;
+}
+
+/**
+ * The one allowlisted intake URL.
+ * Claude may output this exact string only when the customer asks for the link
+ * or confirms they are ready to sign up. All other URLs remain prohibited.
+ */
+export const APPROVED_INTAKE_URL = "https://start.mylumahealth.com/start-online-visit/863ljl-78f0cabe";
+
+export const KNOWLEDGE_CATALOG: readonly KnowledgeTopic[] = [
+  // ── Product comparison ─────────────────────────────────────────────────────
+  // Source: lucy-knowledge-v1 §MEDICATIONS OFFERED, §COMPARING TIRZEPATIDE AND SEMAGLUTIDE
+  // Key rule from source: customer chooses the medication — do NOT imply the
+  // provider chooses between semaglutide and tirzepatide.
+  {
+    key: "product_comparison",
+    approvedText:
+      "We offer two weight-loss treatment options: semaglutide and tirzepatide. " +
+      "You choose which medication you would like to request. " +
+      "Tirzepatide has demonstrated greater average weight loss than semaglutide in clinical studies. " +
+      "Most of our customers choose tirzepatide. " +
+      "Semaglutide is the more affordable option. " +
+      "Individual results vary. " +
+      "The requested prescription still goes through the medical questionnaire and provider-review process.",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-15",
+    lucySourceVersion: "lucy-knowledge-v1",
+    prohibitedClaims: [
+      "provider_chooses_medication",
+      "personal_effectiveness_guarantee",
+      "fewer_side_effects_guarantee",
+      "mechanism_of_action",
+      "contraindications",
+      "safety_rankings",
+      "clinical_suitability",
+      "weight_loss_percentages_as_personal_prediction",
+    ],
+    enabledForPreview: true,
+  },
+
+  // ── Semaglutide pricing ────────────────────────────────────────────────────
+  // Source: lucy-knowledge-v1 §PRICING
+  // Exact prices: $120 (1-mo), $80/mo ($240 total, 3-mo), $78/mo ($468 total, 6-mo)
+  {
+    key: "semaglutide_pricing",
+    approvedText:
+      "Semaglutide pricing: " +
+      "1-month plan: $120. " +
+      "3-month plan: $80 per month, $240 total. " +
+      "6-month plan: $78 per month, $468 total. " +
+      "When quoting a multi-month plan, clearly state both the monthly equivalent and the total plan price. " +
+      "Never quote prices, discounts, promotions, coupon codes, or membership rates outside these amounts.",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-15",
+    lucySourceVersion: "lucy-knowledge-v1",
+    prohibitedClaims: [
+      "invented_price",
+      "invented_discount",
+      "invented_promotion",
+      "coupon_code",
+      "guaranteed_lowest_price",
+      "eligibility_guarantees",
+      "insurance_coverage",
+      "automatic_dose_increase",
+      "financing_approval_guarantee",
+    ],
+    enabledForPreview: true,
+  },
+
+  // ── Tirzepatide pricing ────────────────────────────────────────────────────
+  // Source: lucy-knowledge-v1 §PRICING
+  // Exact prices: $165 (1-mo), $150/mo ($450 total, 3-mo), $147/mo ($882 total, 6-mo)
+  {
+    key: "tirzepatide_pricing",
+    approvedText:
+      "Tirzepatide pricing: " +
+      "1-month plan: $165. " +
+      "3-month plan: $150 per month, $450 total. " +
+      "6-month plan: $147 per month, $882 total. " +
+      "When quoting a multi-month plan, clearly state both the monthly equivalent and the total plan price. " +
+      "Never quote prices, discounts, promotions, coupon codes, or membership rates outside these amounts.",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-15",
+    lucySourceVersion: "lucy-knowledge-v1",
+    prohibitedClaims: [
+      "invented_price",
+      "invented_discount",
+      "invented_promotion",
+      "coupon_code",
+      "guaranteed_lowest_price",
+      "eligibility_guarantees",
+      "insurance_coverage",
+      "automatic_dose_increase",
+      "financing_approval_guarantee",
+    ],
+    enabledForPreview: true,
+  },
+
+  // ── Titration / dose progression ──────────────────────────────────────────
+  // Source: lucy-knowledge-v1 §TITRATION
+  {
+    key: "titration",
+    approvedText:
+      "Customers may request to titrate upward each month. " +
+      "Tirzepatide dose progression: 2.5 mg → 5 mg → 7.5 mg → 10 mg → 12.5 mg → 15 mg once weekly. " +
+      "Semaglutide dose progression: 0.25 mg → 0.5 mg → 1 mg → 1.7 mg → 2.4 mg once weekly. " +
+      "Do not tell customers to independently change their dose without going through the " +
+      "program's prescription and provider-review process. " +
+      "Do not imply that every customer must begin at the lowest dose if they are already " +
+      "transferring from another provider with an existing prescription.",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-15",
+    lucySourceVersion: "lucy-knowledge-v1",
+    prohibitedClaims: [
+      "independent_dose_change",
+      "guaranteed_dose_approval",
+      "automatic_dose_increase",
+      "doses_outside_progression",
+    ],
+    enabledForPreview: true,
+  },
+
+  // ── Previous prescriptions (transfer patients) ────────────────────────────
+  // Source: lucy-knowledge-v1 §PREVIOUS PRESCRIPTIONS
+  {
+    key: "previous_prescriptions",
+    approvedText:
+      "If a customer already has a valid prescription for semaglutide or tirzepatide from another provider, " +
+      "they should provide the prescription information and their current or most recent dose during the medical intake process. " +
+      "Our medical providers will use the existing prescription information when reviewing and approving the medication. " +
+      "The customer does not automatically need to restart at the introductory dose simply because they are transferring from another provider. " +
+      "For example, a customer prescribed 5 mg of tirzepatide by another provider may request to continue from that point " +
+      "or request the next appropriate dose, such as 7.5 mg, as part of our program.",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-15",
+    lucySourceVersion: "lucy-knowledge-v1",
+    prohibitedClaims: [
+      "guaranteed_dose_continuation",
+      "guaranteed_prescription_approval",
+      "independent_dose_change",
+      "override_other_provider",
+    ],
+    enabledForPreview: true,
+  },
+
+  // ── Weight-loss expectations ───────────────────────────────────────────────
+  // Source: lucy-knowledge-v1 §TIRZEPATIDE, §WEIGHT-LOSS EXPECTATIONS
+  {
+    key: "weight_loss_expectations",
+    approvedText:
+      "Individual results vary. Never guarantee weight loss or a specific amount. " +
+      "In a major 72-week obesity clinical trial, tirzepatide demonstrated average weight reduction " +
+      "of approximately 15% to 21%, depending on dose. " +
+      "Clinical studies have shown substantial average weight loss with both medications, " +
+      "with tirzepatide generally producing greater average weight loss than semaglutide. " +
+      "Always present study results as study results, not as a prediction of the customer's outcome.",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-15",
+    lucySourceVersion: "lucy-knowledge-v1",
+    prohibitedClaims: [
+      "guaranteed_weight_loss",
+      "personal_weight_loss_prediction",
+      "specific_pound_guarantee",
+      "clinical_results_as_personal_prediction",
+    ],
+    enabledForPreview: true,
+  },
+
+  // ── Insurance and payment options ─────────────────────────────────────────
+  // Source: lucy-knowledge-v1 §INSURANCE AND PAYMENT OPTIONS
+  {
+    key: "insurance_payment",
+    approvedText:
+      "We do not accept health insurance. " +
+      "Payment-plan options may be available through Affirm, Klarna, and Afterpay, subject to approval. " +
+      "Approval for these payment services is determined by the applicable financing provider. " +
+      "Never guarantee that a customer will qualify for financing.",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-15",
+    lucySourceVersion: "lucy-knowledge-v1",
+    prohibitedClaims: ["insurance_acceptance", "financing_approval_guarantee", "payment_plan_guarantee"],
+    enabledForPreview: true,
+  },
+
+  // ── How the program works / enrollment ────────────────────────────────────
+  // Source: lucy-knowledge-v1 §MEDICAL QUESTIONNAIRE AND ENROLLMENT
+  {
+    key: "how_luma_works",
+    approvedText:
+      "1. You select your preferred medication and plan. " +
+      "2. You complete the approximately 5-minute medical questionnaire. " +
+      "3. A licensed medical provider reviews the submitted information. " +
+      "4. The prescription request is processed according to the information provided and your medical history. " +
+      "5. If approved, the prescription proceeds through the program. " +
+      "Keep explanations simple unless the customer asks for additional detail. " +
+      "Guide the customer toward beginning or completing the questionnaire whenever appropriate.",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-15",
+    lucySourceVersion: "lucy-knowledge-v1",
+    prohibitedClaims: [
+      "guaranteed_approval_timing",
+      "guaranteed_delivery_speed",
+      "15_minute_approval",
+      "2_3_day_delivery_guarantee",
+      "guaranteed_prescription_approval",
+    ],
+    enabledForPreview: true,
+  },
+
+  // ── Plan inclusions ────────────────────────────────────────────────────────
+  // STATUS: EXCLUDED from lucy-knowledge-v1 itself — owner-confirmed separately.
+  // Must not be sent to Claude until separately approved.
+  // enabledForPreview: false prevents it from appearing in getPreviewEnabledTopics().
+  {
+    key: "plan_inclusions",
+    approvedText:
+      "Plans include the prescribed medication course, required supplies, " +
+      "licensed-provider review, applicable taxes and shipping, and pharmacy home " +
+      "delivery. There are no membership fees or hidden membership charges. " +
+      "A licensed provider determines whether any dose change is appropriate.",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-15",
+    prohibitedClaims: ["automatic_dose_increase", "guaranteed_dose_adjustment", "hidden_fee_guarantee"],
+    enabledForPreview: true,
+  },
+
+  // ── Customer reviews ───────────────────────────────────────────────────────
+  // Source: approved review site links supplied by the owner.
+  // Share BOTH links when a patient asks about reviews, testimonials, or customer
+  // experiences. Do NOT volunteer unless asked.
+  {
+    key: "customer_reviews",
+    approvedText:
+      "Customers can read verified reviews on two independent platforms:\n" +
+      "ConsumerAffairs: https://www.consumeraffairs.com/health/luma-health.html\n" +
+      "ConsumersVerified: https://consumersverified.com/luma-health\n" +
+      "Share both links together when a patient asks about reviews or customer feedback.",
+    allowedParaphrase: false,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-15",
+    lucySourceVersion: "lucy-knowledge-v1",
+    prohibitedClaims: [
+      "invented_star_rating", // never fabricate a rating or score
+      "guaranteed_positive_outcome", // reviews reflect real customers, not guarantees
+      "review_count_claim", // do not state a number of reviews
+    ],
+    enabledForPreview: true,
+  },
+
+  // ── Cancellation policy ────────────────────────────────────────────────────
+  // Source: patient portal self-service cancellation; 7-day notice requirement
+  // confirmed by the owner. This entry answers "can i cancel?" / "how do i
+  // cancel?" questions — it does NOT instruct the bot to cancel anything.
+  // Do NOT imply refunds, prorated credits, instant cancellation, or fee waivers.
+  {
+    key: "cancellation_policy",
+    approvedText:
+      "You can cancel your plan anytime by logging into your patient portal. " +
+      "To avoid being charged for the next shipment, cancellations must be submitted " +
+      "at least 7 days before your next refill date.",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-15",
+    lucySourceVersion: "lucy-knowledge-v1",
+    prohibitedClaims: [
+      "instant_cancellation", // portal processing takes effect before the 7-day window
+      "cancellation_fee_refund", // no refunds are promised
+      "prorated_refund", // no prorated credits are approved
+      "automatic_cancellation", // patient must act in the portal
+      "phone_cancellation", // portal is the approved self-service channel
+    ],
+    enabledForPreview: true,
+  },
+
+  // ── Side effects (tolerability) ───────────────────────────────────────────
+  // Source: lucy-knowledge-v1 §COMPARING TIRZEPATIDE AND SEMAGLUTIDE
+  // Approved script: acknowledge GI side effects exist, vary per person, and
+  // invite the customer to share which medication they are considering.
+  // Individualized assessment (personal history / symptoms) must still go to
+  // the medical team — reflected in prohibitedClaims below.
+  {
+    key: "side_effects",
+    approvedText:
+      "Both medications can cause side effects, particularly gastrointestinal side effects, and everyone's experience is different. " +
+      "Which medication are you considering? " +
+      "Questions about your personal medical history, symptoms, or how a specific medication may affect you individually should be reviewed by the medical team during the provider-review step.",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-15",
+    lucySourceVersion: "lucy-knowledge-v1",
+    prohibitedClaims: [
+      "fewer_side_effects_guarantee", // never claim one med has universally fewer SE
+      "personalized_side_effect_assessment", // no individualized medical judgment
+      "specific_side_effect_list_as_advice", // don't enumerate specific adverse events as advice
+      "contraindications", // contraindication assessment belongs to provider
+    ],
+    enabledForPreview: true,
+  },
+
+  // ── Shipping and delivery ─────────────────────────────────────────────────
+  // Source: owner-confirmed — typically 2-3 business days after approval.
+  // Do not guarantee a specific carrier, tracking timeline, or cold-chain detail.
+  {
+    key: "shipping_delivery",
+    approvedText:
+      "Once your prescription is approved, your medication is typically shipped within 2 to 3 business days and delivered directly to your address. " +
+      "Shipping is included in your plan.",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-15",
+    prohibitedClaims: [
+      "guaranteed_delivery_date", // exact arrival date cannot be promised
+      "specific_carrier_guarantee", // carrier not specified in approved text
+      "overnight_shipping", // not an approved claim
+      "free_expedited_shipping", // standard shipping only
+    ],
+    enabledForPreview: true,
+  },
+
+  // ── Compounded medication ─────────────────────────────────────────────────
+  // Source: owner-confirmed — all medications are compounded by licensed
+  // compounding pharmacies. Brand-name versions (Ozempic, Wegovy, Mounjaro,
+  // Zepbound) are available directly from manufacturers at significantly higher cost.
+  // Do not make FDA-approval claims for compounded medications — compounded
+  // drugs are not individually FDA-approved products.
+  {
+    key: "compounded_medication",
+    approvedText:
+      "Our medications are compounded — they're not the brand-name versions like Ozempic, Wegovy, Mounjaro, or Zepbound. " +
+      "Compounded medications contain the same active ingredient (semaglutide or tirzepatide) and are prepared by licensed compounding pharmacies. " +
+      "Brand-name versions sourced directly from the pharmaceutical manufacturers typically cost two to three times more. " +
+      "Compounded medications are not individually FDA-approved products.",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-15",
+    prohibitedClaims: [
+      "fda_approved_compounded", // compounded drugs are not individually FDA-approved
+      "bioequivalence_guarantee", // cannot guarantee identical bioequivalence to brand
+      "brand_inferiority_claim", // do not disparage brand products
+      "same_manufacturer", // compounded is not from the original manufacturer
+    ],
+    enabledForPreview: true,
+  },
+
+  // ── Eligibility requirements ──────────────────────────────────────────────
+  // Source: owner-confirmed — eligibility is determined by the provider during
+  // the intake review based on BMI and other health factors.
+  // Primary instruction: direct the patient to the questionnaire.
+  // Do not pre-screen or guarantee eligibility.
+  {
+    key: "eligibility_requirements",
+    approvedText:
+      "Eligibility is determined by a licensed provider during the intake review. " +
+      "Generally, a BMI over 23 is accepted, though other health factors also apply. " +
+      "The best way to find out if you qualify is to complete the short medical questionnaire, which takes about 5 minutes. " +
+      "We can't guarantee eligibility before the provider reviews your information.",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-15",
+    prohibitedClaims: [
+      "guaranteed_eligibility", // provider determines eligibility, not Lucy
+      "specific_bmi_cutoff_as_guarantee", // BMI is one factor; do not state a specific cutoff as a guarantee
+      "pre_screening_eligibility", // Lucy cannot pre-screen
+      "automatic_approval", // provider review is required
+    ],
+    enabledForPreview: true,
+  },
+
+  // ── Refund policy ─────────────────────────────────────────────────────────
+  // Source: owner-confirmed — no refunds; cancellation anytime via patient portal.
+  // Common context: patients who stop seeing results or struggle with injection
+  // consistency. Acknowledge without arguing, then note cancellation option.
+  {
+    key: "refund_policy",
+    approvedText:
+      "We don't offer refunds, but you can cancel your plan anytime through the patient portal. " +
+      "Results vary from person to person and depend on consistency with the programme, including keeping up with injections. " +
+      "If you have concerns about your progress, the medical team can review your case during the provider-review step.",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-15",
+    prohibitedClaims: [
+      "refund_promise", // no refunds are offered
+      "satisfaction_guarantee", // no money-back guarantee
+      "prorated_refund", // no prorated credits
+      "results_guarantee", // individual results vary
+    ],
+    enabledForPreview: true,
+  },
+
+  // ── Privacy and HIPAA ─────────────────────────────────────────────────────
+  // Source: owner-confirmed — HIPAA-compliant, secure systems.
+  {
+    key: "privacy_hipaa",
+    approvedText:
+      "Your information is protected under HIPAA. " +
+      "We use secure, HIPAA-compliant systems to store and handle your health information. " +
+      "Your data is never sold.",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-15",
+    prohibitedClaims: [
+      "absolute_security_guarantee", // no system is 100% breach-proof
+      "specific_encryption_claims", // do not invent technical specs
+    ],
+    enabledForPreview: true,
+  },
+
+  // ── Auto-refill ───────────────────────────────────────────────────────────
+  // Source: owner-confirmed — plans auto-refill; cancel anytime in patient portal
+  // with 7-day notice (consistent with cancellation_policy topic).
+  {
+    key: "auto_refill",
+    approvedText:
+      "Your plan auto-refills on your scheduled refill date so you don't have to reorder manually. " +
+      "You can manage or cancel your subscription anytime through the patient portal. " +
+      "To avoid being charged for the next shipment, cancel at least 7 days before your next refill date.",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-15",
+    prohibitedClaims: [
+      "instant_cancellation", // 7-day notice window applies
+      "prorated_refund_on_cancel", // no refunds on cancellation
+      "pause_option", // only cancellation is confirmed; pause not approved
+    ],
+    enabledForPreview: true,
+  },
+
+  // ── First month offer ──────────────────────────────────────────────────────
+  // SOURCE: lucy-promotion-v1 (separately versioned; not part of lucy-knowledge-v1).
+  // Approved by the owner who attested that medical staff and legal reviewed the terms.
+  // approvedAt: null — owner has not supplied an explicit approval date.
+  {
+    key: "first_month_offer",
+    approvedText:
+      "New customers can receive $20 off their first month. " +
+      "The discount is automatically applied and cannot be combined with another promotion.",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-15",
+    lucySourceVersion: "lucy-promotion-v1",
+    prohibitedClaims: [
+      "eligibility_after_prior_purchase", // discount applies to new customers only
+      "stackable_promotions", // cannot be combined with another promotion
+      "guaranteed_eligibility", // never promise eligibility
+      "invented_coupon_code", // no code required; automatically applied
+      "offer_expiry_date", // no expiration unless a later approved source supplies one
+      "plans_other_than_semaglutide_or_tirzepatide", // applies to both plans only
+    ],
+    enabledForPreview: true,
+  },
+] as const;
+
+/** All topics available for the development bot-test preview. */
+export function getPreviewEnabledTopics(): readonly KnowledgeTopic[] {
+  return KNOWLEDGE_CATALOG.filter((t) => t.enabledForPreview);
+}
+
+/** Look up a topic by its key. Returns undefined when not found. */
+export function getTopicByKey(key: string): KnowledgeTopic | undefined {
+  return KNOWLEDGE_CATALOG.find((t) => t.key === key);
+}
+
+/**
+ * Topic keys whose dollar amounts represent product subscription prices.
+ * Dollar amounts are permitted in replies that declare at least one of these keys.
+ */
+export const PRODUCT_PRICING_TOPIC_KEYS = new Set(["semaglutide_pricing", "tirzepatide_pricing"]);
+
+/**
+ * All topic keys that carry approved dollar-amount claims.
+ * Superset of PRODUCT_PRICING_TOPIC_KEYS — includes the promotion entry.
+ */
+export const APPROVED_PRICING_TOPIC_KEYS = new Set(["semaglutide_pricing", "tirzepatide_pricing", "first_month_offer"]);
+
+/**
+ * Topic keys derived from the lucy-promotion-v1 approved promotion entry.
+ * These are separately versioned from lucy-knowledge-v1.
+ */
+export const LUCY_PROMOTION_V1_TOPIC_KEYS = new Set(["first_month_offer"]);
+
+/**
+ * Topic keys derived from the lucy-knowledge-v1 source document.
+ * These entries must remain consistent with lucy-knowledge-source.ts.
+ */
+export const LUCY_V1_TOPIC_KEYS = new Set([
+  "product_comparison",
+  "semaglutide_pricing",
+  "tirzepatide_pricing",
+  "titration",
+  "previous_prescriptions",
+  "weight_loss_expectations",
+  "side_effects",
+  "insurance_payment",
+  "how_luma_works",
+  "customer_reviews",
+  "cancellation_policy",
+]);
