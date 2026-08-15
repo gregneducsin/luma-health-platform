@@ -1,6 +1,7 @@
 import { env } from "./lib/env.js";
 import { logger } from "./lib/logger.js";
 import { createApp } from "./app.js";
+import { sweepFollowUpJobs } from "./services/follow-up-jobs.service.js";
 
 // Migrations are applied as a discrete step before this process starts (see
 // packages/db/src/migrate.ts's docstring, the Dockerfile entrypoint, and the
@@ -11,3 +12,15 @@ const app = createApp();
 app.listen(env.port, () => {
   logger.info({ port: env.port, nodeEnv: env.nodeEnv }, "Server listening");
 });
+
+// Follow-up job sweep: in-process interval, single-instance only (same
+// simplification already accepted for rate limiting — revisit together if
+// multi-instance hosting is ever chosen). A missed or overlapping tick is
+// harmless: sweepFollowUpJobs() only ever touches jobs still `pending`, so a
+// slow tick just gets picked up by the next one.
+const FOLLOW_UP_SWEEP_INTERVAL_MS = 10 * 60 * 1000;
+setInterval(() => {
+  sweepFollowUpJobs().catch((err) => {
+    logger.error({ err }, "follow-up job sweep failed");
+  });
+}, FOLLOW_UP_SWEEP_INTERVAL_MS);

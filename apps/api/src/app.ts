@@ -15,6 +15,7 @@ import { createAiAssistantRouter } from "./routes/ai-assistant.routes.js";
 import { createEmployeesRouter } from "./routes/payroll/employees.routes.js";
 import { createPayrollWeeksRouter } from "./routes/payroll/weeks.routes.js";
 import { createMarketingSpendRouter } from "./routes/payroll/marketing-spend.routes.js";
+import { createIntakeLinksRouter } from "./routes/intake-links.routes.js";
 import { createGhlLeadWebhookRouter } from "./routes/webhooks/ghl-lead.routes.js";
 import { createBaskOrderWebhookRouter } from "./routes/webhooks/bask-order.routes.js";
 import { createBaskQuestionnaireWebhookRouter } from "./routes/webhooks/bask-questionnaire.routes.js";
@@ -39,6 +40,12 @@ export function createApp(): Express {
 
   app.use("/api", healthRouter);
   app.use(createGeneralLimiter());
+
+  // Public, unauthenticated redirect — the destination of a trigger link
+  // sent to a lead (e.g. an abandoned-questionnaire nudge). No session
+  // cookie, no CSRF token, no webhook secret: it's a customer's browser
+  // following a link, not a call from our dashboard or from Bask/GHL.
+  app.use("/go", createIntakeLinksRouter());
 
   // Populate req.user from the session cookie before any route that needs it.
   app.use(sessionMiddleware);

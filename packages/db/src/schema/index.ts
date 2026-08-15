@@ -3,3 +3,4 @@ export * from "./customers";
 export * from "./purchases";
 export * from "./webhooks";
 export * from "./payroll";
+export * from "./messaging";

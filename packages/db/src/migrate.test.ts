@@ -30,6 +30,8 @@ const EXPECTED_TABLES = [
   "employee_bonuses",
   "payroll_audit_events",
   "marketing_spend_weeks",
+  "intake_link_tokens",
+  "follow_up_jobs",
 ].sort();
 
 let testSchema: string;
