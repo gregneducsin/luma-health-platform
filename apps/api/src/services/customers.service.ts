@@ -40,11 +40,17 @@ export async function listCustomers(query: ListCustomersQuery) {
   ].filter((c) => c !== undefined);
   const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
 
+  // "Purchased" means a completed, first-order purchase — same rule the
+  // summary tiles and Marketing CPA use, so a recurring-only purchase
+  // doesn't count. purchaseCount/totalPaid/firstPurchaseDate below stay
+  // unfiltered (full order history), this is a separate qualifying check.
+  const qualifyingPurchaseSql = sql`(${purchasesTable.orderClassification} = 'first_order' and ${purchasesTable.status} = 'completed')`;
+
   const havingCondition =
     purchaseStatus === "purchased"
-      ? sql`count(${purchasesTable.id}) > 0`
+      ? sql`count(*) filter (where ${qualifyingPurchaseSql}) > 0`
       : purchaseStatus === "not_purchased"
-        ? sql`count(${purchasesTable.id}) = 0`
+        ? sql`count(*) filter (where ${qualifyingPurchaseSql}) = 0`
         : undefined;
 
   const orderFn = sortDir === "asc" ? asc : desc;
@@ -56,6 +62,7 @@ export async function listCustomers(query: ListCustomersQuery) {
       totalPaid: sql<string>`coalesce(sum(${purchasesTable.amountPaid}), 0)::text`,
       firstPurchaseDate: sql<string | null>`min(${purchasesTable.purchaseDate})`,
       mostRecentPurchaseDate: sql<string | null>`max(${purchasesTable.purchaseDate})`,
+      qualifyingPurchaseDate: sql<string | null>`min(${purchasesTable.purchaseDate}) filter (where ${qualifyingPurchaseSql})`,
       questionnaireStatus: questionnaireStatusSubquery,
     })
     .from(customersTable)
@@ -103,10 +110,21 @@ export async function getCustomersSummary(query: CustomersSummaryQuery) {
 
   const [{ totalLeads }] = await db.select({ totalLeads: sql<number>`count(*)::int` }).from(customersTable).where(sinceCondition);
 
+  // Only a completed, first-order purchase counts as "purchased" here —
+  // matches the Marketing CPA tab's rule that a recurring purchase never
+  // counts toward a lead's acquisition-period figures, so the two tabs
+  // agree on what "this lead converted" means.
   const [{ purchased }] = await db
     .select({ purchased: sql<number>`count(distinct ${customersTable.id})::int` })
     .from(customersTable)
-    .innerJoin(purchasesTable, eq(purchasesTable.customerId, customersTable.id))
+    .innerJoin(
+      purchasesTable,
+      and(
+        eq(purchasesTable.customerId, customersTable.id),
+        eq(purchasesTable.orderClassification, "first_order"),
+        eq(purchasesTable.status, "completed"),
+      ),
+    )
     .where(sinceCondition);
 
   const notPurchased = totalLeads - purchased;

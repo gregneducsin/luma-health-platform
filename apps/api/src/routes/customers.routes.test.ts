@@ -165,6 +165,38 @@ describe("Customers CRUD", () => {
     expect(notPurchasedOnly.body.total).toBe(1);
     expect(notPurchasedOnly.body.customers[0].id).toBe(nonPurchaser.body.customer.id);
 
+    // A lead whose only purchase is classified "recurring" must land in
+    // not_purchased, not purchased — same rule as the summary tiles.
+    const recurringOnlyLead = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Filt", lastName: "RecurringOnly", email: "filt-recurring-only@example.com", leadReceivedDate: "2026-01-01", leadType: "Referral Filter Test" });
+    const recurringOnlyPurchase = await agent
+      .post(`/api/app/customers/${recurringOnlyLead.body.customer.id}/purchases`)
+      .set("x-csrf-token", csrf)
+      .send({ purchaseDate: "2026-01-05", orderNumber: "ORD-FILT-RECURRING", productName: "Thing", amountPaid: "10.00" });
+    await agent
+      .patch(`/api/app/purchases/${recurringOnlyPurchase.body.purchase.id}`)
+      .set("x-csrf-token", csrf)
+      .send({ orderClassification: "recurring" });
+
+    const notPurchasedWithRecurring = await agent.get("/api/app/customers").query({ leadType: "Referral Filter Test", purchaseStatus: "not_purchased" });
+    expect(notPurchasedWithRecurring.body.total).toBe(2);
+    expect(notPurchasedWithRecurring.body.customers.map((c: { id: string }) => c.id).sort()).toEqual(
+      [nonPurchaser.body.customer.id, recurringOnlyLead.body.customer.id].sort(),
+    );
+
+    const purchasedStillExcludesRecurring = await agent.get("/api/app/customers").query({ leadType: "Referral Filter Test", purchaseStatus: "purchased" });
+    expect(purchasedStillExcludesRecurring.body.total).toBe(1);
+    expect(purchasedStillExcludesRecurring.body.customers[0].id).toBe(purchaser.body.customer.id);
+
+    // The row-level badge date (qualifyingPurchaseDate) is null for the
+    // recurring-only lead even though it has purchase history.
+    const allThree = await agent.get("/api/app/customers").query({ leadType: "Referral Filter Test" });
+    const recurringOnlyRow = allThree.body.customers.find((c: { id: string }) => c.id === recurringOnlyLead.body.customer.id);
+    expect(recurringOnlyRow.qualifyingPurchaseDate).toBeNull();
+    expect(recurringOnlyRow.purchaseCount).toBe(1); // still visible in full order history
+
     // questionnaireId filter + the status field still being surfaced on the list itself
     const { db, questionnaireEventsTable } = await import("@luma/db");
     await db.insert(questionnaireEventsTable).values({
@@ -253,6 +285,42 @@ describe("Customers summary", () => {
     expect(res.body.purchased).toBeGreaterThanOrEqual(1);
     expect(res.body.notPurchased).toBe(res.body.totalLeads - res.body.purchased);
     expect(res.body.conversionRate).toBeGreaterThan(0);
+  });
+
+  it("does not count a recurring-only purchase as 'purchased' — only a completed first-order purchase converts a lead", async () => {
+    await seedUser("admin-summary-recurring@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "admin-summary-recurring@example.com");
+
+    const before = await agent.get("/api/app/customers/summary").query({ period: "all" });
+
+    // Lead whose first purchase is a real first_order — should count.
+    const converted = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Rec", lastName: "Converted", email: "rec-converted@example.com", leadReceivedDate: "2026-01-01" });
+    await agent
+      .post(`/api/app/customers/${converted.body.customer.id}/purchases`)
+      .set("x-csrf-token", csrf)
+      .send({ purchaseDate: "2026-01-05", orderNumber: "ORD-REC-1", productName: "Thing", amountPaid: "10.00" });
+
+    // Lead whose only purchase is classified "recurring" (e.g. a backfilled
+    // order) — must NOT count as purchased, mirroring Marketing CPA's rule.
+    const recurringOnly = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Rec", lastName: "OnlyRecurring", email: "rec-only-recurring@example.com", leadReceivedDate: "2026-01-01" });
+    const recurringPurchase = await agent
+      .post(`/api/app/customers/${recurringOnly.body.customer.id}/purchases`)
+      .set("x-csrf-token", csrf)
+      .send({ purchaseDate: "2026-01-05", orderNumber: "ORD-REC-2", productName: "Thing", amountPaid: "10.00" });
+    await agent
+      .patch(`/api/app/purchases/${recurringPurchase.body.purchase.id}`)
+      .set("x-csrf-token", csrf)
+      .send({ orderClassification: "recurring" });
+
+    const after = await agent.get("/api/app/customers/summary").query({ period: "all" });
+    expect(after.body.totalLeads - before.body.totalLeads).toBe(2); // both leads are in scope
+    expect(after.body.purchased - before.body.purchased).toBe(1); // only the first_order one converts
   });
 
   it("classifies leads into metaFormFillCount/questionnaireCount by first-touch source, no double-counting", async () => {

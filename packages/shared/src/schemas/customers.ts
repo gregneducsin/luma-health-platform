@@ -53,6 +53,13 @@ export const customerWithStatsSchema = customerSchema.extend({
   totalPaid: z.string(),
   firstPurchaseDate: z.string().nullable(),
   mostRecentPurchaseDate: z.string().nullable(),
+  // Date of this customer's completed, first-order purchase, if any — the
+  // same "did this lead convert" rule the summary tiles and Marketing CPA
+  // use (a recurring-only purchase does not count). Drives the Purchased/Not
+  // Purchased badge and filter, distinct from purchaseCount/totalPaid above,
+  // which reflect the customer's full order history regardless of
+  // classification.
+  qualifyingPurchaseDate: z.string().nullable(),
   // Most recent questionnaire_events row for this customer, if any.
   questionnaireStatus: z.string().nullable(),
 });

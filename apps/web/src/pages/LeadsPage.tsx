@@ -232,10 +232,10 @@ export function LeadsPage() {
                     )}
                   </td>
                   <td className="px-4 py-2">
-                    {c.purchaseCount > 0 ? (
+                    {c.qualifyingPurchaseDate ? (
                       <div>
                         <Badge color="green">Purchased</Badge>
-                        {c.firstPurchaseDate && <div className="mt-0.5 text-xs text-gray-400">since {c.firstPurchaseDate}</div>}
+                        <div className="mt-0.5 text-xs text-gray-400">since {c.qualifyingPurchaseDate}</div>
                       </div>
                     ) : (
                       <Badge color="gray">Not Purchased</Badge>
