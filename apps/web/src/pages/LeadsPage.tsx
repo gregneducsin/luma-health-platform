@@ -62,12 +62,55 @@ const QUESTIONNAIRE_BADGE_COLOR: Record<string, "gray" | "green" | "yellow" | "b
   submitted: "green",
 };
 
+type SortBy = "createdAt" | "leadReceivedDate" | "lastName";
+
+function SortHeader({
+  label,
+  column,
+  sortBy,
+  sortDir,
+  onSort,
+}: {
+  label: string;
+  column: SortBy;
+  sortBy: SortBy;
+  sortDir: "asc" | "desc";
+  onSort: (column: SortBy) => void;
+}) {
+  const active = sortBy === column;
+  return (
+    <th className="px-4 py-2">
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        className={`flex items-center gap-1 font-medium uppercase ${active ? "text-gray-900" : "text-gray-500 hover:text-gray-700"}`}
+      >
+        {label}
+        <span className="text-[10px]">{active ? (sortDir === "asc" ? "▲" : "▼") : ""}</span>
+      </button>
+    </th>
+  );
+}
+
 export function LeadsPage() {
   const [search, setSearch] = useState("");
   const [leadType, setLeadType] = useState("");
   const [purchaseStatus, setPurchaseStatus] = useState("");
   const [questionnaireStatus, setQuestionnaireStatus] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [sortBy, setSortBy] = useState<SortBy>("leadReceivedDate");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [showCreate, setShowCreate] = useState(false);
+
+  function handleSort(column: SortBy) {
+    if (column === sortBy) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(column);
+      setSortDir("desc");
+    }
+  }
 
   const { data: leadTypesData } = useLeadTypes();
   const { data, isLoading } = useCustomersList({
@@ -75,6 +118,10 @@ export function LeadsPage() {
     leadType: leadType || undefined,
     purchaseStatus: (purchaseStatus || undefined) as "purchased" | "not_purchased" | undefined,
     questionnaireStatus: (questionnaireStatus || undefined) as "started" | "abandoned" | "submitted" | undefined,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
+    sortBy,
+    sortDir,
   });
 
   return (
@@ -122,6 +169,24 @@ export function LeadsPage() {
           <option value="abandoned">Abandoned</option>
           <option value="submitted">Submitted</option>
         </select>
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm text-gray-500">Lead received</span>
+          <Input type="date" className="w-auto" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+          <span className="text-sm text-gray-400">–</span>
+          <Input type="date" className="w-auto" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+          {(dateFrom || dateTo) && (
+            <button
+              type="button"
+              onClick={() => {
+                setDateFrom("");
+                setDateTo("");
+              }}
+              className="text-xs text-gray-400 hover:text-gray-600"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
       <Card className="overflow-x-auto p-0">
@@ -131,10 +196,10 @@ export function LeadsPage() {
           <table className="w-full text-sm">
             <thead className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase text-gray-500">
               <tr>
-                <th className="px-4 py-2">Lead</th>
+                <SortHeader label="Lead" column="lastName" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
                 <th className="px-4 py-2">Contact</th>
                 <th className="px-4 py-2">Lead type</th>
-                <th className="px-4 py-2">Lead created</th>
+                <SortHeader label="Lead received" column="leadReceivedDate" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
                 <th className="px-4 py-2">Questionnaire</th>
                 <th className="px-4 py-2">Purchase</th>
               </tr>
@@ -155,7 +220,7 @@ export function LeadsPage() {
                   <td className="px-4 py-2">
                     <Badge color="gray">{c.leadType}</Badge>
                   </td>
-                  <td className="px-4 py-2 text-gray-600">{new Date(c.createdAt).toLocaleDateString()}</td>
+                  <td className="px-4 py-2 text-gray-600">{c.leadReceivedDate}</td>
                   <td className="px-4 py-2">
                     {c.questionnaireStatus ? (
                       <Badge color={QUESTIONNAIRE_BADGE_COLOR[c.questionnaireStatus] ?? "gray"}>{c.questionnaireStatus}</Badge>

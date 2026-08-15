@@ -36,6 +36,10 @@ export const listCustomersQuerySchema = z.object({
   leadType: z.string().trim().min(1).optional(),
   purchaseStatus: z.enum(["purchased", "not_purchased"]).optional(),
   questionnaireStatus: z.enum(["started", "abandoned", "submitted"]).optional(),
+  // Inclusive range filter on leadReceivedDate — the same business date the
+  // dashboard summary tiles filter by, not the DB row's createdAt.
+  dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD").optional(),
+  dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD").optional(),
 });
 export type ListCustomersQuery = z.infer<typeof listCustomersQuerySchema>;
 

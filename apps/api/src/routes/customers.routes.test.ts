@@ -178,6 +178,44 @@ describe("Customers CRUD", () => {
     expect(byQuestionnaireStatus.body.customers[0].id).toBe(nonPurchaser.body.customer.id);
     expect(byQuestionnaireStatus.body.customers[0].questionnaireStatus).toBe("abandoned");
   });
+
+  it("filters by leadReceivedDate range (dateFrom/dateTo), and sorts by leadReceivedDate/lastName", async () => {
+    await seedUser("admin-daterange@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "admin-daterange@example.com");
+
+    const jan = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Aaron", lastName: "Alpha", email: "date-jan@example.com", leadReceivedDate: "2026-01-01", leadType: "Date Range Test" });
+    const feb = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Zed", lastName: "Bravo", email: "date-feb@example.com", leadReceivedDate: "2026-02-15", leadType: "Date Range Test" });
+    const mar = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Mia", lastName: "Charlie", email: "date-mar@example.com", leadReceivedDate: "2026-03-01", leadType: "Date Range Test" });
+
+    const rangeRes = await agent
+      .get("/api/app/customers")
+      .query({ leadType: "Date Range Test", dateFrom: "2026-02-01", dateTo: "2026-02-28" });
+    expect(rangeRes.body.total).toBe(1);
+    expect(rangeRes.body.customers[0].id).toBe(feb.body.customer.id);
+
+    const fromOnlyRes = await agent.get("/api/app/customers").query({ leadType: "Date Range Test", dateFrom: "2026-02-01" });
+    expect(fromOnlyRes.body.total).toBe(2);
+    expect(fromOnlyRes.body.customers.map((c: { id: string }) => c.id).sort()).toEqual([feb.body.customer.id, mar.body.customer.id].sort());
+
+    const sortedByDate = await agent
+      .get("/api/app/customers")
+      .query({ leadType: "Date Range Test", sortBy: "leadReceivedDate", sortDir: "asc" });
+    expect(sortedByDate.body.customers.map((c: { id: string }) => c.id)).toEqual([jan.body.customer.id, feb.body.customer.id, mar.body.customer.id]);
+
+    const sortedByLastName = await agent
+      .get("/api/app/customers")
+      .query({ leadType: "Date Range Test", sortBy: "lastName", sortDir: "asc" });
+    expect(sortedByLastName.body.customers.map((c: { id: string }) => c.id)).toEqual([jan.body.customer.id, feb.body.customer.id, mar.body.customer.id]);
+  });
 });
 
 describe("Customers summary", () => {

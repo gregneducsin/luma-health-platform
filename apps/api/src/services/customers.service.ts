@@ -20,7 +20,7 @@ const questionnaireStatusSubquery = sql<string | null>`(
 )`;
 
 export async function listCustomers(query: ListCustomersQuery) {
-  const { search, sortBy, sortDir, limit, offset, leadType, purchaseStatus, questionnaireStatus } = query;
+  const { search, sortBy, sortDir, limit, offset, leadType, purchaseStatus, questionnaireStatus, dateFrom, dateTo } = query;
 
   const conditions = [
     search
@@ -35,6 +35,8 @@ export async function listCustomers(query: ListCustomersQuery) {
     questionnaireStatus
       ? sql`exists (select 1 from ${questionnaireEventsTable} where ${questionnaireEventsTable.personId} = ${customersTable.id} and ${questionnaireEventsTable.status} = ${questionnaireStatus})`
       : undefined,
+    dateFrom ? sql`${customersTable.leadReceivedDate} >= ${dateFrom}` : undefined,
+    dateTo ? sql`${customersTable.leadReceivedDate} <= ${dateTo}` : undefined,
   ].filter((c) => c !== undefined);
   const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
 
