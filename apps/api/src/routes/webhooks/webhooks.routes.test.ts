@@ -219,6 +219,50 @@ describe("Webhooks", () => {
       const [customer] = await db.select().from(customersTable).where(eq(customersTable.email, "abandoned-cart@example.com"));
       expect(customer.leadType).toBe("Bask abandoned cart");
     });
+
+    it("persists the payload's phone onto the created customer", async () => {
+      const payload = {
+        eventId: "bask-q-evt-phone",
+        externalPersonId: "bask-person-phone",
+        email: "phone-test@example.com",
+        firstName: "Phone",
+        lastName: "Tester",
+        phone: "+15551234567",
+        questionnaireId: "QUEST-3",
+        status: "abandoned" as const,
+        occurredAt: new Date().toISOString(),
+      };
+      const res = await request(app).post("/api/webhooks/bask-questionnaire").set("x-webhook-secret", QUESTIONNAIRE_SECRET).send(payload);
+      expect(res.status).toBe(200);
+
+      const { db, customersTable } = await import("@luma/db");
+      const { eq } = await import("drizzle-orm");
+      const [customer] = await db.select().from(customersTable).where(eq(customersTable.email, "phone-test@example.com"));
+      expect(customer.phone).toBe("+15551234567");
+    });
+
+    it("defaults occurredAt to now when the source doesn't provide one", async () => {
+      const payload = {
+        eventId: "bask-q-evt-no-timestamp",
+        externalPersonId: "bask-person-no-timestamp",
+        email: "no-timestamp@example.com",
+        questionnaireId: "QUEST-4",
+        status: "abandoned" as const,
+        // occurredAt intentionally omitted
+      };
+      const before = Date.now();
+      const res = await request(app).post("/api/webhooks/bask-questionnaire").set("x-webhook-secret", QUESTIONNAIRE_SECRET).send(payload);
+      expect(res.status).toBe(200);
+
+      const { db, customersTable, questionnaireEventsTable } = await import("@luma/db");
+      const { eq } = await import("drizzle-orm");
+      const [customer] = await db.select().from(customersTable).where(eq(customersTable.email, "no-timestamp@example.com"));
+      const [event] = await db
+        .select()
+        .from(questionnaireEventsTable)
+        .where(eq(questionnaireEventsTable.personId, customer!.id));
+      expect(event.lastEventAt!.getTime()).toBeGreaterThanOrEqual(before);
+    });
   });
 
   describe("Bask payment-failed", () => {

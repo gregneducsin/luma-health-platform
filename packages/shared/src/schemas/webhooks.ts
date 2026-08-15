@@ -39,9 +39,14 @@ export const baskQuestionnaireWebhookRequestSchema = z.object({
   email: z.string().email(),
   firstName: z.string().min(1).optional(),
   lastName: z.string().min(1).optional(),
+  phone: z.string().min(1).optional(),
   questionnaireId: z.string().min(1),
   status: z.enum(["started", "abandoned", "submitted"]),
-  occurredAt: z.string().datetime(),
+  // Optional because some source integrations (e.g. a Zapier relay in front
+  // of Bask) don't forward a timestamp at all — the handler defaults this to
+  // the time the webhook was received rather than requiring the caller to
+  // manufacture one.
+  occurredAt: z.string().datetime().optional(),
 });
 export type BaskQuestionnaireWebhookRequest = z.infer<typeof baskQuestionnaireWebhookRequestSchema>;
 

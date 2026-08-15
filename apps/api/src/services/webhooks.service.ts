@@ -200,17 +200,19 @@ export async function handleBaskQuestionnaireWebhook(payload: BaskQuestionnaireW
   if (!recorded) return { duplicate: true };
 
   try {
+    const occurredAt = payload.occurredAt ?? new Date().toISOString();
     const { id: customerId } = await findOrCreateCustomerByExternalIdentity({
       system: "bask",
       externalId: payload.externalPersonId,
       email: payload.email,
       firstName: payload.firstName,
       lastName: payload.lastName,
-      leadReceivedDate: occurredDate(payload.occurredAt),
+      phone: payload.phone,
+      leadReceivedDate: occurredDate(occurredAt),
       leadType: BASK_QUESTIONNAIRE_LEAD_TYPES[payload.status],
     });
 
-    const now = new Date(payload.occurredAt);
+    const now = new Date(occurredAt);
     await db
       .insert(questionnaireEventsTable)
       .values({
