@@ -58,9 +58,15 @@ export type CustomersSummaryQuery = z.infer<typeof customersSummaryQuerySchema>;
 
 export const customersSummarySchema = z.object({
   totalLeads: z.number().int(),
+  // Source is the system that created the customer first (their earliest
+  // external_identities row) — every lead with a known source falls into
+  // exactly one of these two buckets, no double-counting. Leads created
+  // manually in the dashboard (no external identity at all) count toward
+  // totalLeads but neither bucket.
+  metaFormFillCount: z.number().int(),
+  questionnaireCount: z.number().int(),
   purchased: z.number().int(),
   notPurchased: z.number().int(),
   conversionRate: z.number(),
-  leadTypeBreakdown: z.array(z.object({ leadType: z.string(), count: z.number().int() })),
 });
 export type CustomersSummary = z.infer<typeof customersSummarySchema>;

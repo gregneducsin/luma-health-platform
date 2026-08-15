@@ -35,6 +35,13 @@ export function useCustomersSummary(query: Partial<CustomersSummaryQuery>) {
   });
 }
 
+export function useLeadTypes() {
+  return useQuery({
+    queryKey: ["customers", "lead-types"],
+    queryFn: () => api.get<{ leadTypes: string[] }>("/api/app/customers/lead-types"),
+  });
+}
+
 export function usePurchasesList(query: Partial<ListPurchasesQuery>) {
   return useQuery({
     queryKey: ["purchases", "list", query],

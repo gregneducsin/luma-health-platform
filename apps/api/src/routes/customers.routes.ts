@@ -44,6 +44,15 @@ export function createCustomersRouter(): RouterType {
     }
   });
 
+  // Same registration-order note as "/summary" above.
+  router.get("/lead-types", requireRole("admin", "manager"), async (_req, res, next) => {
+    try {
+      res.json({ leadTypes: await customersService.listDistinctLeadTypes() });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.get("/:id", requireRole("admin", "manager"), async (req, res, next) => {
     try {
       const customer = await customersService.getCustomer(req.params.id as string);

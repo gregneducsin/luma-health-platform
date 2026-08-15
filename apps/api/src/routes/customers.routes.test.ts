@@ -187,7 +187,7 @@ describe("Customers summary", () => {
     app = createApp();
   });
 
-  it("computes totals, purchased/not-purchased split, conversion rate, and lead-type breakdown", async () => {
+  it("computes totals, purchased/not-purchased split, and conversion rate", async () => {
     await seedUser("admin-summary@example.com", "admin");
     const { agent, csrf } = await loginAgent(app, "admin-summary@example.com");
 
@@ -211,13 +211,78 @@ describe("Customers summary", () => {
     expect(res.body.purchased).toBeGreaterThanOrEqual(1);
     expect(res.body.notPurchased).toBe(res.body.totalLeads - res.body.purchased);
     expect(res.body.conversionRate).toBeGreaterThan(0);
-    expect(Array.isArray(res.body.leadTypeBreakdown)).toBe(true);
-    const webFormRow = res.body.leadTypeBreakdown.find((r: { leadType: string }) => r.leadType === "web-form");
-    expect(webFormRow.count).toBeGreaterThanOrEqual(1);
+  });
+
+  it("classifies leads into metaFormFillCount/questionnaireCount by first-touch source, no double-counting", async () => {
+    await seedUser("admin-source@example.com", "admin");
+    const { agent } = await loginAgent(app, "admin-source@example.com");
+
+    const { db, customersTable, externalIdentitiesTable } = await import("@luma/db");
+    const [ghlLead] = await db
+      .insert(customersTable)
+      .values({ firstName: "GHL", lastName: "Sourced", email: "ghl-sourced@example.com", leadReceivedDate: "2026-01-01" })
+      .returning();
+    await db.insert(externalIdentitiesTable).values({ personId: ghlLead!.id, system: "ghl", externalId: "ghl-src-1" });
+
+    const [baskLead] = await db
+      .insert(customersTable)
+      .values({ firstName: "Bask", lastName: "Sourced", email: "bask-sourced@example.com", leadReceivedDate: "2026-01-01" })
+      .returning();
+    await db.insert(externalIdentitiesTable).values({ personId: baskLead!.id, system: "bask", externalId: "bask-src-1" });
+
+    // Touched by GHL first, then later also by Bask — must still count once, under GHL.
+    const [bothLead] = await db
+      .insert(customersTable)
+      .values({ firstName: "Both", lastName: "Sourced", email: "both-sourced@example.com", leadReceivedDate: "2026-01-01" })
+      .returning();
+    await db
+      .insert(externalIdentitiesTable)
+      .values({ personId: bothLead!.id, system: "ghl", externalId: "both-src-ghl", createdAt: new Date("2026-01-01T00:00:00Z") });
+    await db
+      .insert(externalIdentitiesTable)
+      .values({ personId: bothLead!.id, system: "bask", externalId: "both-src-bask", createdAt: new Date("2026-01-02T00:00:00Z") });
+
+    const res = await agent.get("/api/app/customers/summary").query({ period: "all" });
+    expect(res.status).toBe(200);
+    expect(res.body.metaFormFillCount).toBeGreaterThanOrEqual(2); // ghlLead + bothLead
+    expect(res.body.questionnaireCount).toBeGreaterThanOrEqual(1); // baskLead only
+    expect(res.body.metaFormFillCount + res.body.questionnaireCount).toBeLessThanOrEqual(res.body.totalLeads);
   });
 
   it("rejects unauthenticated requests", async () => {
     const res = await request(app).get("/api/app/customers/summary");
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("Customers lead-types", () => {
+  let app: ReturnType<typeof createApp>;
+
+  beforeAll(() => {
+    app = createApp();
+  });
+
+  it("returns distinct lead types", async () => {
+    await seedUser("admin-leadtypes@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "admin-leadtypes@example.com");
+
+    await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "LT", lastName: "One", email: "lt-one@example.com", leadReceivedDate: "2026-01-01", leadType: "Distinct Lead Type Test" });
+    await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "LT", lastName: "Two", email: "lt-two@example.com", leadReceivedDate: "2026-01-01", leadType: "Distinct Lead Type Test" });
+
+    const res = await agent.get("/api/app/customers/lead-types");
+    expect(res.status).toBe(200);
+    const occurrences = res.body.leadTypes.filter((lt: string) => lt === "Distinct Lead Type Test");
+    expect(occurrences).toHaveLength(1); // distinct, not once per customer
+  });
+
+  it("rejects unauthenticated requests", async () => {
+    const res = await request(app).get("/api/app/customers/lead-types");
     expect(res.status).toBe(401);
   });
 });

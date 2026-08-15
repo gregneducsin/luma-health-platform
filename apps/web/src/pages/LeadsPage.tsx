@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "wouter";
-import { useCustomersList, useCreateCustomer, useCustomersSummary } from "../hooks/useCustomers";
+import { useCustomersList, useCreateCustomer, useCustomersSummary, useLeadTypes } from "../hooks/useCustomers";
 import { Badge, Button, Card, ErrorText, Field, Input } from "../components/ui";
 import { ApiError } from "../hooks/useAuth";
 import type { CustomersSummaryQuery } from "@luma/shared";
@@ -44,21 +44,14 @@ function SummaryBar() {
           ))}
         </select>
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <SummaryTile label="Total leads" value={data?.totalLeads ?? "…"} />
+        <SummaryTile label="Meta form fill" value={data?.metaFormFillCount ?? "…"} />
+        <SummaryTile label="Questionnaire" value={data?.questionnaireCount ?? "…"} />
         <SummaryTile label="Purchased" value={data?.purchased ?? "…"} />
         <SummaryTile label="Not purchased" value={data?.notPurchased ?? "…"} />
         <SummaryTile label="Conversion rate" value={data ? `${data.conversionRate}%` : "…"} />
       </div>
-      {data && data.leadTypeBreakdown.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
-          {data.leadTypeBreakdown.map((row) => (
-            <span key={row.leadType} className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600">
-              {row.leadType}: <span className="font-medium text-gray-900">{row.count}</span>
-            </span>
-          ))}
-        </div>
-      )}
     </Card>
   );
 }
@@ -76,7 +69,7 @@ export function LeadsPage() {
   const [questionnaireStatus, setQuestionnaireStatus] = useState("");
   const [showCreate, setShowCreate] = useState(false);
 
-  const { data: summaryData } = useCustomersSummary({ period: "all" });
+  const { data: leadTypesData } = useLeadTypes();
   const { data, isLoading } = useCustomersList({
     search: search || undefined,
     leadType: leadType || undefined,
@@ -104,9 +97,9 @@ export function LeadsPage() {
         />
         <select className="rounded-md border border-gray-300 px-3 py-1.5 text-sm" value={leadType} onChange={(e) => setLeadType(e.target.value)}>
           <option value="">All Lead Types</option>
-          {summaryData?.leadTypeBreakdown.map((row) => (
-            <option key={row.leadType} value={row.leadType}>
-              {row.leadType}
+          {leadTypesData?.leadTypes.map((lt) => (
+            <option key={lt} value={lt}>
+              {lt}
             </option>
           ))}
         </select>

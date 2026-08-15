@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, ilike, or, sql, getTableColumns } from "drizzle-orm";
-import { db, customersTable, purchasesTable, questionnaireEventsTable } from "@luma/db";
+import { db, customersTable, purchasesTable, questionnaireEventsTable, externalIdentitiesTable } from "@luma/db";
 import type { CreateCustomerRequest, CustomersSummaryQuery, ListCustomersQuery, UpdateCustomerRequest } from "@luma/shared";
 
 const SORT_COLUMNS = {
@@ -82,6 +82,19 @@ export async function listCustomers(query: ListCustomersQuery) {
   return { customers: rows, total: total ?? 0 };
 }
 
+// A customer's acquisition source = the system of their earliest
+// external_identities row ("first touch"), so every customer with a known
+// source falls into exactly one bucket — no double-counting a lead that
+// later also touched the other system (e.g. a GHL lead who later filled
+// out a Bask questionnaire still counts once, under GHL).
+const firstTouchSystemSql = sql`(
+  select ${externalIdentitiesTable.system}
+  from ${externalIdentitiesTable}
+  where ${externalIdentitiesTable.personId} = ${customersTable.id}
+  order by ${externalIdentitiesTable.createdAt} asc
+  limit 1
+)`;
+
 export async function getCustomersSummary(query: CustomersSummaryQuery) {
   const sinceCondition =
     query.period === "all" ? undefined : sql`${customersTable.leadReceivedDate} >= (current_date - ${query.period}::int)`;
@@ -97,14 +110,25 @@ export async function getCustomersSummary(query: CustomersSummaryQuery) {
   const notPurchased = totalLeads - purchased;
   const conversionRate = totalLeads > 0 ? Math.round((purchased / totalLeads) * 1000) / 10 : 0;
 
-  const leadTypeBreakdown = await db
-    .select({ leadType: customersTable.leadType, count: sql<number>`count(*)::int` })
-    .from(customersTable)
-    .where(sinceCondition)
-    .groupBy(customersTable.leadType)
-    .orderBy(desc(sql`count(*)`));
+  const metaFormFillCondition = sql`${firstTouchSystemSql} = 'ghl'`;
+  const questionnaireCondition = sql`${firstTouchSystemSql} = 'bask'`;
 
-  return { totalLeads, purchased, notPurchased, conversionRate, leadTypeBreakdown };
+  const [{ metaFormFillCount }] = await db
+    .select({ metaFormFillCount: sql<number>`count(*)::int` })
+    .from(customersTable)
+    .where(sinceCondition ? and(sinceCondition, metaFormFillCondition) : metaFormFillCondition);
+
+  const [{ questionnaireCount }] = await db
+    .select({ questionnaireCount: sql<number>`count(*)::int` })
+    .from(customersTable)
+    .where(sinceCondition ? and(sinceCondition, questionnaireCondition) : questionnaireCondition);
+
+  return { totalLeads, metaFormFillCount, questionnaireCount, purchased, notPurchased, conversionRate };
+}
+
+export async function listDistinctLeadTypes() {
+  const rows = await db.selectDistinct({ leadType: customersTable.leadType }).from(customersTable).orderBy(customersTable.leadType);
+  return rows.map((r) => r.leadType);
 }
 
 export async function getCustomer(id: string) {
