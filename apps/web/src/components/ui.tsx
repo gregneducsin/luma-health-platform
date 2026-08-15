@@ -46,6 +46,22 @@ export function ErrorText({ children }: { children: ReactNode }) {
   return <p className="mt-1 text-sm text-red-600">{children}</p>;
 }
 
+export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-lg">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600" aria-label="Close">
+            ✕
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export function Badge({ children, color = "gray" }: { children: ReactNode; color?: "gray" | "green" | "yellow" | "red" | "blue" }) {
   const colors: Record<string, string> = {
     gray: "bg-gray-100 text-gray-700",

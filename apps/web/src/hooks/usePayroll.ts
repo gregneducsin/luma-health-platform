@@ -7,6 +7,9 @@ import type {
   CreatePayrollWeekRequest,
   UpsertWeeklyHoursRequest,
   CreateBonusRequest,
+  MarketingCpaWeek,
+  CreateMarketingSpendWeekRequest,
+  UpdateMarketingSpendWeekRequest,
 } from "@luma/shared";
 import { api } from "../lib/apiClient";
 
@@ -106,5 +109,32 @@ export function useCreateBonus(weekId: string) {
   return useMutation({
     mutationFn: (input: CreateBonusRequest) => api.post<{ bonus: Bonus }>(`/api/app/payroll/weeks/${weekId}/bonuses`, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["payrollWeeks", "detail", weekId] }),
+  });
+}
+
+// ── Marketing CPA ────────────────────────────────────────────────────────────
+
+export function useMarketingCpaWeeks() {
+  return useQuery({
+    queryKey: ["marketingCpaWeeks", "list"],
+    queryFn: () => api.get<{ weeks: MarketingCpaWeek[] }>("/api/app/payroll/marketing-spend"),
+  });
+}
+
+export function useCreateMarketingSpendWeek() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateMarketingSpendWeekRequest) =>
+      api.post<{ week: MarketingCpaWeek }>("/api/app/payroll/marketing-spend", input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["marketingCpaWeeks", "list"] }),
+  });
+}
+
+export function useUpdateMarketingSpendWeek(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateMarketingSpendWeekRequest) =>
+      api.patch<{ week: MarketingCpaWeek }>(`/api/app/payroll/marketing-spend/${id}`, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["marketingCpaWeeks", "list"] }),
   });
 }

@@ -9,7 +9,7 @@ export function createMarketingSpendRouter(): RouterType {
 
   router.get("/", requireRole("admin", "manager"), async (_req, res, next) => {
     try {
-      res.json({ weeks: await marketingSpendService.listMarketingSpendWeeks() });
+      res.json({ weeks: await marketingSpendService.listMarketingCpaWeeks() });
     } catch (err) {
       next(err);
     }
@@ -22,8 +22,12 @@ export function createMarketingSpendRouter(): RouterType {
         res.status(400).json({ error: "Invalid request.", details: parsed.error.issues });
         return;
       }
-      const week = await marketingSpendService.createMarketingSpendWeek(parsed.data, req.user!);
-      res.status(201).json({ week });
+      const result = await marketingSpendService.createMarketingSpendWeek(parsed.data, req.user!);
+      if (!result.ok) {
+        res.status(400).json({ error: result.error });
+        return;
+      }
+      res.status(201).json({ week: result.week });
     } catch (err) {
       next(err);
     }

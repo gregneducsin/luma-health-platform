@@ -155,20 +155,125 @@ describe("Marketing spend weeks", () => {
     ({ agent, csrf } = await loginAgent(app, "payroll-admin3@example.com"));
   });
 
-  it("creates a valid Friday-to-Thursday week", async () => {
+  it("creates a Friday-starting week with weekEnd auto-derived to the following Thursday", async () => {
     // 2026-03-06 is a Friday; 2026-03-12 is the following Thursday.
-    const res = await agent
-      .post("/api/app/payroll/marketing-spend")
-      .set("x-csrf-token", csrf)
-      .send({ weekStart: "2026-03-06", weekEnd: "2026-03-12", advertisingCost: "500.00" });
+    const res = await agent.post("/api/app/payroll/marketing-spend").set("x-csrf-token", csrf).send({ weekStart: "2026-03-06" });
     expect(res.status).toBe(201);
+    expect(res.body.week.weekStart).toBe("2026-03-06");
+    expect(res.body.week.weekEnd).toBe("2026-03-12");
   });
 
-  it("rejects a week that violates the Friday-start/Thursday-end DB constraint", async () => {
-    const res = await agent
-      .post("/api/app/payroll/marketing-spend")
+  it("rejects a weekStart that isn't a Friday", async () => {
+    const res = await agent.post("/api/app/payroll/marketing-spend").set("x-csrf-token", csrf).send({ weekStart: "2026-03-09" }); // Monday
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/Friday/);
+  });
+
+  it("updates per-source spend via PATCH, clears it with an empty string, and GET reflects CPA metrics", async () => {
+    const createRes = await agent.post("/api/app/payroll/marketing-spend").set("x-csrf-token", csrf).send({ weekStart: "2026-04-03" });
+    const weekId = createRes.body.week.id;
+
+    const updateRes = await agent
+      .patch(`/api/app/payroll/marketing-spend/${weekId}`)
       .set("x-csrf-token", csrf)
-      .send({ weekStart: "2026-03-09", weekEnd: "2026-03-15", advertisingCost: "500.00" }); // Monday-Sunday
-    expect(res.status).toBe(500); // DB CHECK constraint violation surfaces as a 500 via the generic error handler
+      .send({ metaFormFillSpend: "100.00", ecommerceSpend: "50.00" });
+    expect(updateRes.status).toBe(200);
+    expect(updateRes.body.week.metaFormFillSpend).toBe("100.00");
+    expect(updateRes.body.week.ecommerceSpend).toBe("50.00");
+
+    const listRes = await agent.get("/api/app/payroll/marketing-spend");
+    expect(listRes.status).toBe(200);
+    const week = listRes.body.weeks.find((w: { id: string }) => w.id === weekId);
+    expect(week.metaFormFill.spend).toBe("100.00");
+    expect(week.ecommerce.spend).toBe("50.00");
+    expect(week.combined.spend).toBe("150.00");
+    // No leads/deals seeded in this period yet.
+    expect(week.combined.leadsReceived).toBe(0);
+    expect(week.combined.cpa).toBeNull();
+
+    // Clear meta spend back to null with an explicit empty string.
+    const clearRes = await agent
+      .patch(`/api/app/payroll/marketing-spend/${weekId}`)
+      .set("x-csrf-token", csrf)
+      .send({ metaFormFillSpend: "" });
+    expect(clearRes.status).toBe(200);
+    expect(clearRes.body.week.metaFormFillSpend).toBeNull();
+  });
+
+  it("attributes closed deals to the week the lead was received, not the purchase date, and excludes recurring purchases", async () => {
+    const { db, customersTable, externalIdentitiesTable, purchasesTable } = await import("@luma/db");
+
+    // Lead received Jan 1 (well before this test's CPA week) via GHL (meta), first purchase happens inside the CPA week.
+    const [oldLead] = await db
+      .insert(customersTable)
+      .values({ firstName: "Old", lastName: "Lead", email: "old-lead-cpa@example.com", leadReceivedDate: "2026-01-01" })
+      .returning();
+    await db.insert(externalIdentitiesTable).values({ personId: oldLead!.id, system: "ghl", externalId: "old-lead-cpa-ext" });
+    await db.insert(purchasesTable).values({
+      customerId: oldLead!.id,
+      purchaseDate: "2026-05-08", // inside the CPA week below
+      orderNumber: "ORD-CPA-OLD",
+      productName: "Thing",
+      amountPaid: "200.00",
+      status: "completed",
+      orderClassification: "first_order",
+      orderClassificationSource: "manual",
+    });
+
+    // A new lead received inside the CPA week itself, via Bask (ecommerce), purchases within the same week.
+    const [newLead] = await db
+      .insert(customersTable)
+      .values({ firstName: "New", lastName: "Lead", email: "new-lead-cpa@example.com", leadReceivedDate: "2026-05-09" })
+      .returning();
+    await db.insert(externalIdentitiesTable).values({ personId: newLead!.id, system: "bask", externalId: "new-lead-cpa-ext" });
+    await db.insert(purchasesTable).values({
+      customerId: newLead!.id,
+      purchaseDate: "2026-05-09",
+      orderNumber: "ORD-CPA-NEW",
+      productName: "Thing",
+      amountPaid: "300.00",
+      status: "completed",
+      orderClassification: "first_order",
+      orderClassificationSource: "manual",
+    });
+    // A second, recurring purchase for the same lead in the same week — must not count as a closed deal.
+    await db.insert(purchasesTable).values({
+      customerId: newLead!.id,
+      purchaseDate: "2026-05-10",
+      orderNumber: "ORD-CPA-NEW-2",
+      productName: "Thing 2",
+      amountPaid: "999.00",
+      status: "completed",
+      orderClassification: "recurring",
+      orderClassificationSource: "manual",
+    });
+
+    // 2026-05-08 is a Friday; week runs through 2026-05-14 (Thursday).
+    const createRes = await agent.post("/api/app/payroll/marketing-spend").set("x-csrf-token", csrf).send({ weekStart: "2026-05-08" });
+    const weekId = createRes.body.week.id;
+    await agent
+      .patch(`/api/app/payroll/marketing-spend/${weekId}`)
+      .set("x-csrf-token", csrf)
+      .send({ metaFormFillSpend: "40.00", ecommerceSpend: "60.00" });
+
+    const listRes = await agent.get("/api/app/payroll/marketing-spend");
+    const week = listRes.body.weeks.find((w: { id: string }) => w.id === weekId);
+
+    // Old lead's purchase falls inside this week, but the lead itself was received back in January — not attributed here.
+    expect(week.metaFormFill.leadsReceived).toBe(0);
+    expect(week.metaFormFill.closedDeals).toBe(0);
+
+    // New lead was received inside this week and closed inside this week.
+    expect(week.ecommerce.leadsReceived).toBe(1);
+    expect(week.ecommerce.closedDeals).toBe(1);
+    expect(week.ecommerce.acquisitionRevenue).toBe("300.00");
+    expect(week.ecommerce.recurringExclusions).toBe(1);
+    expect(week.ecommerce.cpa).toBe(60);
+
+    expect(week.combined.leadsReceived).toBe(1);
+    expect(week.combined.closedDeals).toBe(1);
+    expect(week.combined.acquisitionRevenue).toBe("300.00");
+    expect(week.combined.spend).toBe("100.00");
+    expect(week.combined.cpa).toBe(100);
   });
 });

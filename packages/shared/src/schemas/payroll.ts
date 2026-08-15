@@ -73,18 +73,54 @@ export const createBonusRequestSchema = z.object({
 });
 export type CreateBonusRequest = z.infer<typeof createBonusRequestSchema>;
 
-// ── Marketing spend weeks ───────────────────────────────────────────────────────
+// ── Marketing spend weeks / CPA ───────────────────────────────────────────────
 
+const moneyString = z.string().regex(/^\d+(\.\d{1,2})?$/, "Must be a decimal amount, e.g. 49.99");
+
+// Only weekStart is client-supplied — it must be a Friday (enforced by a DB
+// CHECK constraint too, this is just for a clean 400 instead of a raw
+// constraint-violation error), weekEnd is always derived (Friday + 6 days).
 export const createMarketingSpendWeekRequestSchema = z.object({
-  weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  weekEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  advertisingCost: z.string().regex(/^\d+(\.\d{1,2})?$/),
+  weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD"),
   notes: z.string().optional(),
 });
 export type CreateMarketingSpendWeekRequest = z.infer<typeof createMarketingSpendWeekRequestSchema>;
 
+// Each spend field: omit = don't change; "" = clear to null ("spend not
+// entered"); a decimal string = set to that value (including "0" for an
+// explicit zero, distinct from null).
+const spendField = z.union([moneyString, z.literal("")]).optional();
 export const updateMarketingSpendWeekRequestSchema = z.object({
-  advertisingCost: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
+  metaFormFillSpend: spendField,
+  ecommerceSpend: spendField,
   notes: z.string().optional(),
 });
 export type UpdateMarketingSpendWeekRequest = z.infer<typeof updateMarketingSpendWeekRequestSchema>;
+
+// Computed, not stored — leads/closed/revenue attributed to a lead cohort
+// (the week the lead was *received*, not when they purchased), first-touch
+// source only, first-order purchases only (recurring purchases are counted
+// separately and excluded from every other figure here).
+export const marketingCpaMetricsSchema = z.object({
+  spend: z.string().nullable(),
+  leadsReceived: z.number().int(),
+  closedDeals: z.number().int(),
+  stillOpen: z.number().int(),
+  acquisitionRevenue: z.string(),
+  conversionRate: z.number(),
+  avgDaysToClose: z.number().nullable(),
+  recurringExclusions: z.number().int(),
+  cpa: z.number().nullable(),
+});
+export type MarketingCpaMetrics = z.infer<typeof marketingCpaMetricsSchema>;
+
+export const marketingCpaWeekSchema = z.object({
+  id: z.string().uuid(),
+  weekStart: z.string(),
+  weekEnd: z.string(),
+  notes: z.string().nullable(),
+  metaFormFill: marketingCpaMetricsSchema,
+  ecommerce: marketingCpaMetricsSchema,
+  combined: marketingCpaMetricsSchema,
+});
+export type MarketingCpaWeek = z.infer<typeof marketingCpaWeekSchema>;

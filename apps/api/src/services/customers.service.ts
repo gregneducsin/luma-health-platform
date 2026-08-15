@@ -87,7 +87,7 @@ export async function listCustomers(query: ListCustomersQuery) {
 // source falls into exactly one bucket — no double-counting a lead that
 // later also touched the other system (e.g. a GHL lead who later filled
 // out a Bask questionnaire still counts once, under GHL).
-const firstTouchSystemSql = sql`(
+export const firstTouchSystemSql = sql`(
   select ${externalIdentitiesTable.system}
   from ${externalIdentitiesTable}
   where ${externalIdentitiesTable.personId} = ${customersTable.id}

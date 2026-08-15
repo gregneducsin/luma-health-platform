@@ -137,7 +137,11 @@ export const marketingSpendWeeksTable = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     weekStart: date("week_start", { mode: "string" }).notNull(),
     weekEnd: date("week_end", { mode: "string" }).notNull(),
-    advertisingCost: numeric("advertising_cost", { precision: 12, scale: 2 }).notNull(),
+    // Nullable, independently — spend for one source can be entered before
+    // the other, or left blank entirely ("spend not entered" in the UI,
+    // distinct from an explicit $0).
+    metaFormFillSpend: numeric("meta_form_fill_spend", { precision: 12, scale: 2 }),
+    ecommerceSpend: numeric("ecommerce_spend", { precision: 12, scale: 2 }),
     notes: text("notes"),
     createdBy: text("created_by").notNull(),
     updatedBy: text("updated_by").notNull(),
@@ -150,7 +154,8 @@ export const marketingSpendWeeksTable = pgTable(
   (t) => [
     uniqueIndex("marketing_spend_weeks_week_start_key").on(t.weekStart),
     index("marketing_spend_weeks_week_end_idx").on(t.weekEnd),
-    check("msw_advertising_cost_nonneg", sql`${t.advertisingCost} >= 0`),
+    check("msw_meta_spend_nonneg", sql`${t.metaFormFillSpend} >= 0`),
+    check("msw_ecommerce_spend_nonneg", sql`${t.ecommerceSpend} >= 0`),
     check("msw_week_start_is_friday", sql`extract(isodow from ${t.weekStart}) = 5`),
     check("msw_week_end_is_thursday", sql`extract(isodow from ${t.weekEnd}) = 4`),
     check("msw_week_span", sql`${t.weekEnd} = ${t.weekStart} + 6`),
