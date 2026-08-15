@@ -5,7 +5,8 @@ import { Button } from "./ui";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard" },
-  { href: "/customers", label: "Customers" },
+  { href: "/customers", label: "Leads" },
+  { href: "/orders", label: "Orders" },
   { href: "/payroll/employees", label: "Employees" },
   { href: "/payroll/weeks", label: "Payroll" },
 ];

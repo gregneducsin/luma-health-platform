@@ -5,7 +5,11 @@ import type {
   CreateCustomerRequest,
   UpdateCustomerRequest,
   ListCustomersQuery,
+  CustomersSummary,
+  CustomersSummaryQuery,
   Purchase,
+  PurchaseWithCustomer,
+  ListPurchasesQuery,
   CreatePurchaseRequest,
   UpdatePurchaseRequest,
 } from "@luma/shared";
@@ -17,6 +21,24 @@ export function useCustomersList(query: Partial<ListCustomersQuery>) {
     queryFn: () =>
       api.get<{ customers: CustomerWithStats[]; total: number }>(
         "/api/app/customers",
+        query as Record<string, string | number | undefined>,
+      ),
+  });
+}
+
+export function useCustomersSummary(query: Partial<CustomersSummaryQuery>) {
+  return useQuery({
+    queryKey: ["customers", "summary", query],
+    queryFn: () => api.get<CustomersSummary>("/api/app/customers/summary", query as Record<string, string | number | undefined>),
+  });
+}
+
+export function usePurchasesList(query: Partial<ListPurchasesQuery>) {
+  return useQuery({
+    queryKey: ["purchases", "list", query],
+    queryFn: () =>
+      api.get<{ purchases: PurchaseWithCustomer[]; total: number }>(
+        "/api/app/purchases",
         query as Record<string, string | number | undefined>,
       ),
   });

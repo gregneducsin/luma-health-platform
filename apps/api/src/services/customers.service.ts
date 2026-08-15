@@ -1,6 +1,6 @@
-import { asc, desc, eq, ilike, or, sql, getTableColumns } from "drizzle-orm";
-import { db, customersTable, purchasesTable } from "@luma/db";
-import type { CreateCustomerRequest, ListCustomersQuery, UpdateCustomerRequest } from "@luma/shared";
+import { and, asc, desc, eq, ilike, or, sql, getTableColumns } from "drizzle-orm";
+import { db, customersTable, purchasesTable, questionnaireEventsTable } from "@luma/db";
+import type { CreateCustomerRequest, CustomersSummaryQuery, ListCustomersQuery, UpdateCustomerRequest } from "@luma/shared";
 
 const SORT_COLUMNS = {
   createdAt: customersTable.createdAt,
@@ -8,17 +8,42 @@ const SORT_COLUMNS = {
   lastName: customersTable.lastName,
 } as const;
 
-export async function listCustomers(query: ListCustomersQuery) {
-  const { search, sortBy, sortDir, limit, offset } = query;
+// Most recent questionnaire_events row per customer — a correlated subquery
+// rather than a join, since joining would multiply customer rows by however
+// many questionnaire events they have and break the purchases aggregate below.
+const questionnaireStatusSubquery = sql<string | null>`(
+  select ${questionnaireEventsTable.status}
+  from ${questionnaireEventsTable}
+  where ${questionnaireEventsTable.personId} = ${customersTable.id}
+  order by ${questionnaireEventsTable.lastEventAt} desc
+  limit 1
+)`;
 
-  const searchCondition = search
-    ? or(
-        ilike(customersTable.firstName, `%${search}%`),
-        ilike(customersTable.lastName, `%${search}%`),
-        ilike(customersTable.email, `%${search}%`),
-        ilike(customersTable.phone, `%${search}%`),
-      )
-    : undefined;
+export async function listCustomers(query: ListCustomersQuery) {
+  const { search, sortBy, sortDir, limit, offset, leadType, purchaseStatus, questionnaireStatus } = query;
+
+  const conditions = [
+    search
+      ? or(
+          ilike(customersTable.firstName, `%${search}%`),
+          ilike(customersTable.lastName, `%${search}%`),
+          ilike(customersTable.email, `%${search}%`),
+          ilike(customersTable.phone, `%${search}%`),
+        )
+      : undefined,
+    leadType ? eq(customersTable.leadType, leadType) : undefined,
+    questionnaireStatus
+      ? sql`exists (select 1 from ${questionnaireEventsTable} where ${questionnaireEventsTable.personId} = ${customersTable.id} and ${questionnaireEventsTable.status} = ${questionnaireStatus})`
+      : undefined,
+  ].filter((c) => c !== undefined);
+  const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const havingCondition =
+    purchaseStatus === "purchased"
+      ? sql`count(${purchasesTable.id}) > 0`
+      : purchaseStatus === "not_purchased"
+        ? sql`count(${purchasesTable.id}) = 0`
+        : undefined;
 
   const orderFn = sortDir === "asc" ? asc : desc;
 
@@ -29,21 +54,57 @@ export async function listCustomers(query: ListCustomersQuery) {
       totalPaid: sql<string>`coalesce(sum(${purchasesTable.amountPaid}), 0)::text`,
       firstPurchaseDate: sql<string | null>`min(${purchasesTable.purchaseDate})`,
       mostRecentPurchaseDate: sql<string | null>`max(${purchasesTable.purchaseDate})`,
+      questionnaireStatus: questionnaireStatusSubquery,
     })
     .from(customersTable)
     .leftJoin(purchasesTable, eq(purchasesTable.customerId, customersTable.id))
-    .where(searchCondition)
+    .where(whereCondition)
     .groupBy(customersTable.id)
+    .having(havingCondition)
     .orderBy(orderFn(SORT_COLUMNS[sortBy]))
     .limit(limit)
     .offset(offset);
 
-  const [{ total }] = await db
-    .select({ total: sql<number>`count(*)::int` })
+  // HAVING filters per-customer groups, so the total count needs the same
+  // grouped query as a subquery — a plain count(distinct id) with a bare
+  // HAVING (no matching GROUP BY on this query) would evaluate the purchase
+  // condition once over the whole joined result set instead of per customer.
+  const matchingCustomerIds = db
+    .select({ id: customersTable.id })
     .from(customersTable)
-    .where(searchCondition);
+    .leftJoin(purchasesTable, eq(purchasesTable.customerId, customersTable.id))
+    .where(whereCondition)
+    .groupBy(customersTable.id)
+    .having(havingCondition)
+    .as("matching_customers");
+  const [{ total }] = await db.select({ total: sql<number>`count(*)::int` }).from(matchingCustomerIds);
 
-  return { customers: rows, total };
+  return { customers: rows, total: total ?? 0 };
+}
+
+export async function getCustomersSummary(query: CustomersSummaryQuery) {
+  const sinceCondition =
+    query.period === "all" ? undefined : sql`${customersTable.leadReceivedDate} >= (current_date - ${query.period}::int)`;
+
+  const [{ totalLeads }] = await db.select({ totalLeads: sql<number>`count(*)::int` }).from(customersTable).where(sinceCondition);
+
+  const [{ purchased }] = await db
+    .select({ purchased: sql<number>`count(distinct ${customersTable.id})::int` })
+    .from(customersTable)
+    .innerJoin(purchasesTable, eq(purchasesTable.customerId, customersTable.id))
+    .where(sinceCondition);
+
+  const notPurchased = totalLeads - purchased;
+  const conversionRate = totalLeads > 0 ? Math.round((purchased / totalLeads) * 1000) / 10 : 0;
+
+  const leadTypeBreakdown = await db
+    .select({ leadType: customersTable.leadType, count: sql<number>`count(*)::int` })
+    .from(customersTable)
+    .where(sinceCondition)
+    .groupBy(customersTable.leadType)
+    .orderBy(desc(sql`count(*)`));
+
+  return { totalLeads, purchased, notPurchased, conversionRate, leadTypeBreakdown };
 }
 
 export async function getCustomer(id: string) {

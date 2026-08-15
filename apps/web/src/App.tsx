@@ -2,7 +2,8 @@ import { Route, Switch } from "wouter";
 import { LoginPage } from "./pages/LoginPage";
 import { AcceptInvitationPage } from "./pages/AcceptInvitationPage";
 import { DashboardPage } from "./pages/DashboardPage";
-import { CustomersListPage } from "./pages/CustomersListPage";
+import { LeadsPage } from "./pages/LeadsPage";
+import { OrdersPage } from "./pages/OrdersPage";
 import { CustomerDetailPage } from "./pages/CustomerDetailPage";
 import { PayrollEmployeesPage } from "./pages/PayrollEmployeesPage";
 import { PayrollWeeksPage } from "./pages/PayrollWeeksPage";
@@ -23,13 +24,19 @@ export default function App() {
 
       <Route path="/customers">
         <ProtectedRoute>
-          <CustomersListPage />
+          <LeadsPage />
         </ProtectedRoute>
       </Route>
 
       <Route path="/customers/:id">
         <ProtectedRoute>
           <CustomerDetailPage />
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/orders">
+        <ProtectedRoute>
+          <OrdersPage />
         </ProtectedRoute>
       </Route>
 

@@ -1,6 +1,6 @@
-import { and, eq, lt } from "drizzle-orm";
-import { db, purchasesTable, purchaseClassificationAuditsTable, type PurchaseStatus } from "@luma/db";
-import type { CreatePurchaseRequest, UpdatePurchaseRequest } from "@luma/shared";
+import { and, asc, desc, eq, lt, sql, getTableColumns } from "drizzle-orm";
+import { db, customersTable, purchasesTable, purchaseClassificationAuditsTable, type PurchaseStatus } from "@luma/db";
+import type { CreatePurchaseRequest, ListPurchasesQuery, UpdatePurchaseRequest } from "@luma/shared";
 
 export async function listPurchasesForCustomer(customerId: string) {
   return db
@@ -8,6 +8,34 @@ export async function listPurchasesForCustomer(customerId: string) {
     .from(purchasesTable)
     .where(eq(purchasesTable.customerId, customerId))
     .orderBy(purchasesTable.purchaseDate);
+}
+
+const SORT_COLUMNS = {
+  purchaseDate: purchasesTable.purchaseDate,
+  amountPaid: purchasesTable.amountPaid,
+} as const;
+
+/** Order-level list across all customers, for the Orders tab. */
+export async function listPurchases(query: ListPurchasesQuery) {
+  const { sortBy, sortDir, limit, offset } = query;
+  const orderFn = sortDir === "asc" ? asc : desc;
+
+  const rows = await db
+    .select({
+      ...getTableColumns(purchasesTable),
+      customerFirstName: customersTable.firstName,
+      customerLastName: customersTable.lastName,
+      customerPersonNumber: customersTable.personNumber,
+    })
+    .from(purchasesTable)
+    .innerJoin(customersTable, eq(customersTable.id, purchasesTable.customerId))
+    .orderBy(orderFn(SORT_COLUMNS[sortBy]))
+    .limit(limit)
+    .offset(offset);
+
+  const [{ total }] = await db.select({ total: sql<number>`count(*)::int` }).from(purchasesTable);
+
+  return { purchases: rows, total };
 }
 
 /**

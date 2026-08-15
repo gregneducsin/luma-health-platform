@@ -135,6 +135,91 @@ describe("Customers CRUD", () => {
     const res = await agent.get("/api/app/customers/00000000-0000-0000-0000-000000000000");
     expect(res.status).toBe(404);
   });
+
+  it("filters by leadType, purchaseStatus, and questionnaireStatus", async () => {
+    await seedUser("admin6@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "admin6@example.com");
+
+    const purchaser = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Filt", lastName: "Purchaser", email: "filt-purchaser@example.com", leadReceivedDate: "2026-01-01", leadType: "Referral Filter Test" });
+    await agent
+      .post(`/api/app/customers/${purchaser.body.customer.id}/purchases`)
+      .set("x-csrf-token", csrf)
+      .send({ purchaseDate: "2026-01-05", orderNumber: "ORD-FILT-1", productName: "Thing", amountPaid: "10.00" });
+
+    const nonPurchaser = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Filt", lastName: "NonPurchaser", email: "filt-nonpurchaser@example.com", leadReceivedDate: "2026-01-01", leadType: "Referral Filter Test" });
+
+    const byLeadType = await agent.get("/api/app/customers").query({ leadType: "Referral Filter Test" });
+    expect(byLeadType.body.total).toBe(2);
+
+    const purchasedOnly = await agent.get("/api/app/customers").query({ leadType: "Referral Filter Test", purchaseStatus: "purchased" });
+    expect(purchasedOnly.body.total).toBe(1);
+    expect(purchasedOnly.body.customers[0].id).toBe(purchaser.body.customer.id);
+
+    const notPurchasedOnly = await agent.get("/api/app/customers").query({ leadType: "Referral Filter Test", purchaseStatus: "not_purchased" });
+    expect(notPurchasedOnly.body.total).toBe(1);
+    expect(notPurchasedOnly.body.customers[0].id).toBe(nonPurchaser.body.customer.id);
+
+    // questionnaireStatus filter + the field being surfaced on the list itself
+    const { db, questionnaireEventsTable } = await import("@luma/db");
+    await db.insert(questionnaireEventsTable).values({
+      personId: nonPurchaser.body.customer.id,
+      questionnaireId: "Q-FILT-1",
+      status: "abandoned",
+      lastEventAt: new Date(),
+    });
+    const byQuestionnaireStatus = await agent.get("/api/app/customers").query({ leadType: "Referral Filter Test", questionnaireStatus: "abandoned" });
+    expect(byQuestionnaireStatus.body.total).toBe(1);
+    expect(byQuestionnaireStatus.body.customers[0].id).toBe(nonPurchaser.body.customer.id);
+    expect(byQuestionnaireStatus.body.customers[0].questionnaireStatus).toBe("abandoned");
+  });
+});
+
+describe("Customers summary", () => {
+  let app: ReturnType<typeof createApp>;
+
+  beforeAll(() => {
+    app = createApp();
+  });
+
+  it("computes totals, purchased/not-purchased split, conversion rate, and lead-type breakdown", async () => {
+    await seedUser("admin-summary@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "admin-summary@example.com");
+
+    const purchaser = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Sum", lastName: "Purchaser", email: "sum-purchaser@example.com", leadReceivedDate: "2026-01-01", leadType: "web-form" });
+    await agent
+      .post(`/api/app/customers/${purchaser.body.customer.id}/purchases`)
+      .set("x-csrf-token", csrf)
+      .send({ purchaseDate: "2026-01-05", orderNumber: "ORD-SUM-1", productName: "Thing", amountPaid: "10.00" });
+
+    await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Sum", lastName: "NonPurchaser", email: "sum-nonpurchaser@example.com", leadReceivedDate: "2026-01-01", leadType: "Bask abandoned cart" });
+
+    const res = await agent.get("/api/app/customers/summary").query({ period: "all" });
+    expect(res.status).toBe(200);
+    expect(res.body.totalLeads).toBeGreaterThanOrEqual(2);
+    expect(res.body.purchased).toBeGreaterThanOrEqual(1);
+    expect(res.body.notPurchased).toBe(res.body.totalLeads - res.body.purchased);
+    expect(res.body.conversionRate).toBeGreaterThan(0);
+    expect(Array.isArray(res.body.leadTypeBreakdown)).toBe(true);
+    const webFormRow = res.body.leadTypeBreakdown.find((r: { leadType: string }) => r.leadType === "web-form");
+    expect(webFormRow.count).toBeGreaterThanOrEqual(1);
+  });
+
+  it("rejects unauthenticated requests", async () => {
+    const res = await request(app).get("/api/app/customers/summary");
+    expect(res.status).toBe(401);
+  });
 });
 
 describe("Purchases", () => {
@@ -186,5 +271,31 @@ describe("Purchases", () => {
     const { agent, csrf } = await loginAgent(app, "admin5@example.com");
     const res = await agent.patch("/api/app/purchases/999999999").set("x-csrf-token", csrf).send({ status: "refunded" });
     expect(res.status).toBe(404);
+  });
+
+  it("lists purchases across all customers with the customer's name attached", async () => {
+    await seedUser("admin-orders@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "admin-orders@example.com");
+
+    const customerRes = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Order", lastName: "Placer", email: "order-placer@example.com", leadReceivedDate: "2026-01-01" });
+    await agent
+      .post(`/api/app/customers/${customerRes.body.customer.id}/purchases`)
+      .set("x-csrf-token", csrf)
+      .send({ purchaseDate: "2026-01-10", orderNumber: "ORD-LIST-1", productName: "Gizmo", amountPaid: "25.00" });
+
+    const res = await agent.get("/api/app/purchases").query({ limit: 5 });
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBeGreaterThanOrEqual(1);
+    const row = res.body.purchases.find((p: { orderNumber: string }) => p.orderNumber === "ORD-LIST-1");
+    expect(row.customerFirstName).toBe("Order");
+    expect(row.customerLastName).toBe("Placer");
+  });
+
+  it("rejects unauthenticated requests to the purchases list", async () => {
+    const res = await request(app).get("/api/app/purchases");
+    expect(res.status).toBe(401);
   });
 });

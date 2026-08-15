@@ -1,5 +1,11 @@
 import { Router, type Router as RouterType } from "express";
-import { createCustomerRequestSchema, updateCustomerRequestSchema, listCustomersQuerySchema, createPurchaseRequestSchema } from "@luma/shared";
+import {
+  createCustomerRequestSchema,
+  updateCustomerRequestSchema,
+  listCustomersQuerySchema,
+  customersSummaryQuerySchema,
+  createPurchaseRequestSchema,
+} from "@luma/shared";
 import * as customersService from "../services/customers.service.js";
 import * as purchasesService from "../services/purchases.service.js";
 import { requireRole } from "../middleware/requireAuth.js";
@@ -17,6 +23,22 @@ export function createCustomersRouter(): RouterType {
       }
       const result = await customersService.listCustomers(parsed.data);
       res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Must be registered before "/:id" — otherwise "summary" would be
+  // captured as the :id param instead of matching this route.
+  router.get("/summary", requireRole("admin", "manager"), async (req, res, next) => {
+    try {
+      const parsed = customersSummaryQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        res.status(400).json({ error: "Invalid query.", details: parsed.error.issues });
+        return;
+      }
+      const summary = await customersService.getCustomersSummary(parsed.data);
+      res.json(summary);
     } catch (err) {
       next(err);
     }

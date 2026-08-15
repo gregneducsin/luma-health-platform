@@ -38,3 +38,18 @@ export const updatePurchaseRequestSchema = z.object({
   orderClassification: purchaseClassificationSchema.optional(),
 });
 export type UpdatePurchaseRequest = z.infer<typeof updatePurchaseRequestSchema>;
+
+export const listPurchasesQuerySchema = z.object({
+  sortBy: z.enum(["purchaseDate", "amountPaid"]).default("purchaseDate"),
+  sortDir: z.enum(["asc", "desc"]).default("desc"),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+export type ListPurchasesQuery = z.infer<typeof listPurchasesQuerySchema>;
+
+export const purchaseWithCustomerSchema = purchaseSchema.extend({
+  customerFirstName: z.string(),
+  customerLastName: z.string(),
+  customerPersonNumber: z.string(),
+});
+export type PurchaseWithCustomer = z.infer<typeof purchaseWithCustomerSchema>;

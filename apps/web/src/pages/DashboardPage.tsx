@@ -28,7 +28,7 @@ export function DashboardPage() {
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-gray-900">Dashboard</h1>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard label="Customers" value={customersData?.total ?? "…"} />
+        <StatCard label="Leads" value={customersData?.total ?? "…"} />
         <StatCard label="Revenue" value={`$${totalRevenue.toFixed(2)}`} />
         <StatCard label="Active employees" value={activeEmployees} />
         <StatCard label="Draft payroll weeks" value={draftWeeks} />
