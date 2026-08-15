@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { Link } from "wouter";
-import { usePurchasesList } from "../hooks/useCustomers";
+import { usePurchasesList, usePurchasesSummary } from "../hooks/useCustomers";
 import { Badge, Card } from "../components/ui";
+import type { PurchasesSummaryQuery } from "@luma/shared";
 
 const STATUS_COLOR: Record<string, "gray" | "green" | "yellow" | "red" | "blue"> = {
   completed: "green",
@@ -9,12 +11,73 @@ const STATUS_COLOR: Record<string, "gray" | "green" | "yellow" | "red" | "blue">
   cancelled: "red",
 };
 
+const PERIOD_OPTIONS: { value: PurchasesSummaryQuery["period"]; label: string }[] = [
+  { value: 7, label: "Last 7 Days" },
+  { value: 30, label: "Last 30 Days" },
+  { value: 90, label: "Last 90 Days" },
+  { value: "all", label: "Lifetime" },
+];
+
+function SummaryTile({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
+  return (
+    <Card>
+      <p className="text-xs font-medium uppercase text-gray-400">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-gray-900">{value}</p>
+      {hint && <p className="mt-1 text-xs text-gray-400">{hint}</p>}
+    </Card>
+  );
+}
+
+function SummaryBar() {
+  const [period, setPeriod] = useState<PurchasesSummaryQuery["period"]>("all");
+  const { data } = usePurchasesSummary({ period });
+  const periodLabel = PERIOD_OPTIONS.find((p) => p.value === period)?.label ?? "";
+
+  return (
+    <Card>
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-sm text-gray-500">
+          Summary for <span className="font-medium text-gray-900">{periodLabel}</span>
+        </p>
+        <select
+          className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+          value={String(period)}
+          onChange={(e) => setPeriod(e.target.value === "all" ? "all" : Number(e.target.value))}
+        >
+          {PERIOD_OPTIONS.map((p) => (
+            <option key={p.label} value={String(p.value)}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <SummaryTile
+          label="Purchasing customers"
+          value={data?.purchasingCustomers ?? "…"}
+          hint="unique customers with a completed purchase"
+        />
+        <SummaryTile
+          label="Total revenue"
+          value={data ? `$${data.totalRevenue}` : "…"}
+          hint={data ? `across ${data.totalCompletedOrders} purchases` : undefined}
+        />
+        <SummaryTile label="Completed orders" value={data?.totalCompletedOrders ?? "…"} />
+        <SummaryTile label="New customers" value={data?.newCustomers ?? "…"} hint="first order in this period" />
+        <SummaryTile label="Recurring customers" value={data?.recurringCustomers ?? "…"} hint="repeat order in this period" />
+      </div>
+    </Card>
+  );
+}
+
 export function OrdersPage() {
   const { data, isLoading } = usePurchasesList({ limit: 50 });
 
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-gray-900">Orders</h1>
+
+      <SummaryBar />
 
       <Card className="overflow-x-auto p-0">
         {isLoading ? (

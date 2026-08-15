@@ -53,3 +53,18 @@ export const purchaseWithCustomerSchema = purchaseSchema.extend({
   customerPersonNumber: z.string(),
 });
 export type PurchaseWithCustomer = z.infer<typeof purchaseWithCustomerSchema>;
+
+export const purchasesSummaryQuerySchema = z.object({
+  // Number of trailing days to include (by purchaseDate), or "all" for no date filter.
+  period: z.union([z.coerce.number().int().positive(), z.literal("all")]).default(30),
+});
+export type PurchasesSummaryQuery = z.infer<typeof purchasesSummaryQuerySchema>;
+
+export const purchasesSummarySchema = z.object({
+  purchasingCustomers: z.number().int(),
+  totalRevenue: z.string(),
+  totalCompletedOrders: z.number().int(),
+  newCustomers: z.number().int(),
+  recurringCustomers: z.number().int(),
+});
+export type PurchasesSummary = z.infer<typeof purchasesSummarySchema>;

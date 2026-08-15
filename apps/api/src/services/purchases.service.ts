@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, lt, sql, getTableColumns } from "drizzle-orm";
 import { db, customersTable, purchasesTable, purchaseClassificationAuditsTable, type PurchaseStatus } from "@luma/db";
-import type { CreatePurchaseRequest, ListPurchasesQuery, UpdatePurchaseRequest } from "@luma/shared";
+import type { CreatePurchaseRequest, ListPurchasesQuery, PurchasesSummaryQuery, UpdatePurchaseRequest } from "@luma/shared";
 
 export async function listPurchasesForCustomer(customerId: string) {
   return db
@@ -36,6 +36,36 @@ export async function listPurchases(query: ListPurchasesQuery) {
   const [{ total }] = await db.select({ total: sql<number>`count(*)::int` }).from(purchasesTable);
 
   return { purchases: rows, total };
+}
+
+/** Only "completed" purchases count toward revenue/customer figures — matches
+ * how the Orders list itself surfaces status, and mirrors what the reference
+ * dashboard's "Total Completed Orders" tile means. */
+export async function getPurchasesSummary(query: PurchasesSummaryQuery) {
+  const sinceCondition = query.period === "all" ? undefined : sql`${purchasesTable.purchaseDate} >= (current_date - ${query.period}::int)`;
+  const completedCondition = eq(purchasesTable.status, "completed");
+  const baseCondition = sinceCondition ? and(completedCondition, sinceCondition) : completedCondition;
+
+  const [{ totalCompletedOrders, totalRevenue, purchasingCustomers }] = await db
+    .select({
+      totalCompletedOrders: sql<number>`count(*)::int`,
+      totalRevenue: sql<string>`coalesce(sum(${purchasesTable.amountPaid}), 0)::text`,
+      purchasingCustomers: sql<number>`count(distinct ${purchasesTable.customerId})::int`,
+    })
+    .from(purchasesTable)
+    .where(baseCondition);
+
+  const [{ newCustomers }] = await db
+    .select({ newCustomers: sql<number>`count(distinct ${purchasesTable.customerId})::int` })
+    .from(purchasesTable)
+    .where(and(baseCondition, eq(purchasesTable.orderClassification, "first_order")));
+
+  const [{ recurringCustomers }] = await db
+    .select({ recurringCustomers: sql<number>`count(distinct ${purchasesTable.customerId})::int` })
+    .from(purchasesTable)
+    .where(and(baseCondition, eq(purchasesTable.orderClassification, "recurring")));
+
+  return { purchasingCustomers, totalRevenue, totalCompletedOrders, newCustomers, recurringCustomers };
 }
 
 /**

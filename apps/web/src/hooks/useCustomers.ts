@@ -10,6 +10,8 @@ import type {
   Purchase,
   PurchaseWithCustomer,
   ListPurchasesQuery,
+  PurchasesSummary,
+  PurchasesSummaryQuery,
   CreatePurchaseRequest,
   UpdatePurchaseRequest,
 } from "@luma/shared";
@@ -41,6 +43,13 @@ export function usePurchasesList(query: Partial<ListPurchasesQuery>) {
         "/api/app/purchases",
         query as Record<string, string | number | undefined>,
       ),
+  });
+}
+
+export function usePurchasesSummary(query: Partial<PurchasesSummaryQuery>) {
+  return useQuery({
+    queryKey: ["purchases", "summary", query],
+    queryFn: () => api.get<PurchasesSummary>("/api/app/purchases/summary", query as Record<string, string | number | undefined>),
   });
 }
 

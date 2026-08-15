@@ -298,4 +298,52 @@ describe("Purchases", () => {
     const res = await request(app).get("/api/app/purchases");
     expect(res.status).toBe(401);
   });
+
+  it("computes purchasing/new/recurring customer counts and revenue, completed orders only", async () => {
+    await seedUser("admin-orders-summary@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "admin-orders-summary@example.com");
+
+    const repeat = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Sum", lastName: "Repeat", email: "sum-repeat@example.com", leadReceivedDate: "2026-01-01" });
+    const firstOrder = await agent
+      .post(`/api/app/customers/${repeat.body.customer.id}/purchases`)
+      .set("x-csrf-token", csrf)
+      .send({ purchaseDate: "2026-01-01", orderNumber: "ORD-SUM-1", productName: "Thing", amountPaid: "10.00" });
+    expect(firstOrder.body.purchase.orderClassification).toBe("first_order");
+    const secondOrder = await agent
+      .post(`/api/app/customers/${repeat.body.customer.id}/purchases`)
+      .set("x-csrf-token", csrf)
+      .send({ purchaseDate: "2026-01-02", orderNumber: "ORD-SUM-2", productName: "Thing", amountPaid: "20.00" });
+    expect(secondOrder.body.purchase.orderClassification).toBe("recurring");
+
+    // A cancelled purchase should not count toward completed-only totals.
+    const oneOff = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Sum", lastName: "Cancelled", email: "sum-cancelled@example.com", leadReceivedDate: "2026-01-01" });
+    const cancelledPurchase = await agent
+      .post(`/api/app/customers/${oneOff.body.customer.id}/purchases`)
+      .set("x-csrf-token", csrf)
+      .send({ purchaseDate: "2026-01-01", orderNumber: "ORD-SUM-3", productName: "Thing", amountPaid: "999.00" });
+    await agent
+      .patch(`/api/app/purchases/${cancelledPurchase.body.purchase.id}`)
+      .set("x-csrf-token", csrf)
+      .send({ status: "cancelled" });
+
+    const res = await agent.get("/api/app/purchases/summary").query({ period: "all" });
+    expect(res.status).toBe(200);
+    expect(res.body.purchasingCustomers).toBeGreaterThanOrEqual(1);
+    expect(res.body.newCustomers).toBeGreaterThanOrEqual(1);
+    expect(res.body.recurringCustomers).toBeGreaterThanOrEqual(1);
+    expect(Number(res.body.totalRevenue)).toBeGreaterThanOrEqual(30);
+    // The $999 cancelled purchase must not be counted.
+    expect(res.body.totalRevenue).not.toContain("999");
+  });
+
+  it("rejects unauthenticated requests to the purchases summary", async () => {
+    const res = await request(app).get("/api/app/purchases/summary");
+    expect(res.status).toBe(401);
+  });
 });
