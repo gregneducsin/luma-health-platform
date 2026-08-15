@@ -17,7 +17,7 @@ function reply(overrides: Partial<ClaudeInteractiveResult> = {}): ClaudeInteract
     safetyCodes: [],
     nextQuestion: "Would you like to go over the pricing?",
     linkProvided: false,
-    objectionHandlingAttempted: false,
+    objectionStage: 0,
     ...overrides,
   };
 }

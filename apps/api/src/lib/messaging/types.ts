@@ -47,10 +47,15 @@ export interface ClaudeInteractiveResult {
    */
   readonly linkProvided: boolean;
   /**
-   * True when Claude has made an objection-handling attempt in this turn.
-   * Combines with the client-side frame to gate the one-attempt rule.
+   * Objection-handling stage this reply represents, for the objection (if any)
+   * addressed in this turn:
+   *   0 — no objection handled yet (informational rebuttal, if any, is the first attempt)
+   *   1 — this is the second attempt: a direct close asking the customer to start the form
+   *   2 — this is the final stand-down: a graceful close, no further asks
+   * Combines with the client-side frame (see BotPreviewRequestBody.objectionStage)
+   * to select which stage's script applies to the next matching objection.
    */
-  readonly objectionHandlingAttempted: boolean;
+  readonly objectionStage: 0 | 1 | 2;
 }
 
 export interface BotPreviewMessage {
@@ -72,11 +77,15 @@ export interface BotPreviewRequestBody {
   readonly pendingTopic: string | null;
   readonly lastDraft: string | null;
   /**
-   * True once Claude has already made one objection-handling attempt for a
-   * soft-disinterest message in this session. When true, Claude must give
-   * a single polite close (not another question) on the next disinterest turn.
+   * Highest objection-handling stage already reached for the objection under
+   * discussion in this session (see ClaudeInteractiveResult.objectionStage):
+   *   0 — no objection has been raised yet, or the last one was a new/different objection
+   *   1 — the first informational rebuttal has already been given for this objection;
+   *       the next matching pushback should get the stage-2 direct close attempt
+   *   2 — the stage-2 close has already been given; the next matching pushback
+   *       must get the stage-3 stand-down (a plain close, no further asks)
    */
-  readonly objectionHandlingAttempted: boolean;
+  readonly objectionStage: 0 | 1 | 2;
   /**
    * True when the approved intake link was already provided in a previous turn.
    * Claude should not repeat the link unless the customer explicitly asks again.

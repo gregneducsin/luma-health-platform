@@ -62,10 +62,11 @@ export const ClaudeInteractiveSchema = z
      */
     linkProvided: z.boolean().optional().default(false),
     /**
-     * True when Claude is making an objection-handling attempt in this turn.
-     * Combined with the client-side frame to enforce the one-attempt rule.
+     * Objection-handling stage this reply represents (0, 1, or 2). Combined
+     * with the client-side frame to select the next stage's script — see
+     * ClaudeInteractiveResult.objectionStage in types.ts for the stage meanings.
      */
-    objectionHandlingAttempted: z.boolean().optional().default(false),
+    objectionStage: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional().default(0),
   })
   .superRefine((data, ctx) => {
     // Actions that require a non-empty reply
