@@ -14,6 +14,8 @@ import type {
   PurchasesSummaryQuery,
   CreatePurchaseRequest,
   UpdatePurchaseRequest,
+  QuestionnairesQuery,
+  QuestionnairesResponse,
 } from "@luma/shared";
 import { api } from "../lib/apiClient";
 
@@ -46,6 +48,13 @@ export function useQuestionnaireIds() {
   return useQuery({
     queryKey: ["customers", "questionnaire-ids"],
     queryFn: () => api.get<{ questionnaireIds: string[] }>("/api/app/customers/questionnaire-ids"),
+  });
+}
+
+export function useQuestionnairesData(query: Partial<QuestionnairesQuery>) {
+  return useQuery({
+    queryKey: ["questionnaires", "data", query],
+    queryFn: () => api.get<QuestionnairesResponse>("/api/app/questionnaires", query as Record<string, string | number | undefined>),
   });
 }
 
