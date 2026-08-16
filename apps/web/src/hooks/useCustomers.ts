@@ -16,6 +16,7 @@ import type {
   UpdatePurchaseRequest,
   QuestionnairesQuery,
   QuestionnairesResponse,
+  IntakeLinkResponse,
 } from "@luma/shared";
 import { api } from "../lib/apiClient";
 
@@ -111,6 +112,12 @@ export function useCreatePurchase(customerId: string) {
       queryClient.invalidateQueries({ queryKey: ["customers", "detail", customerId] });
       queryClient.invalidateQueries({ queryKey: ["customers", "list"] });
     },
+  });
+}
+
+export function useCreateIntakeLink(customerId: string) {
+  return useMutation({
+    mutationFn: () => api.post<IntakeLinkResponse>(`/api/app/customers/${customerId}/intake-link`, {}),
   });
 }
 

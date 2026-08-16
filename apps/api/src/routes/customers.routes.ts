@@ -8,6 +8,7 @@ import {
 } from "@luma/shared";
 import * as customersService from "../services/customers.service.js";
 import * as purchasesService from "../services/purchases.service.js";
+import { createIntakeLink } from "../services/intake-links.service.js";
 import { requireRole } from "../middleware/requireAuth.js";
 import { requireCsrf } from "../middleware/csrf.js";
 
@@ -71,6 +72,24 @@ export function createCustomersRouter(): RouterType {
       }
       const purchases = await purchasesService.listPurchasesForCustomer(customer.id);
       res.json({ customer, purchases });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Mint an intake trigger link for this lead. Deliberately a staff-initiated
+  // action, not automatic — the link should go out only once the lead has
+  // actually agreed to fill out the form, which today means a staff member
+  // clicked this after hearing "yes" (no automated agreement-detection yet).
+  router.post("/:id/intake-link", requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
+    try {
+      const customer = await customersService.getCustomer(req.params.id as string);
+      if (!customer) {
+        res.status(404).json({ error: "Customer not found." });
+        return;
+      }
+      const { url, expiresAt } = await createIntakeLink(customer.id);
+      res.status(201).json({ url, expiresAt: expiresAt.toISOString() });
     } catch (err) {
       next(err);
     }

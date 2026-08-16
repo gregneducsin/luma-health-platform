@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeAll } from "vitest";
+import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import { createApp } from "../app.js";
 
@@ -589,5 +589,70 @@ describe("Purchases", () => {
   it("rejects unauthenticated requests to the purchases summary", async () => {
     const res = await request(app).get("/api/app/purchases/summary");
     expect(res.status).toBe(401);
+  });
+});
+
+describe("Intake link", () => {
+  let app: ReturnType<typeof createApp>;
+  const originalEnv = { ...process.env };
+
+  beforeAll(() => {
+    process.env.INTAKE_LINK_BASE_URL = "http://localhost:3000";
+    process.env.BASK_QUESTIONNAIRE_URL = "https://bask.example.com/questionnaire";
+    app = createApp();
+  });
+
+  afterAll(() => {
+    process.env = originalEnv;
+  });
+
+  it("manager can generate a signup link for a lead", async () => {
+    await seedUser("intake-manager1@example.com", "manager");
+    const { agent, csrf } = await loginAgent(app, "intake-manager1@example.com");
+
+    const createRes = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Intake", lastName: "Lead", email: "intake1@example.com", leadReceivedDate: "2026-08-15" });
+    // Manager can't create (admin-only) — seed via a fresh admin instead.
+    expect(createRes.status).toBe(403);
+
+    await seedUser("intake-admin1@example.com", "admin");
+    const adminAgent = await loginAgent(app, "intake-admin1@example.com");
+    const customerRes = await adminAgent.agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", adminAgent.csrf)
+      .send({ firstName: "Intake", lastName: "Lead", email: "intake2@example.com", leadReceivedDate: "2026-08-15" });
+    const customerId = customerRes.body.customer.id;
+
+    const res = await agent.post(`/api/app/customers/${customerId}/intake-link`).set("x-csrf-token", csrf).send({});
+    expect(res.status).toBe(201);
+    expect(res.body.url).toMatch(/^http:\/\/localhost:3000\/go\/.+/);
+    expect(new Date(res.body.expiresAt).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it("rejects employee role", async () => {
+    await seedUser("intake-admin2@example.com", "admin");
+    const admin = await loginAgent(app, "intake-admin2@example.com");
+    const customerRes = await admin.agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", admin.csrf)
+      .send({ firstName: "Intake", lastName: "Lead", email: "intake3@example.com", leadReceivedDate: "2026-08-15" });
+    const customerId = customerRes.body.customer.id;
+
+    await seedUser("intake-employee1@example.com", "employee");
+    const { agent, csrf } = await loginAgent(app, "intake-employee1@example.com");
+    const res = await agent.post(`/api/app/customers/${customerId}/intake-link`).set("x-csrf-token", csrf).send({});
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 for an unknown customer id", async () => {
+    await seedUser("intake-admin3@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "intake-admin3@example.com");
+    const res = await agent
+      .post("/api/app/customers/00000000-0000-0000-0000-000000000000/intake-link")
+      .set("x-csrf-token", csrf)
+      .send({});
+    expect(res.status).toBe(404);
   });
 });
