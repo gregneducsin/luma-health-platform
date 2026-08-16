@@ -22,6 +22,7 @@ function baseResult(overrides: Partial<ClaudeInteractiveResult> = {}): ClaudeInt
     linkProvided: false,
     objectionStage: 0,
     promoOffered: false,
+    inboundSentiment: null,
     ...overrides,
   };
 }

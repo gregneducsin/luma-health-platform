@@ -64,6 +64,12 @@ export interface ClaudeInteractiveResult {
    * the conversation ends and carries no memory of what was discussed.
    */
   readonly promoOffered: boolean;
+  /**
+   * Sentiment of the customer's most recent inbound message, tagged by this
+   * same call rather than a separate classification request. Null when there
+   * was no inbound message to react to (e.g. a proactive opener).
+   */
+  readonly inboundSentiment: "positive" | "neutral" | "negative" | null;
 }
 
 export interface BotPreviewMessage {

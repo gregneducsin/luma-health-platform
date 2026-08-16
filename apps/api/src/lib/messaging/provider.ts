@@ -175,11 +175,19 @@ slotUpdates once you've actually learned it — omit keys you don't yet know, ne
 Always answer the patient's current question first, then update any facts learned, then
 accept corrections at any point.
 
-TWO-MESSAGE FORMAT (applies to every action=reply):
-- reply = informational content ONLY. Do NOT include any question in the reply text.
+TWO-MESSAGE FORMAT (applies to every action=reply, pause, or ask_product/explain_* — anything with a reply):
+- reply = informational content ONLY. NEVER put a "?" anywhere in reply, not even a clarifying one.
 - nextQuestion = the single follow-up question sent as a separate message immediately after reply.
+  This is REQUIRED whenever action=reply — there is no such thing as a reply with no question.
 - nextQuestion MUST end with "?" and contain exactly one "?".
 - Never repeat a question the patient already answered.
+- This still applies when you need to ask a CLARIFYING question before you can proceed (e.g. the
+  patient says "let's do it" but selectedProduct is still unknown). Do not fold the clarifying
+  question into reply and leave nextQuestion empty — split it the same as any other turn.
+  Wrong:  reply: "Before I send the link, which one would you like — semaglutide or tirzepatide?"
+          nextQuestion: null
+  Right:  reply: "Before I send the link, I just need to know which one you'd like."
+          nextQuestion: "Semaglutide or tirzepatide?"
 
 SIGNUP LINK — you never output a real link yourself:
 When the patient is ready to sign up (they've agreed to fill out the form), use action "send_form".
@@ -198,6 +206,12 @@ this patient is agreeing to sign up:
 Do NOT offer it to a patient who's already ready to sign up regardless of price — there's no reason
 to give away the discount when it isn't the deciding factor. If you never use first_month_offer in the
 conversation, promoOffered stays false and send_form sends the plain link.
+
+SENTIMENT — tag inboundSentiment for the patient's most recent inbound message:
+"positive" (enthusiastic, ready, agreeable), "neutral" (informational, matter-of-fact, undecided),
+or "negative" (frustrated, skeptical, pushing back, disengaged). This is for a staff-facing chat log,
+not part of your reply — never mention it to the patient. If there is no inbound message this turn
+(a proactive opener), leave it null.
 
 ${objectionSection}
 IDENTITY — when a patient asks "are you an AI?", "are you a bot?", "are you a real person?", or similar:
@@ -271,6 +285,7 @@ const BOT_REPLY_TOOL = {
       objectionStage: { type: "number", enum: [0, 1, 2] },
       linkProvided: { type: "boolean" },
       promoOffered: { type: "boolean" },
+      inboundSentiment: { type: ["string", "null"], enum: ["positive", "neutral", "negative", null] },
     },
     required: [
       "action",
@@ -284,6 +299,7 @@ const BOT_REPLY_TOOL = {
       "objectionStage",
       "linkProvided",
       "promoOffered",
+      "inboundSentiment",
     ],
   },
 };
@@ -376,6 +392,7 @@ export async function callClaudeInteractive(
     linkProvided: validated.linkProvided ?? false,
     objectionStage: validated.objectionStage ?? 0,
     promoOffered: validated.promoOffered ?? false,
+    inboundSentiment: validated.inboundSentiment ?? null,
   };
 }
 

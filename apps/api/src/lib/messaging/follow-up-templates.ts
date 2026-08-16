@@ -24,3 +24,17 @@ const TEMPLATES: Record<FollowUpMessageStep, (firstName: string) => string> = {
 export function renderFollowUpMessage(step: FollowUpMessageStep, firstName: string): string {
   return TEMPLATES[step](firstName.trim() || "there");
 }
+
+/**
+ * The very first outbound message to a lead who abandoned the Bask
+ * questionnaire — fired 10 minutes after Bask's `abandoned` webhook event,
+ * 24/7, no monitored-hours window. Fixed template, not AI-drafted, same
+ * reasoning as the follow-up nudges above. Mentions the $20-off offer
+ * directly but deliberately does not include a link — if the customer
+ * responds with interest, the normal Lucy conversation loop (runLucyTurn)
+ * takes over and mints the real link via action=send_form.
+ */
+export function renderAbandonedCartOpener(firstName: string): string {
+  const name = firstName.trim() || "there";
+  return `Hi ${name}, this is Lucy with Luma Health. I noticed you started your online visit but didn't get a chance to finish it. Complete your enrollment now and get $20 off your first month. Want me to send the link to get started?`;
+}

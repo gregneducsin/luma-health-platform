@@ -15,6 +15,7 @@ import type {
   BaskQuestionnaireWebhookRequest,
   BaskPaymentFailedWebhookRequest,
 } from "@luma/shared";
+import { scheduleAbandonedCartOpener } from "./abandoned-cart.service.js";
 
 // ── Shared idempotency + audit-log helpers ──────────────────────────────────
 
@@ -213,7 +214,7 @@ export async function handleBaskQuestionnaireWebhook(payload: BaskQuestionnaireW
     });
 
     const now = new Date(occurredAt);
-    await db
+    const [event] = await db
       .insert(questionnaireEventsTable)
       .values({
         personId: customerId,
@@ -232,7 +233,15 @@ export async function handleBaskQuestionnaireWebhook(payload: BaskQuestionnaireW
           ...(payload.status === "abandoned" ? { abandonedAt: now } : {}),
           updatedAt: new Date(),
         },
-      });
+      })
+      .returning({ id: questionnaireEventsTable.id });
+
+    // Arms the first Lucy outreach 10 minutes from now. Idempotent per
+    // questionnaire event, so a duplicate "abandoned" delivery for the same
+    // questionnaire can't double-schedule.
+    if (payload.status === "abandoned") {
+      await scheduleAbandonedCartOpener(customerId, event.id);
+    }
 
     await markWebhookEventProcessed(recorded.id, customerId);
   } catch (err) {

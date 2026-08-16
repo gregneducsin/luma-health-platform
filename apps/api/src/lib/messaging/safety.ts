@@ -69,6 +69,8 @@ export const ClaudeInteractiveSchema = z
     objectionStage: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional().default(0),
     /** True once the first_month_offer topic has been used at any point this session. */
     promoOffered: z.boolean().optional().default(false),
+    /** Sentiment of the customer's most recent inbound message. Null with no inbound to react to. */
+    inboundSentiment: z.enum(["positive", "neutral", "negative"]).nullable().optional().default(null),
   })
   .superRefine((data, ctx) => {
     // Actions that require a non-empty reply
@@ -547,6 +549,14 @@ export function interactivePostCheck(
       if (!APPROVED_REVIEW_URLS.has(url)) {
         return { ok: false, code: "UNAPPROVED_URL" };
       }
+    }
+
+    // The question belongs exclusively in nextQuestion. Catches Claude folding a
+    // clarifying question into reply and leaving nextQuestion null or mismatched —
+    // observed live: Claude re-asking "which one — semaglutide or tirzepatide?"
+    // inside reply instead of splitting it out.
+    if (reply.includes("?")) {
+      return { ok: false, code: "QUESTION_MARK_IN_REPLY" };
     }
 
     // ── Clinical-language checks ───────────────────────────────────────────────

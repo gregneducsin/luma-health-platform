@@ -1,0 +1,118 @@
+import { and, eq, lte, sql } from "drizzle-orm";
+import { db, abandonedCartTriggersTable, customersTable, purchasesTable, questionnaireEventsTable } from "@luma/db";
+import { getOrCreateConversation, appendMessage, updateConversationState } from "./conversations.service.js";
+import { getSmsProvider } from "../lib/sms-provider.js";
+import { renderAbandonedCartOpener } from "../lib/messaging/follow-up-templates.js";
+import { logger } from "../lib/logger.js";
+
+const OPENER_DELAY_MS = 10 * 60 * 1000;
+
+export interface AbandonedCartSweepResult {
+  readonly sentCount: number;
+  readonly cancelledCount: number;
+  readonly failedCount: number;
+}
+
+/**
+ * Arms the very first outbound message for a lead, 10 minutes after Bask
+ * fires an `abandoned` questionnaire event — fully automated, 24/7, no
+ * monitored-hours window. Idempotent: the unique index on
+ * questionnaireEventId means a duplicate `abandoned` webhook delivery for
+ * the same questionnaire can't schedule (or send) a second opener.
+ */
+export async function scheduleAbandonedCartOpener(personId: string, questionnaireEventId: string): Promise<void> {
+  await db
+    .insert(abandonedCartTriggersTable)
+    .values({ personId, questionnaireEventId, dueAt: new Date(Date.now() + OPENER_DELAY_MS) })
+    .onConflictDoNothing({ target: abandonedCartTriggersTable.questionnaireEventId });
+}
+
+/**
+ * Sends every due `pending` opener trigger, unless the lead is no longer
+ * eligible (already purchased, or the questionnaire is no longer abandoned —
+ * both rechecked right now, not trusted from when the trigger was armed).
+ */
+export async function sweepAbandonedCartTriggers(): Promise<AbandonedCartSweepResult> {
+  const dueTriggers = await db
+    .select({ id: abandonedCartTriggersTable.id, personId: abandonedCartTriggersTable.personId, questionnaireEventId: abandonedCartTriggersTable.questionnaireEventId })
+    .from(abandonedCartTriggersTable)
+    .where(and(eq(abandonedCartTriggersTable.status, "pending"), lte(abandonedCartTriggersTable.dueAt, sql`now()`)));
+
+  let sentCount = 0;
+  let cancelledCount = 0;
+  let failedCount = 0;
+
+  for (const trigger of dueTriggers) {
+    const eligible = await isStillEligible(trigger.personId, trigger.questionnaireEventId);
+
+    if (!eligible.ok) {
+      await db
+        .update(abandonedCartTriggersTable)
+        .set({ status: "cancelled", cancelledReason: eligible.reason })
+        .where(eq(abandonedCartTriggersTable.id, trigger.id));
+      cancelledCount++;
+      continue;
+    }
+
+    const sendResult = await sendOpener(trigger.personId);
+
+    if (!sendResult.ok) {
+      await db.update(abandonedCartTriggersTable).set({ status: "failed", failureReason: sendResult.reason }).where(eq(abandonedCartTriggersTable.id, trigger.id));
+      failedCount++;
+      continue;
+    }
+
+    await db
+      .update(abandonedCartTriggersTable)
+      .set({ status: "sent", sentAt: sql`now()`, providerMessageId: sendResult.providerMessageId })
+      .where(eq(abandonedCartTriggersTable.id, trigger.id));
+    sentCount++;
+  }
+
+  if (sentCount > 0 || cancelledCount > 0 || failedCount > 0) {
+    logger.info({ sentCount, cancelledCount, failedCount }, "abandoned-cart opener sweep completed");
+  }
+
+  return { sentCount, cancelledCount, failedCount };
+}
+
+type EligibilityResult = { ok: true } | { ok: false; reason: string };
+
+async function isStillEligible(personId: string, questionnaireEventId: string): Promise<EligibilityResult> {
+  const [purchased] = await db.select({ id: purchasesTable.id }).from(purchasesTable).where(and(eq(purchasesTable.customerId, personId), eq(purchasesTable.status, "completed"))).limit(1);
+  if (purchased) return { ok: false, reason: "already_purchased" };
+
+  const [event] = await db.select({ status: questionnaireEventsTable.status }).from(questionnaireEventsTable).where(eq(questionnaireEventsTable.id, questionnaireEventId));
+  if (!event || event.status !== "abandoned") return { ok: false, reason: "no_longer_abandoned" };
+
+  return { ok: true };
+}
+
+type SendResult = { ok: true; providerMessageId: string } | { ok: false; reason: string };
+
+async function sendOpener(personId: string): Promise<SendResult> {
+  const [customer] = await db.select({ firstName: customersTable.firstName, phone: customersTable.phone }).from(customersTable).where(eq(customersTable.id, personId));
+  if (!customer?.phone) {
+    return { ok: false, reason: "NO_PHONE_NUMBER" };
+  }
+
+  const text = renderAbandonedCartOpener(customer.firstName);
+  const conversation = await getOrCreateConversation(personId);
+
+  try {
+    const result = await getSmsProvider().sendMessage(customer.phone, text);
+    await appendMessage(conversation.id, "outbound", text, { providerMessageId: result.providerMessageId });
+    // The opener promises $20 off directly — the eventual send_form in the
+    // reply-driven conversation must use the promo link, not the plain one.
+    await updateConversationState(conversation.id, { promoOffered: true });
+    return { ok: true, providerMessageId: result.providerMessageId };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn({ personId, reason }, "abandoned-cart opener send failed");
+    // Still logged for visibility even though the send failed — this is what
+    // Lucy's opener would have said, once a provider exists.
+    await appendMessage(conversation.id, "outbound", text, {});
+    await updateConversationState(conversation.id, { promoOffered: true });
+    return { ok: false, reason };
+  }
+}

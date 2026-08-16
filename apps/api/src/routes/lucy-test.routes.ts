@@ -1,24 +1,26 @@
 import { Router, type Router as RouterType } from "express";
-import { lucyTurnRequestSchema } from "@luma/shared";
-import { runLucyTurn } from "../services/lucy-conversation.service.js";
+import { sendLucyTestMessageRequestSchema } from "@luma/shared";
+import { processInboundMessage } from "../services/lucy-dispatch.service.js";
 import * as customersService from "../services/customers.service.js";
 import { requireRole } from "../middleware/requireAuth.js";
 import { requireCsrf } from "../middleware/csrf.js";
 import { createLucyTestLimiter } from "../middleware/rateLimit.js";
 
 /**
- * Internal test surface for the Lucy conversation loop — lets staff run a
- * simulated back-and-forth against the real guardrails (pre-check, Claude,
- * post-check) without any SMS provider wired up. Not the production
- * messaging endpoint; there isn't one yet.
+ * Internal test surface for the Lucy conversation loop — lets staff simulate
+ * an inbound customer text and run it through the real pipeline (pre-check,
+ * Claude, post-check, persistence, SMS dispatch attempt) without needing an
+ * actual SMS provider. Goes through the same persisted-conversation path
+ * production inbound webhooks will use once a provider exists, so testing
+ * here populates the same conversation log the dashboard shows.
  */
 export function createLucyTestRouter(): RouterType {
   const router: RouterType = Router();
   const limiter = createLucyTestLimiter();
 
-  router.post("/turn", limiter, requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
+  router.post("/message", limiter, requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
     try {
-      const parsed = lucyTurnRequestSchema.safeParse(req.body);
+      const parsed = sendLucyTestMessageRequestSchema.safeParse(req.body);
       if (!parsed.success) {
         res.status(400).json({ error: "Invalid request.", details: parsed.error.issues });
         return;
@@ -30,8 +32,7 @@ export function createLucyTestRouter(): RouterType {
         return;
       }
 
-      const { customerId: _customerId, ...body } = parsed.data;
-      const result = await runLucyTurn(customer.id, body);
+      const result = await processInboundMessage(customer.id, parsed.data.message);
 
       if (!result.ok && result.code === "PROVIDER_NOT_CONFIGURED") {
         res.status(503).json({ error: "The Lucy conversation loop isn't configured yet." });

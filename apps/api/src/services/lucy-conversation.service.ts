@@ -15,6 +15,7 @@ export type LucyTurnResult =
       objectionStage: 0 | 1 | 2;
       linkProvided: boolean;
       promoOffered: boolean;
+      inboundSentiment: "positive" | "neutral" | "negative" | null;
       requiresStaff: boolean;
       knowledgeTopicsUsed: readonly string[];
       validatedSlotUpdates: Record<string, unknown>;
@@ -33,16 +34,30 @@ const PRE_CHECK_RESULTS: Record<string, { action: "pause" | "staff_review"; repl
 };
 
 /**
+ * Post-check codes safe to retry: these are mechanical format slips (the
+ * question landed in the wrong field, or in two places, or Claude repeated
+ * its own last draft), not safety-relevant rejections. Retrying re-runs the
+ * exact same prompt — no "you got it wrong" context is added — since this is
+ * plain output variance, not a content problem to correct. Every other
+ * rejection code (clinical language, unsupported pricing, unapproved URLs,
+ * unknown knowledge topics, low confidence, ...) is never retried: those are
+ * findings about what Claude said, and repeating the call risks the same
+ * violation again or a different one, not fixing anything.
+ */
+const RETRYABLE_POST_CHECK_CODES = new Set(["MISSING_NEXT_QUESTION", "INVALID_NEXT_QUESTION", "UNEXPECTED_NEXT_QUESTION", "QUESTION_MARK_IN_REPLY", "REPEATED_DRAFT"]);
+const MAX_ATTEMPTS = 3;
+
+/**
  * Run one turn of the Lucy conversation loop: pre-check the inbound message,
  * call Claude if it isn't blocked, post-check the response, and — on
  * action=send_form — mint the actual per-lead signup link (Claude never sees
  * or outputs a real one).
  *
- * Fails closed: any pre-check block or post-check rejection short-circuits
- * before the caller ever gets an unvalidated reply. This intentionally does
- * NOT retry or attempt automatic repair on a post-check failure — a rejected
- * turn returns `ok: false` for the caller to route to staff, not a silent
- * second guess at what Claude "meant."
+ * Fails closed: any pre-check block or a non-retryable post-check rejection
+ * short-circuits before the caller ever gets an unvalidated reply — no
+ * automatic repair, no second guess at what Claude "meant." A format-only
+ * rejection (see RETRYABLE_POST_CHECK_CODES) gets exactly one retry of the
+ * same call before giving up the same way.
  */
 export async function runLucyTurn(personId: string, body: BotPreviewRequestBody): Promise<LucyTurnResult> {
   const lastInbound = [...body.messages].reverse().find((m) => m.direction === "inbound");
@@ -59,6 +74,7 @@ export async function runLucyTurn(personId: string, body: BotPreviewRequestBody)
         objectionStage: body.objectionStage,
         linkProvided: body.linkProvided,
         promoOffered: body.promoOffered,
+        inboundSentiment: null,
         requiresStaff: deterministic.action === "staff_review",
         knowledgeTopicsUsed: [],
         validatedSlotUpdates: {},
@@ -70,23 +86,34 @@ export async function runLucyTurn(personId: string, body: BotPreviewRequestBody)
   const enabledTopics = getPreviewEnabledTopics();
   const permittedTopicKeys = new Set(enabledTopics.map((t) => t.key));
 
-  let raw: ClaudeInteractiveResult;
-  try {
-    raw = await callClaudeInteractive(body, enabledTopics);
-  } catch (err) {
-    if (err instanceof ProviderError) {
-      logger.error({ category: err.category }, "Lucy provider call failed");
-      return { ok: false, code: err.category };
+  let post: ReturnType<typeof interactivePostCheck> | undefined;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    let raw: ClaudeInteractiveResult;
+    try {
+      raw = await callClaudeInteractive(body, enabledTopics);
+    } catch (err) {
+      if (err instanceof ProviderError) {
+        logger.error({ category: err.category }, "Lucy provider call failed");
+        return { ok: false, code: err.category };
+      }
+      throw err;
     }
-    throw err;
+
+    post = interactivePostCheck(raw, body.lastDraft, permittedTopicKeys);
+    if (post.ok) break;
+
+    const canRetry = attempt < MAX_ATTEMPTS && RETRYABLE_POST_CHECK_CODES.has(post.code);
+    logger.warn({ code: post.code, attempt, retrying: canRetry }, "Lucy reply rejected by post-check");
+    if (!canRetry) {
+      return { ok: false, code: post.code };
+    }
   }
 
-  const post = interactivePostCheck(raw, body.lastDraft, permittedTopicKeys);
-  if (!post.ok) {
-    logger.warn({ code: post.code }, "Lucy reply rejected by post-check");
-    return { ok: false, code: post.code };
+  // The loop only falls through to here via `break` on post.ok — every other
+  // path returns early — but TS can't see that across the loop, so assert it.
+  if (!post?.ok) {
+    throw new Error("unreachable: post-check loop exited without an ok result");
   }
-
   const result = post.result;
   let link: string | null = null;
   let finalReply = result.reply;
@@ -106,6 +133,7 @@ export async function runLucyTurn(personId: string, body: BotPreviewRequestBody)
     objectionStage: result.objectionStage,
     linkProvided: link !== null ? true : result.linkProvided,
     promoOffered: result.promoOffered,
+    inboundSentiment: result.inboundSentiment,
     requiresStaff: result.requiresStaff,
     knowledgeTopicsUsed: result.knowledgeTopicsUsed,
     validatedSlotUpdates: post.validatedSlotUpdates,

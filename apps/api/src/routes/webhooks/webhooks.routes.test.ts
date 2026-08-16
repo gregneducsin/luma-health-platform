@@ -200,6 +200,37 @@ describe("Webhooks", () => {
       expect(rows[0].abandonedAt).not.toBeNull();
     });
 
+    it("schedules an abandoned-cart opener trigger on status=abandoned, idempotently on redelivery", async () => {
+      const payload = {
+        eventId: "bask-q-evt-abandon-trigger-1",
+        externalPersonId: "bask-person-abandon-trigger",
+        email: "abandon-trigger@example.com",
+        firstName: "Trigger",
+        lastName: "Test",
+        questionnaireId: "QUEST-TRIGGER-1",
+        status: "abandoned" as const,
+        occurredAt: new Date().toISOString(),
+      };
+      const first = await request(app).post("/api/webhooks/bask-questionnaire").set("x-webhook-secret", QUESTIONNAIRE_SECRET).send(payload);
+      expect(first.status).toBe(200);
+
+      const { db, customersTable, abandonedCartTriggersTable } = await import("@luma/db");
+      const { eq } = await import("drizzle-orm");
+      const [customer] = await db.select().from(customersTable).where(eq(customersTable.email, "abandon-trigger@example.com"));
+      let triggers = await db.select().from(abandonedCartTriggersTable).where(eq(abandonedCartTriggersTable.personId, customer!.id));
+      expect(triggers).toHaveLength(1);
+      expect(triggers[0].status).toBe("pending");
+
+      // A retried delivery of the same event is a no-op replay (idempotent on eventId)
+      // and doesn't reach the trigger-scheduling code a second time.
+      const redelivery = await request(app).post("/api/webhooks/bask-questionnaire").set("x-webhook-secret", QUESTIONNAIRE_SECRET).send(payload);
+      expect(redelivery.status).toBe(200);
+      expect(redelivery.body.duplicate).toBe(true);
+
+      triggers = await db.select().from(abandonedCartTriggersTable).where(eq(abandonedCartTriggersTable.personId, customer!.id));
+      expect(triggers).toHaveLength(1);
+    });
+
     it("categorizes a customer created directly from an abandoned questionnaire (no prior GHL lead)", async () => {
       const payload = {
         eventId: "bask-q-evt-abandoned-only",

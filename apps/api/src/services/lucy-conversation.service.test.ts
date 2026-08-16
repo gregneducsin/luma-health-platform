@@ -62,6 +62,7 @@ function modelResult(overrides: Partial<ClaudeInteractiveResult> = {}): ClaudeIn
     linkProvided: false,
     objectionStage: 0,
     promoOffered: false,
+    inboundSentiment: null,
     ...overrides,
   };
 }
@@ -139,5 +140,40 @@ describe("runLucyTurn", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.objectionStage).toBe(1);
+  });
+
+  it("retries once on a format-only rejection (MISSING_NEXT_QUESTION) and succeeds on the second attempt", async () => {
+    callClaudeInteractiveMock.mockClear();
+    callClaudeInteractiveMock
+      .mockResolvedValueOnce(modelResult({ nextQuestion: null }))
+      .mockResolvedValueOnce(modelResult({ nextQuestion: "Which plan works for you?" }));
+    const personId = await seedCustomer();
+    const result = await runLucyTurn(personId, baseBody());
+
+    expect(callClaudeInteractiveMock).toHaveBeenCalledTimes(2);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.nextQuestion).toBe("Which plan works for you?");
+  });
+
+  it("retries up to the attempt cap on a question mark embedded in reply, and fails closed if every attempt fails", async () => {
+    callClaudeInteractiveMock.mockClear();
+    callClaudeInteractiveMock.mockResolvedValue(modelResult({ reply: "Which one would you like — semaglutide or tirzepatide?" }));
+    const personId = await seedCustomer();
+    const result = await runLucyTurn(personId, baseBody());
+
+    expect(callClaudeInteractiveMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("QUESTION_MARK_IN_REPLY");
+  });
+
+  it("does not retry a safety-relevant rejection (e.g. an unsupported pricing claim)", async () => {
+    callClaudeInteractiveMock.mockClear();
+    callClaudeInteractiveMock.mockResolvedValueOnce(modelResult({ reply: "We accept insurance.", knowledgeTopicsUsed: ["insurance_payment"] }));
+    const personId = await seedCustomer();
+    const result = await runLucyTurn(personId, baseBody());
+
+    expect(callClaudeInteractiveMock).toHaveBeenCalledTimes(1);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("UNSUPPORTED_PRICING_CLAIM");
   });
 });

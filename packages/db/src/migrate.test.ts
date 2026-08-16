@@ -32,6 +32,9 @@ const EXPECTED_TABLES = [
   "marketing_spend_weeks",
   "intake_link_tokens",
   "follow_up_jobs",
+  "conversations",
+  "conversation_messages",
+  "abandoned_cart_triggers",
 ].sort();
 
 let testSchema: string;

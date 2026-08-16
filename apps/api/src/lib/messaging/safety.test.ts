@@ -19,6 +19,7 @@ function reply(overrides: Partial<ClaudeInteractiveResult> = {}): ClaudeInteract
     linkProvided: false,
     objectionStage: 0,
     promoOffered: false,
+    inboundSentiment: null,
     ...overrides,
   };
 }
@@ -89,6 +90,18 @@ describe("interactivePreCheck", () => {
 });
 
 // ── Post-check: URL allowlisting ──────────────────────────────────────────────
+
+describe("interactivePostCheck: question mark must stay out of reply", () => {
+  it("rejects a reply containing a question mark, even when nextQuestion is also present", () => {
+    const result = check(reply({ reply: "Which one would you like, semaglutide or tirzepatide?", nextQuestion: "Which one sounds better?" }));
+    expect(result).toEqual({ ok: false, code: "QUESTION_MARK_IN_REPLY" });
+  });
+
+  it("allows a reply with no question mark at all", () => {
+    const result = check(reply({ reply: "Semaglutide is the more affordable option." }));
+    expect(result.ok).toBe(true);
+  });
+});
 
 describe("interactivePostCheck: URLs", () => {
   it("allows the fixed review-site URLs", () => {
