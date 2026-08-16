@@ -10,6 +10,7 @@ import { PayrollWeeksPage } from "./pages/PayrollWeeksPage";
 import { PayrollWeekDetailPage } from "./pages/PayrollWeekDetailPage";
 import { MarketingCpaPage } from "./pages/MarketingCpaPage";
 import { QuestionnairesPage } from "./pages/QuestionnairesPage";
+import { ConversationsPage } from "./pages/ConversationsPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
 export default function App() {
@@ -69,6 +70,12 @@ export default function App() {
       <Route path="/questionnaires">
         <ProtectedRoute>
           <QuestionnairesPage />
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/conversations">
+        <ProtectedRoute>
+          <ConversationsPage />
         </ProtectedRoute>
       </Route>
 

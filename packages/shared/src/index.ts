@@ -10,5 +10,6 @@ export * from "./schemas/questionnaires.js";
 export * from "./schemas/ai-assistant.js";
 export * from "./schemas/intake-links.js";
 export * from "./schemas/lucy-conversation.js";
+export * from "./schemas/conversations.js";
 export * from "./crypto.js";
 export * from "./calc/payroll.js";

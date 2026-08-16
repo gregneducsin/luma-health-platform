@@ -120,9 +120,20 @@ export async function listConversationSummaries(): Promise<ConversationSummary[]
   return rows.map((r) => ({ ...r, lastSentiment: r.lastSentiment as ConversationSummary["lastSentiment"] }));
 }
 
-export async function getConversationDetail(conversationId: string): Promise<{ conversation: Conversation; messages: ConversationMessage[] } | null> {
-  const [conversation] = await db.select().from(conversationsTable).where(eq(conversationsTable.id, conversationId));
-  if (!conversation) return null;
+export async function getConversationDetail(
+  conversationId: string,
+): Promise<{ conversation: Conversation; customer: { firstName: string; lastName: string; phone: string | null }; messages: ConversationMessage[] } | null> {
+  const [row] = await db
+    .select({
+      conversation: conversationsTable,
+      firstName: customersTable.firstName,
+      lastName: customersTable.lastName,
+      phone: customersTable.phone,
+    })
+    .from(conversationsTable)
+    .innerJoin(customersTable, eq(customersTable.id, conversationsTable.personId))
+    .where(eq(conversationsTable.id, conversationId));
+  if (!row) return null;
   const messages = await listMessages(conversationId, 200);
-  return { conversation, messages };
+  return { conversation: row.conversation, customer: { firstName: row.firstName, lastName: row.lastName, phone: row.phone }, messages };
 }
