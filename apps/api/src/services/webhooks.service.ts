@@ -14,9 +14,12 @@ import type {
   BaskOrderWebhookRequest,
   BaskQuestionnaireWebhookRequest,
   BaskPaymentFailedWebhookRequest,
+  BaskPrescriptionWrittenWebhookRequest,
+  BaskOrderShippedWebhookRequest,
 } from "@luma/shared";
 import { scheduleAbandonedCartOpener } from "./abandoned-cart.service.js";
 import { sendMetaLeadOpener } from "./meta-lead.service.js";
+import { sendOrderReceivedOpener, handlePrescriptionWritten, handleOrderShipped } from "./order-fulfillment.service.js";
 
 // ── Shared idempotency + audit-log helpers ──────────────────────────────────
 
@@ -195,6 +198,62 @@ export async function handleBaskOrderWebhook(payload: BaskOrderWebhookRequest): 
         orderClassificationSource: "bask",
       });
     });
+
+    // Sarah's opening "doctor is reviewing it" message fires the moment the
+    // order lands — instant, same as the Meta lead opener, not a scheduled sweep.
+    await sendOrderReceivedOpener(customerId);
+
+    await markWebhookEventProcessed(recorded.id, customerId);
+  } catch (err) {
+    await markWebhookEventFailed(recorded.id, err instanceof Error ? err.message : String(err));
+    throw err;
+  }
+  return { duplicate: false };
+}
+
+export async function handleBaskPrescriptionWrittenWebhook(payload: BaskPrescriptionWrittenWebhookRequest): Promise<{ duplicate: boolean }> {
+  const recorded = await recordWebhookEventIfNew("bask_prescription_written", payload.eventId, payload);
+  if (!recorded) return { duplicate: true };
+
+  try {
+    const occurredAt = payload.occurredAt ?? new Date().toISOString();
+    const { id: customerId } = await findOrCreateCustomerByExternalIdentity({
+      system: "bask",
+      externalId: payload.externalPersonId,
+      email: payload.email,
+      firstName: payload.firstName,
+      lastName: payload.lastName,
+      phone: payload.phone,
+      leadReceivedDate: occurredDate(occurredAt),
+    });
+
+    await handlePrescriptionWritten(customerId);
+
+    await markWebhookEventProcessed(recorded.id, customerId);
+  } catch (err) {
+    await markWebhookEventFailed(recorded.id, err instanceof Error ? err.message : String(err));
+    throw err;
+  }
+  return { duplicate: false };
+}
+
+export async function handleBaskOrderShippedWebhook(payload: BaskOrderShippedWebhookRequest): Promise<{ duplicate: boolean }> {
+  const recorded = await recordWebhookEventIfNew("bask_order_shipped", payload.eventId, payload);
+  if (!recorded) return { duplicate: true };
+
+  try {
+    const occurredAt = payload.occurredAt ?? new Date().toISOString();
+    const { id: customerId } = await findOrCreateCustomerByExternalIdentity({
+      system: "bask",
+      externalId: payload.externalPersonId,
+      email: payload.email,
+      firstName: payload.firstName,
+      lastName: payload.lastName,
+      phone: payload.phone,
+      leadReceivedDate: occurredDate(occurredAt),
+    });
+
+    await handleOrderShipped(customerId, payload.trackingNumber);
 
     await markWebhookEventProcessed(recorded.id, customerId);
   } catch (err) {

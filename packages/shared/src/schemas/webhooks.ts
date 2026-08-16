@@ -80,3 +80,45 @@ export const baskPaymentFailedWebhookRequestSchema = z.object({
   testMode: z.boolean().optional(),
 });
 export type BaskPaymentFailedWebhookRequest = z.infer<typeof baskPaymentFailedWebhookRequestSchema>;
+
+// ── Bask prescription-written webhook ──────────────────────────────────────────
+//
+// SPECULATIVE — designed from Bask's raw trigger field labels (Data Patient
+// Id, Data Prescription Id, ...), not yet verified against a real Zap "Data
+// in" test payload the way ghl-lead and bask-order were. Field names here
+// follow the same flat-camelCase convention the other Zaps were corrected
+// to use; confirm against the real Zap POST body once it's built and adjust
+// if Bask's actual field names differ, same lesson as bask-order's orderId.
+
+export const baskPrescriptionWrittenWebhookRequestSchema = z.object({
+  eventId: z.string().min(1),
+  externalPersonId: z.string().min(1), // Bask's "Data Patient Id"
+  email: z.string().email(),
+  firstName: z.string().min(1).optional(),
+  lastName: z.string().min(1).optional(),
+  phone: z.string().min(1).optional(),
+  prescriptionId: z.string().min(1).optional(),
+  occurredAt: z.string().datetime().optional(),
+});
+export type BaskPrescriptionWrittenWebhookRequest = z.infer<typeof baskPrescriptionWrittenWebhookRequestSchema>;
+
+// ── Bask order-shipped webhook ─────────────────────────────────────────────────
+//
+// SPECULATIVE, same caveat as above. Bask's real payload also carries nested
+// products/shipments arrays (drug name, dosage strength, pharmacy, etc.) —
+// deliberately not modeled here since Sarah's shipped notice only needs the
+// tracking number, not per-item clinical detail.
+
+export const baskOrderShippedWebhookRequestSchema = z.object({
+  eventId: z.string().min(1),
+  externalPersonId: z.string().min(1), // Bask's "Data Patient Id"
+  email: z.string().email(),
+  firstName: z.string().min(1).optional(),
+  lastName: z.string().min(1).optional(),
+  phone: z.string().min(1).optional(),
+  orderId: z.string().min(1).optional(),
+  orderNumber: z.string().min(1).optional(),
+  trackingNumber: z.string().min(1),
+  occurredAt: z.string().datetime().optional(),
+});
+export type BaskOrderShippedWebhookRequest = z.infer<typeof baskOrderShippedWebhookRequestSchema>;

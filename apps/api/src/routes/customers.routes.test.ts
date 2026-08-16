@@ -499,7 +499,11 @@ describe("Purchases", () => {
       .set("x-csrf-token", csrf)
       .send({ purchaseDate: "2026-01-10", orderNumber: "ORD-LIST-1", productName: "Gizmo", amountPaid: "25.00" });
 
-    const res = await agent.get("/api/app/purchases").query({ limit: 5 });
+    // limit:100 (the max) rather than a small page size — this shared test DB
+    // accumulates purchase rows from other test files running concurrently in
+    // the same schema, so a small limit risks this test's own row falling off
+    // the page purely due to how many other purchases happen to sort above it.
+    const res = await agent.get("/api/app/purchases").query({ limit: 100 });
     expect(res.status).toBe(200);
     expect(res.body.total).toBeGreaterThanOrEqual(1);
     const row = res.body.purchases.find((p: { orderNumber: string }) => p.orderNumber === "ORD-LIST-1");

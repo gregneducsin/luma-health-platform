@@ -524,11 +524,57 @@ export const KNOWLEDGE_CATALOG: readonly KnowledgeTopic[] = [
     ],
     enabledForPreview: true,
   },
+  // ── Patient portal ─────────────────────────────────────────────────────────
+  // Source: owner-confirmed patient login URL. Sarah-only topic — Lucy has no
+  // reason to send an existing-customer portal link to a prospect.
+  {
+    key: "portal_help",
+    approvedText:
+      "You can manage your account, check your order, and message the care team anytime through the patient portal: " +
+      "https://go.mylumahealth.com/login",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-16",
+    prohibitedClaims: ["guaranteed_response_time", "portal_medical_advice"],
+    enabledForPreview: true,
+  },
 ] as const;
 
 /** All topics available for the development bot-test preview. */
 export function getPreviewEnabledTopics(): readonly KnowledgeTopic[] {
   return KNOWLEDGE_CATALOG.filter((t) => t.enabledForPreview);
+}
+
+/**
+ * The fixed approved patient-portal login URL — the Sarah equivalent of
+ * APPROVED_REVIEW_URLS. Sarah may output this verbatim; Lucy never does.
+ */
+export const APPROVED_PORTAL_URL = "https://go.mylumahealth.com/login";
+
+/**
+ * Topic keys Sarah (the post-purchase support bot) is allowed to use — a
+ * subset of the same catalog Lucy draws from, reused verbatim rather than
+ * duplicated. Deliberately excludes every pre-purchase/sales/clinical topic
+ * (product_comparison, pricing, titration, previous_prescriptions, weight
+ * loss expectations, side_effects, eligibility, compounded medication,
+ * first_month_offer) — Sarah's whole domain is post-purchase customer
+ * service with zero medical content; anything clinical routes to staff.
+ */
+export const SARAH_TOPIC_KEYS = new Set([
+  "insurance_payment",
+  "how_luma_works",
+  "customer_reviews",
+  "cancellation_policy",
+  "shipping_delivery",
+  "privacy_hipaa",
+  "auto_refill",
+  "portal_help",
+]);
+
+/** Topics available to Sarah's conversation loop. */
+export function getSarahEnabledTopics(): readonly KnowledgeTopic[] {
+  return KNOWLEDGE_CATALOG.filter((t) => t.enabledForPreview && SARAH_TOPIC_KEYS.has(t.key));
 }
 
 /** Look up a topic by its key. Returns undefined when not found. */

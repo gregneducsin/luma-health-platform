@@ -11,5 +11,7 @@ export * from "./schemas/ai-assistant.js";
 export * from "./schemas/intake-links.js";
 export * from "./schemas/lucy-conversation.js";
 export * from "./schemas/conversations.js";
+export * from "./schemas/sarah-conversation.js";
+export * from "./schemas/support-conversations.js";
 export * from "./crypto.js";
 export * from "./calc/payroll.js";

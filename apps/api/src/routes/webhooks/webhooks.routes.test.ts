@@ -6,6 +6,8 @@ const GHL_SECRET = "test-ghl-secret";
 const ORDER_SECRET = "test-order-secret";
 const QUESTIONNAIRE_SECRET = "test-questionnaire-secret";
 const PAYMENT_FAILED_SECRET = "test-payment-failed-secret";
+const PRESCRIPTION_WRITTEN_SECRET = "test-prescription-written-secret";
+const ORDER_SHIPPED_SECRET = "test-order-shipped-secret";
 
 const sendMessageMock = vi.fn();
 vi.mock("../../lib/sms-provider.js", async () => {
@@ -22,6 +24,8 @@ describe("Webhooks", () => {
     process.env.ORDER_WEBHOOK_SECRET = ORDER_SECRET;
     process.env.QUESTIONNAIRE_WEBHOOK_SECRET = QUESTIONNAIRE_SECRET;
     process.env.FAILED_PAYMENT_WEBHOOK_SECRET = PAYMENT_FAILED_SECRET;
+    process.env.PRESCRIPTION_WRITTEN_WEBHOOK_SECRET = PRESCRIPTION_WRITTEN_SECRET;
+    process.env.ORDER_SHIPPED_WEBHOOK_SECRET = ORDER_SHIPPED_SECRET;
     app = createApp();
   });
 
@@ -261,6 +265,133 @@ describe("Webhooks", () => {
       const [purchase] = await db.select().from(purchasesTable).where(eq(purchasesTable.customerId, customer!.id));
       expect(purchase.amountPaid).toBe("149.50");
       expect(purchase.ecommerceOrderId).toBe("txn-abc-123");
+    });
+
+    it("fires Sarah's order-received opener instantly", async () => {
+      sendMessageMock.mockClear();
+      sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_sarah_opener" });
+
+      const res = await request(app)
+        .post("/api/webhooks/bask-order")
+        .set("x-webhook-secret", ORDER_SECRET)
+        .send({
+          eventId: "bask-order-evt-sarah-opener",
+          externalPersonId: "bask-person-sarah-opener",
+          email: "sarah-opener@example.com",
+          firstName: "Opener",
+          lastName: "Test",
+          phone: "+15551110099",
+          orderId: "BASK-SARAH-1",
+          productName: "Program",
+          amountPaid: 120,
+          purchasedAt: "2026-02-07T09:00:00.000Z",
+        });
+      expect(res.status).toBe(200);
+
+      expect(sendMessageMock).toHaveBeenCalledWith("+15551110099", expect.stringContaining("this is Sarah"));
+
+      const { db, customersTable } = await import("@luma/db");
+      const { eq } = await import("drizzle-orm");
+      const [customer] = await db.select().from(customersTable).where(eq(customersTable.email, "sarah-opener@example.com"));
+      const { getOrCreateSupportConversation, listSupportMessages } = await import("../../services/support-conversations.service.js");
+      const conversation = await getOrCreateSupportConversation(customer!.id);
+      const messages = await listSupportMessages(conversation.id);
+      expect(messages.length).toBe(1);
+    });
+  });
+
+  describe("Bask prescription written", () => {
+    it("creates/matches a customer, marks prescriptionWritten, and sends the notice", async () => {
+      sendMessageMock.mockClear();
+      sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_prescription_written" });
+
+      const res = await request(app)
+        .post("/api/webhooks/bask-prescription-written")
+        .set("x-webhook-secret", PRESCRIPTION_WRITTEN_SECRET)
+        .send({
+          eventId: "bask-prescription-evt-1",
+          externalPersonId: "bask-patient-1",
+          email: "prescription-written@example.com",
+          firstName: "Diana",
+          lastName: "Gerhold",
+          phone: "+13388400375",
+          prescriptionId: "6827585384218624",
+        });
+      expect(res.status).toBe(200);
+
+      const { db, customersTable } = await import("@luma/db");
+      const { eq } = await import("drizzle-orm");
+      const [customer] = await db.select().from(customersTable).where(eq(customersTable.email, "prescription-written@example.com"));
+      expect(customer).toBeTruthy();
+
+      const { getOrCreateSupportConversation, listSupportMessages } = await import("../../services/support-conversations.service.js");
+      const conversation = await getOrCreateSupportConversation(customer!.id);
+      expect(conversation.prescriptionWritten).toBe(true);
+      const messages = await listSupportMessages(conversation.id);
+      expect(messages.length).toBe(1);
+    });
+
+    it("rejects a wrong secret with 401", async () => {
+      const res = await request(app).post("/api/webhooks/bask-prescription-written").set("x-webhook-secret", "wrong").send({});
+      expect(res.status).toBe(401);
+    });
+
+    it("is idempotent on eventId replay", async () => {
+      const payload = {
+        eventId: "bask-prescription-evt-replay",
+        externalPersonId: "bask-patient-replay",
+        email: "prescription-replay@example.com",
+      };
+      const first = await request(app).post("/api/webhooks/bask-prescription-written").set("x-webhook-secret", PRESCRIPTION_WRITTEN_SECRET).send(payload);
+      expect(first.body.duplicate).toBe(false);
+      const second = await request(app).post("/api/webhooks/bask-prescription-written").set("x-webhook-secret", PRESCRIPTION_WRITTEN_SECRET).send(payload);
+      expect(second.body.duplicate).toBe(true);
+    });
+  });
+
+  describe("Bask order shipped", () => {
+    it("creates/matches a customer, sets orderShipped + trackingNumber, sends the notice, and arms the review-request trigger", async () => {
+      sendMessageMock.mockClear();
+      sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_order_shipped" });
+
+      const res = await request(app)
+        .post("/api/webhooks/bask-order-shipped")
+        .set("x-webhook-secret", ORDER_SHIPPED_SECRET)
+        .send({
+          eventId: "bask-shipped-evt-1",
+          externalPersonId: "bask-patient-shipped-1",
+          email: "order-shipped@example.com",
+          firstName: "Jena",
+          lastName: "Abbott",
+          phone: "+14242650860",
+          orderId: "ac2225a4-e655-4394-801e-368f7c6cf350",
+          orderNumber: "p7QJ740Dfl",
+          trackingNumber: "5481040885",
+        });
+      expect(res.status).toBe(200);
+
+      expect(sendMessageMock).toHaveBeenCalledWith("+14242650860", expect.stringContaining("5481040885"));
+
+      const { db, customersTable, reviewRequestTriggersTable } = await import("@luma/db");
+      const { eq } = await import("drizzle-orm");
+      const [customer] = await db.select().from(customersTable).where(eq(customersTable.email, "order-shipped@example.com"));
+
+      const { getOrCreateSupportConversation } = await import("../../services/support-conversations.service.js");
+      const conversation = await getOrCreateSupportConversation(customer!.id);
+      expect(conversation.orderShipped).toBe(true);
+      expect(conversation.trackingNumber).toBe("5481040885");
+
+      const [trigger] = await db.select().from(reviewRequestTriggersTable).where(eq(reviewRequestTriggersTable.personId, customer!.id));
+      expect(trigger).toBeDefined();
+      expect(trigger.status).toBe("pending");
+    });
+
+    it("rejects a payload missing the required trackingNumber with 400", async () => {
+      const res = await request(app)
+        .post("/api/webhooks/bask-order-shipped")
+        .set("x-webhook-secret", ORDER_SHIPPED_SECRET)
+        .send({ eventId: "bask-shipped-evt-bad", externalPersonId: "bask-patient-bad", email: "shipped-bad@example.com" });
+      expect(res.status).toBe(400);
     });
   });
 

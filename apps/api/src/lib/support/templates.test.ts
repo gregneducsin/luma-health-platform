@@ -1,0 +1,54 @@
+import { describe, it, expect } from "vitest";
+import { renderOrderReceivedMessage, renderPrescriptionWrittenMessage, renderOrderShippedMessage, renderReviewRequestMessage } from "./templates.js";
+
+describe("renderOrderReceivedMessage", () => {
+  it("introduces Sarah and mentions the portal link", () => {
+    const text = renderOrderReceivedMessage("Jamie");
+    expect(text).toContain("this is Sarah");
+    expect(text).toContain("https://go.mylumahealth.com/login");
+  });
+
+  it("interpolates the first name, falling back to 'there' when blank", () => {
+    expect(renderOrderReceivedMessage("Jamie")).toContain("Jamie");
+    expect(renderOrderReceivedMessage("  ")).toContain("there");
+  });
+});
+
+describe("renderPrescriptionWrittenMessage", () => {
+  it("has no question mark and no em dash", () => {
+    const text = renderPrescriptionWrittenMessage("Jamie");
+    expect(text).not.toContain("?");
+    expect(text).not.toMatch(/—|--/);
+  });
+
+  it("interpolates the first name, falling back to 'there' when blank", () => {
+    expect(renderPrescriptionWrittenMessage("Jamie")).toContain("Jamie");
+    expect(renderPrescriptionWrittenMessage("  ")).toContain("there");
+  });
+});
+
+describe("renderOrderShippedMessage", () => {
+  it("includes the tracking number verbatim", () => {
+    const text = renderOrderShippedMessage("Jamie", "1Z999AA10123456784");
+    expect(text).toContain("1Z999AA10123456784");
+  });
+
+  it("interpolates the first name, falling back to 'there' when blank", () => {
+    expect(renderOrderShippedMessage("Jamie", "TRACK1")).toContain("Jamie");
+    expect(renderOrderShippedMessage("  ", "TRACK1")).toContain("there");
+  });
+});
+
+describe("renderReviewRequestMessage", () => {
+  it("has exactly one trailing question mark, no em dash", () => {
+    const text = renderReviewRequestMessage("Jamie");
+    expect((text.match(/\?/g) ?? []).length).toBe(1);
+    expect(text.trim().endsWith("?")).toBe(true);
+    expect(text).not.toMatch(/—|--/);
+  });
+
+  it("interpolates the first name, falling back to 'there' when blank", () => {
+    expect(renderReviewRequestMessage("Jamie")).toContain("Jamie");
+    expect(renderReviewRequestMessage("  ")).toContain("there");
+  });
+});

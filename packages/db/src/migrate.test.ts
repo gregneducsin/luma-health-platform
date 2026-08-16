@@ -35,6 +35,9 @@ const EXPECTED_TABLES = [
   "conversations",
   "conversation_messages",
   "abandoned_cart_triggers",
+  "support_conversations",
+  "support_conversation_messages",
+  "review_request_triggers",
 ].sort();
 
 let testSchema: string;

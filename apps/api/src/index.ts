@@ -3,6 +3,7 @@ import { logger } from "./lib/logger.js";
 import { createApp } from "./app.js";
 import { sweepFollowUpJobs } from "./services/follow-up-jobs.service.js";
 import { sweepAbandonedCartTriggers } from "./services/abandoned-cart.service.js";
+import { sweepReviewRequestTriggers } from "./services/order-fulfillment.service.js";
 
 // Migrations are applied as a discrete step before this process starts (see
 // packages/db/src/migrate.ts's docstring, the Dockerfile entrypoint, and the
@@ -35,3 +36,13 @@ setInterval(() => {
     logger.error({ err }, "abandoned-cart opener sweep failed");
   });
 }, ABANDONED_CART_SWEEP_INTERVAL_MS);
+
+// Review-request check-ins are due days out (see order-fulfillment.service.ts's
+// REVIEW_REQUEST_DELAY_MS), so a coarser tick than the abandoned-cart sweep
+// is plenty precise.
+const REVIEW_REQUEST_SWEEP_INTERVAL_MS = 30 * 60 * 1000;
+setInterval(() => {
+  sweepReviewRequestTriggers().catch((err) => {
+    logger.error({ err }, "review-request sweep failed");
+  });
+}, REVIEW_REQUEST_SWEEP_INTERVAL_MS);

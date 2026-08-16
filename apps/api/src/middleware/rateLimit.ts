@@ -53,3 +53,14 @@ export function createLucyTestLimiter(): RateLimitRequestHandler {
     message: { error: "Too many test turns. Please wait a bit and try again." },
   });
 }
+
+// Same reasoning as createLucyTestLimiter, for Sarah's test surface.
+export function createSarahTestLimiter(): RateLimitRequestHandler {
+  return rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many test turns. Please wait a bit and try again." },
+  });
+}

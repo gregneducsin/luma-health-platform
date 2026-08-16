@@ -14,6 +14,8 @@ import { createQuestionnairesRouter } from "./routes/questionnaires.routes.js";
 import { createAiAssistantRouter } from "./routes/ai-assistant.routes.js";
 import { createLucyTestRouter } from "./routes/lucy-test.routes.js";
 import { createConversationsRouter } from "./routes/conversations.routes.js";
+import { createSarahTestRouter } from "./routes/sarah-test.routes.js";
+import { createSupportConversationsRouter } from "./routes/support-conversations.routes.js";
 import { createEmployeesRouter } from "./routes/payroll/employees.routes.js";
 import { createPayrollWeeksRouter } from "./routes/payroll/weeks.routes.js";
 import { createMarketingSpendRouter } from "./routes/payroll/marketing-spend.routes.js";
@@ -22,6 +24,8 @@ import { createGhlLeadWebhookRouter } from "./routes/webhooks/ghl-lead.routes.js
 import { createBaskOrderWebhookRouter } from "./routes/webhooks/bask-order.routes.js";
 import { createBaskQuestionnaireWebhookRouter } from "./routes/webhooks/bask-questionnaire.routes.js";
 import { createBaskPaymentFailedWebhookRouter } from "./routes/webhooks/bask-payment-failed.routes.js";
+import { createBaskPrescriptionWrittenWebhookRouter } from "./routes/webhooks/bask-prescription-written.routes.js";
+import { createBaskOrderShippedWebhookRouter } from "./routes/webhooks/bask-order-shipped.routes.js";
 
 export function createApp(): Express {
   const app = express();
@@ -63,6 +67,8 @@ export function createApp(): Express {
   app.use("/api/app/ai-assistant", createAiAssistantRouter());
   app.use("/api/app/lucy-test", createLucyTestRouter());
   app.use("/api/app/conversations", createConversationsRouter());
+  app.use("/api/app/sarah-test", createSarahTestRouter());
+  app.use("/api/app/support-conversations", createSupportConversationsRouter());
   app.use("/api/app/payroll/employees", createEmployeesRouter());
   app.use("/api/app/payroll/weeks", createPayrollWeeksRouter());
   app.use("/api/app/payroll/marketing-spend", createMarketingSpendRouter());
@@ -76,6 +82,8 @@ export function createApp(): Express {
   app.use("/api/webhooks/bask-order", createBaskOrderWebhookRouter());
   app.use("/api/webhooks/bask-questionnaire", createBaskQuestionnaireWebhookRouter());
   app.use("/api/webhooks/bask-payment-failed", createBaskPaymentFailedWebhookRouter());
+  app.use("/api/webhooks/bask-prescription-written", createBaskPrescriptionWrittenWebhookRouter());
+  app.use("/api/webhooks/bask-order-shipped", createBaskOrderShippedWebhookRouter());
 
   app.use(errorHandler);
 
