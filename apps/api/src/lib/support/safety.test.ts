@@ -123,11 +123,29 @@ describe("supportPostCheck", () => {
     expect(check(reply({ reply: "Both doses are still on file." }))).toEqual({ ok: false, code: "PROHIBITED_CLINICAL" });
   });
 
-  it("rejects brand medication names, not just the generic names", () => {
+  it("rejects brand and generic medication names when compounded_medication isn't declared", () => {
     expect(check(reply({ reply: "You're currently on Mounjaro." }))).toEqual({ ok: false, code: "PROHIBITED_CLINICAL" });
     expect(check(reply({ reply: "That's different from Ozempic." }))).toEqual({ ok: false, code: "PROHIBITED_CLINICAL" });
     expect(check(reply({ reply: "Wegovy works similarly." }))).toEqual({ ok: false, code: "PROHIBITED_CLINICAL" });
     expect(check(reply({ reply: "Zepbound is a different brand." }))).toEqual({ ok: false, code: "PROHIBITED_CLINICAL" });
+    expect(check(reply({ reply: "Ours contains semaglutide." }))).toEqual({ ok: false, code: "PROHIBITED_CLINICAL" });
+    expect(check(reply({ reply: "Ours contains tirzepatide." }))).toEqual({ ok: false, code: "PROHIBITED_CLINICAL" });
+  });
+
+  it("allows brand/generic medication names when compounded_medication is declared", () => {
+    const withTopic = { knowledgeTopicsUsed: ["compounded_medication"] };
+    expect(check(reply({ reply: "It's compounded, not the Ozempic brand.", ...withTopic })).ok).toBe(true);
+    expect(check(reply({ reply: "Ours has the same active ingredient as Wegovy.", ...withTopic })).ok).toBe(true);
+    expect(check(reply({ reply: "It's compounded, not the Mounjaro brand.", ...withTopic })).ok).toBe(true);
+    expect(check(reply({ reply: "Ours has the same active ingredient as Zepbound.", ...withTopic })).ok).toBe(true);
+  });
+
+  it("still rejects individualized clinical language even when compounded_medication is declared", () => {
+    const withTopic = { knowledgeTopicsUsed: ["compounded_medication"] };
+    expect(check(reply({ reply: "Your tirzepatide dose is being adjusted.", ...withTopic }))).toEqual({
+      ok: false,
+      code: "PROHIBITED_CLINICAL",
+    });
   });
 
   it("rejects the noun form 'contraindications', not just the verb 'contraindicated'", () => {

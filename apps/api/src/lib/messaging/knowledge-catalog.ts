@@ -567,9 +567,16 @@ export const APPROVED_REVIEW_WRITE_URL = "https://www.consumeraffairs.com/review
  * subset of the same catalog Lucy draws from, reused verbatim rather than
  * duplicated. Deliberately excludes every pre-purchase/sales/clinical topic
  * (product_comparison, pricing, titration, previous_prescriptions, weight
- * loss expectations, side_effects, eligibility, compounded medication,
- * first_month_offer) — Sarah's whole domain is post-purchase customer
- * service with zero medical content; anything clinical routes to staff.
+ * loss expectations, side_effects, eligibility, first_month_offer) — Sarah's
+ * whole domain is post-purchase customer service with zero individualized
+ * clinical content; anything clinical routes to staff.
+ *
+ * compounded_medication is the one narrow exception: it's general product
+ * information (compounded vs. brand-name, same active ingredient), not
+ * individualized clinical guidance, so Sarah may use it when a patient asks
+ * how their medication compares to a brand name (semaglutide/Ozempic/Wegovy,
+ * tirzepatide/Mounjaro/Zepbound) — see the topic-gated rule in
+ * lib/support/safety.ts.
  */
 export const SARAH_TOPIC_KEYS = new Set([
   "insurance_payment",
@@ -580,6 +587,7 @@ export const SARAH_TOPIC_KEYS = new Set([
   "privacy_hipaa",
   "auto_refill",
   "portal_help",
+  "compounded_medication",
 ]);
 
 /** Topics available to Sarah's conversation loop. */

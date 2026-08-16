@@ -1,15 +1,20 @@
 /**
  * Pre- and post-Claude safety rules for Sarah, the post-purchase support bot.
  *
- * Sarah has zero approved clinical content — unlike Lucy, there is no
- * topic-gated carve-out for dosing/side-effect language. Any patient message
- * asking about prescription specifics (dose, medication choice, side
- * effects, "why was I prescribed this") is routed to staff before Sarah ever
- * drafts a reply. Sarah's own replies may reference prescription/order
- * *status* (written, shipped, tracking number) using the plain factual
- * language the order-state context provides — that's not clinical content,
- * it's fulfillment status — but any clinical language in her own draft is
- * unconditionally rejected, no exceptions.
+ * Sarah has almost no approved clinical content. Any patient message asking
+ * about prescription specifics (dose, side effects, "why was I prescribed
+ * this") is routed to staff before Sarah ever drafts a reply. Sarah's own
+ * replies may reference prescription/order *status* (written, shipped,
+ * tracking number) using the plain factual language the order-state context
+ * provides — that's not clinical content, it's fulfillment status — but
+ * individualized clinical language (diagnosis, dosing, symptoms, side
+ * effects) in her own draft is unconditionally rejected, no exceptions.
+ *
+ * The one topic-gated carve-out is compounded_medication: naming a
+ * medication (generic or brand — semaglutide/Ozempic, tirzepatide/Mounjaro/
+ * Zepbound) is permitted only when that topic is declared in
+ * knowledgeTopicsUsed, for general product-comparison questions a patient
+ * raises by name. See SARAH_TOPIC_SPECIFIC_LANGUAGE below.
  *
  * No database imports. No outbound messaging SDK imports.
  */
@@ -149,7 +154,9 @@ const ALLOWED_URLS_NORMALIZED = new Set([...ALLOWED_URLS].map(normalizeUrlForCom
 
 /**
  * Clinical content in Sarah's OWN reply — always rejected, no exceptions.
- * Unlike Lucy, there is no topic that unlocks any of this language.
+ * These describe individualized clinical judgment (diagnosis, dosing,
+ * symptoms, side effects) that Sarah must never produce regardless of which
+ * topic she's grounded in.
  * "prescription" as a plain status noun ("your prescription was written")
  * is NOT blocked here — only clinical specifics are.
  */
@@ -165,15 +172,30 @@ const SARAH_PROHIBITED_CLINICAL_RE = [
   /\bdos(e|es|age|ages|ing)\b/i,
   /\bside.?effect/i,
   /\b\d+\s?mg\b/i,
-  /\bsemaglutide\b/i,
-  /\btirzepatide\b/i,
-  // Brand names — Sarah should never need to name a specific medication,
-  // generic or brand, but the generic-name check above didn't cover these.
-  /\bozempic\b/i,
-  /\bwegovy\b/i,
-  /\bmounjaro\b/i,
-  /\bzepbound\b/i,
 ] as const;
+
+/**
+ * Product-name language, topic-gated behind compounded_medication.
+ *
+ * A patient bringing up a brand name ("how is this different from Ozempic")
+ * is asking for general product information, not individualized clinical
+ * guidance — Sarah may answer using the compounded_medication topic (same
+ * approved text Lucy uses). Without that topic declared, naming any
+ * medication — generic or brand — is still rejected exactly as before.
+ */
+interface SarahTopicSpecificRule {
+  readonly pattern: RegExp;
+  readonly requiredTopics: ReadonlySet<string>;
+  readonly code: "PROHIBITED_CLINICAL";
+}
+
+const SARAH_TOPIC_SPECIFIC_LANGUAGE: readonly SarahTopicSpecificRule[] = [
+  {
+    pattern: /\bsemaglutide\b|\btirzepatide\b|\bozempic\b|\bwegovy\b|\bmounjaro\b|\bzepbound\b/i,
+    requiredTopics: new Set(["compounded_medication"]),
+    code: "PROHIBITED_CLINICAL",
+  },
+];
 
 const STAFF_AVAIL_RE = /\b(monitoring|monitored|watching|standing\s+by|on\s+call).{0,40}(24\/7|around\s+the\s+clock|all\s+the\s+time|right\s+now)\b/i;
 
@@ -226,6 +248,15 @@ export function supportPostCheck(
 
     if (SARAH_PROHIBITED_CLINICAL_RE.some((re) => re.test(reply))) {
       return { ok: false, code: "PROHIBITED_CLINICAL" };
+    }
+
+    for (const rule of SARAH_TOPIC_SPECIFIC_LANGUAGE) {
+      if (rule.pattern.test(reply)) {
+        const hasRequired = raw.knowledgeTopicsUsed.some((k) => rule.requiredTopics.has(k));
+        if (!hasRequired) {
+          return { ok: false, code: rule.code };
+        }
+      }
     }
 
     if (STAFF_AVAIL_RE.test(reply)) {
