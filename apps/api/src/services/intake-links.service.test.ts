@@ -91,7 +91,7 @@ describe("intake-links.service", () => {
       const [job] = await db.select().from(followUpJobsTable).where(eq(followUpJobsTable.personId, personId));
       expect(job).toBeDefined();
       expect(job.status).toBe("pending");
-      expect(job.jobType).toBe("abandoned_intake_followup");
+      expect(job.messageStep).toBe("provider_check_in");
       const dueInMs = new Date(job.dueAt).getTime() - new Date(token.clickedAt!).getTime();
       expect(dueInMs).toBeGreaterThan(2 * 60 * 60 * 1000 - 5000);
       expect(dueInMs).toBeLessThan(2 * 60 * 60 * 1000 + 5000);

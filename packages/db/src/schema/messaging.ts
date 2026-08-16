@@ -32,11 +32,13 @@ export const intakeLinkTokensTable = pgTable(
 );
 
 /**
- * A scheduled follow-up, armed by the first click on an intake link. A sweep
- * flips `pending` jobs to `ready` once due, unless the person already
- * completed the questionnaire or purchased in the meantime (`cancelled`).
- * `ready` jobs are where automated sending will eventually hook in once an
- * SMS/phone provider is chosen; for now they're a manual follow-up queue.
+ * A scheduled follow-up SMS, armed by the first click on an intake link.
+ * A sweep sends `pending` jobs once due (via the SMS provider — see
+ * lib/sms-provider.ts) unless the person already completed the
+ * questionnaire or purchased in the meantime (`cancelled`), fully automated,
+ * no manual step. `provider_check_in` fires 2 hours after the click; if it
+ * sends successfully, `intake_questions_check_in` is scheduled 1 hour after
+ * that (relative to the actual send, not the original click).
  */
 export const followUpJobsTable = pgTable(
   "follow_up_jobs",
@@ -48,11 +50,15 @@ export const followUpJobsTable = pgTable(
     intakeLinkTokenId: uuid("intake_link_token_id")
       .notNull()
       .references(() => intakeLinkTokensTable.id, { onDelete: "cascade" }),
-    jobType: text("job_type", { enum: ["abandoned_intake_followup"] }).notNull().default("abandoned_intake_followup"),
+    messageStep: text("message_step", { enum: ["provider_check_in", "intake_questions_check_in"] })
+      .notNull()
+      .default("provider_check_in"),
     dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
-    status: text("status", { enum: ["pending", "ready", "sent", "cancelled"] }).notNull().default("pending"),
-    readyAt: timestamp("ready_at", { withTimezone: true }),
+    status: text("status", { enum: ["pending", "sent", "cancelled", "failed"] }).notNull().default("pending"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    providerMessageId: text("provider_message_id"),
     cancelledReason: text("cancelled_reason"),
+    failureReason: text("failure_reason"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
@@ -60,7 +66,7 @@ export const followUpJobsTable = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => [
-    uniqueIndex("follow_up_jobs_intake_link_token_id_key").on(t.intakeLinkTokenId),
+    uniqueIndex("follow_up_jobs_token_message_step_key").on(t.intakeLinkTokenId, t.messageStep),
     index("follow_up_jobs_status_due_at_idx").on(t.status, t.dueAt),
     index("follow_up_jobs_person_id_idx").on(t.personId),
   ],

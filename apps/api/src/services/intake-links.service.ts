@@ -77,7 +77,7 @@ export async function handleIntakeLinkClick(rawToken: string): Promise<{ redirec
       await tx.insert(followUpJobsTable).values({
         personId: token.personId,
         intakeLinkTokenId: token.id,
-        jobType: "abandoned_intake_followup",
+        messageStep: "provider_check_in",
         dueAt: new Date(Date.now() + FOLLOW_UP_DELAY_MS),
       });
     }
