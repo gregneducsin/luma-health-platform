@@ -72,24 +72,35 @@ const LEGAL_WORDS_LOWER = ["attorney", "lawyer", "lawsuit", "sue ", "sue,", " su
  * is deliberately no exception path here.
  */
 const PRESCRIPTION_QUESTION_PHRASES_LOWER = [
+  // Dose specifics — any mention at all routes to staff. Was previously
+  // limited to "what dose"/"my dose"/specific increase-decrease phrasings,
+  // which missed plain rephrasings like "how many mg do I take" or
+  // "my dose hasn't changed" that don't happen to match one of the
+  // anticipated patterns. Bare "dose"/"mg" catches the concept regardless
+  // of phrasing — there's no legitimate non-clinical reason for a patient
+  // message to contain either word.
+  "dose",
+  "doses",
   "dosage",
   "dosing",
-  "what dose",
-  "my dose",
+  "mg",
   "side effect",
   "diagnosis",
   "diagnose",
   "symptom",
   "why was i prescribed",
+  "why am i prescribed",
   "why did you prescribe",
+  "why am i on",
+  "what medication am i",
+  "which medication am i",
+  "what am i taking",
+  "what am i on",
   "change my prescription",
   "different medication",
   "switch my medication",
+  "change the medication",
   "refill early",
-  "increase my dose",
-  "decrease my dose",
-  "lower my dose",
-  "higher dose",
   "is it safe",
   "interact with",
   "allergic",
@@ -118,8 +129,23 @@ export function supportPreCheck(lastInbound: string): SupportPreCheckResult {
 
 // ── Post-check patterns ───────────────────────────────────────────────────────
 
-const URL_RE = /https?:\/\/[^\s)]+/gi;
+/**
+ * Matches a URL WITH OR WITHOUT an explicit http(s):// scheme — see the
+ * matching comment in messaging/safety.ts for why the scheme is optional.
+ */
+const URL_RE = /(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|org|net|io|co)\b(?:\/[^\s)]*)?/gi;
+
+/** Strips scheme/www/trailing-slash so an approved URL still matches whether or not Sarah echoes its scheme. */
+function normalizeUrlForComparison(url: string): string {
+  return url
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\/+$/, "");
+}
+
 const ALLOWED_URLS = new Set([...APPROVED_REVIEW_URLS, APPROVED_PORTAL_URL, APPROVED_REVIEW_WRITE_URL]);
+const ALLOWED_URLS_NORMALIZED = new Set([...ALLOWED_URLS].map(normalizeUrlForComparison));
 
 /**
  * Clinical content in Sarah's OWN reply — always rejected, no exceptions.
@@ -129,13 +155,24 @@ const ALLOWED_URLS = new Set([...APPROVED_REVIEW_URLS, APPROVED_PORTAL_URL, APPR
  */
 const SARAH_PROHIBITED_CLINICAL_RE = [
   /\bdiagnos(e|is|ed|ing)\b/i,
-  /\bcontraindicated?\b/i,
+  // Was verb-only (contraindicated); "contraindication(s)" (the noun form) is
+  // an equally common phrasing and was slipping through unblocked.
+  /\bcontraindicat(e|ed|es|ing|ion|ions)\b/i,
   /\bsymptom/i,
-  /\bdos(age|ing)\b/i,
+  // Was "dosage/dosing" only — bare "dose"/"doses" ("your dose hasn't
+  // changed") is the single most natural way to phrase this and wasn't
+  // blocked at all.
+  /\bdos(e|es|age|ages|ing)\b/i,
   /\bside.?effect/i,
   /\b\d+\s?mg\b/i,
   /\bsemaglutide\b/i,
   /\btirzepatide\b/i,
+  // Brand names — Sarah should never need to name a specific medication,
+  // generic or brand, but the generic-name check above didn't cover these.
+  /\bozempic\b/i,
+  /\bwegovy\b/i,
+  /\bmounjaro\b/i,
+  /\bzepbound\b/i,
 ] as const;
 
 const STAFF_AVAIL_RE = /\b(monitoring|monitored|watching|standing\s+by|on\s+call).{0,40}(24\/7|around\s+the\s+clock|all\s+the\s+time|right\s+now)\b/i;
@@ -173,7 +210,7 @@ export function supportPostCheck(
     const urlMatches = [...reply.matchAll(URL_RE)];
     for (const match of urlMatches) {
       const url = match[0].replace(/[.,;)'"]+$/, "");
-      if (!ALLOWED_URLS.has(url)) {
+      if (!ALLOWED_URLS_NORMALIZED.has(normalizeUrlForComparison(url))) {
         return { ok: false, code: "UNAPPROVED_URL" };
       }
     }

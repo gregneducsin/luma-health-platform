@@ -248,7 +248,26 @@ export function interactivePreCheck(lastInbound: string): InteractivePreCheckRes
 
 // ── Post-check patterns ───────────────────────────────────────────────────────
 
-const URL_RE = /https?:\/\/[^\s)]+/gi;
+/**
+ * Matches a URL WITH OR WITHOUT an explicit http(s):// scheme — a bare
+ * "lumahealth-fake.com/abc" is just as much an output link as
+ * "https://lumahealth-fake.com/abc", and the old scheme-required pattern let
+ * a schemeless link through the UNAPPROVED_URL check entirely. Scheme is
+ * optional; everything else about the shape (domain + recognized TLD +
+ * optional path/query) still has to look like a URL.
+ */
+const URL_RE = /(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|org|net|io|co)\b(?:\/[^\s)]*)?/gi;
+
+/** Strips scheme/www/trailing-slash so an approved URL still matches whether or not Claude echoes its scheme. */
+function normalizeUrlForComparison(url: string): string {
+  return url
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\/+$/, "");
+}
+
+const APPROVED_REVIEW_URLS_NORMALIZED = new Set([...APPROVED_REVIEW_URLS].map(normalizeUrlForComparison));
 
 /**
  * Clinical content ALWAYS rejected, regardless of which Lucy knowledge topics
@@ -260,7 +279,8 @@ const URL_RE = /https?:\/\/[^\s)]+/gi;
  * "symptom" is included here because it does not appear in any Lucy approved
  * text and its presence in a reply strongly signals individualized assessment.
  */
-const UNCONDITIONAL_CLINICAL_RE = [/\bdiagnos(e|is|ed|ing)\b/i, /\bcontraindicated?\b/i, /\bsymptom/i] as const;
+// contraindicat(e|ed|es|ing|ion|ions) — was verb-only (contraindicated?), missing the noun form "contraindication(s)".
+const UNCONDITIONAL_CLINICAL_RE = [/\bdiagnos(e|is|ed|ing)\b/i, /\bcontraindicat(e|ed|es|ing|ion|ions)\b/i, /\bsymptom/i] as const;
 
 /**
  * Topic-specific language rules.
@@ -390,6 +410,20 @@ const INSURANCE_MENTION_RE = /\binsur(e|ance)\b/i;
 
 /** Dollar-amount pattern — only blocked when no approved pricing topic is used. */
 const DOLLAR_AMOUNT_RE = /\$\d+/;
+const DOLLAR_AMOUNT_GLOBAL_RE = /\$(\d+)/g;
+
+/**
+ * Every dollar figure that ever appears in approved pricing content: the two
+ * product catalogs (semaglutide/tirzepatide, all plan lengths, monthly and
+ * total), the $20 promo discount itself, and the two promo-adjusted 1-month
+ * prices the prompt tells Claude to quote once promoOffered is true (see
+ * provider.ts's promoState text). Declaring a pricing topic only proves
+ * Claude cited *a* topic — it says nothing about whether the number it then
+ * quotes is one of these. This closes that gap: once any pricing topic is
+ * declared, every dollar amount in the reply must be a member of this set,
+ * not just "a topic was mentioned somewhere."
+ */
+const APPROVED_DOLLAR_AMOUNTS = new Set(["20", "78", "80", "100", "120", "145", "147", "150", "165", "240", "450", "468", "882"]);
 
 /**
  * The only approved promotional discount amount.
@@ -558,7 +592,7 @@ export function interactivePostCheck(
     for (const match of urlMatches) {
       // Strip trailing punctuation that might be appended by Claude
       const url = match[0].replace(/[.,;)'"]+$/, "");
-      if (!APPROVED_REVIEW_URLS.has(url)) {
+      if (!APPROVED_REVIEW_URLS_NORMALIZED.has(normalizeUrlForComparison(url))) {
         return { ok: false, code: "UNAPPROVED_URL" };
       }
     }
@@ -622,6 +656,21 @@ export function interactivePostCheck(
     const hasPricingTopic = raw.knowledgeTopicsUsed.some((k) => APPROVED_PRICING_TOPIC_KEYS.has(k));
     if (!hasPricingTopic && DOLLAR_AMOUNT_RE.test(reply)) {
       return { ok: false, code: "UNSUPPORTED_PRICING_CLAIM" };
+    }
+
+    // A pricing topic being declared only proves Claude cited one — it doesn't
+    // prove the number is real. Every dollar amount quoted must be one of the
+    // actual approved figures, not just "some number, with a pricing topic
+    // attached." Catches e.g. knowledgeTopicsUsed:["tirzepatide_pricing"] with
+    // reply "$299 a month" — a fabricated price that the topic-only check above
+    // would otherwise wave through.
+    if (hasPricingTopic) {
+      DOLLAR_AMOUNT_GLOBAL_RE.lastIndex = 0;
+      for (const match of reply.matchAll(DOLLAR_AMOUNT_GLOBAL_RE)) {
+        if (!APPROVED_DOLLAR_AMOUNTS.has(match[1])) {
+          return { ok: false, code: "UNSUPPORTED_PRICING_CLAIM" };
+        }
+      }
     }
 
     // ── Promotion-specific rules (active whenever first_month_offer is declared) ─

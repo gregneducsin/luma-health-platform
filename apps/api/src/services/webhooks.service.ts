@@ -1,4 +1,4 @@
-import { and, eq, ilike } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   db,
   webhookEventsTable,
@@ -20,6 +20,19 @@ import type {
 import { scheduleAbandonedCartOpener } from "./abandoned-cart.service.js";
 import { sendMetaLeadOpener } from "./meta-lead.service.js";
 import { sendOrderReceivedOpener, handlePrescriptionWritten, handleOrderShipped } from "./order-fulfillment.service.js";
+
+/**
+ * Case-insensitive exact email match — NOT ilike(), which treats `_` and `%`
+ * in the pattern as live SQL wildcards. `_` in particular is an ordinary,
+ * common character in an email local-part (john_doe@example.com), so an
+ * ilike() lookup on a webhook-supplied email could match a completely
+ * different real customer's email that merely fits the wildcard pattern,
+ * misattributing one person's order/prescription/tracking data to another.
+ * lower()-equality has no wildcard semantics at all.
+ */
+function caseInsensitiveEmailEq(email: string) {
+  return sql`lower(${customersTable.email}) = lower(${email})`;
+}
 
 // ── Shared idempotency + audit-log helpers ──────────────────────────────────
 
@@ -78,7 +91,7 @@ export async function findOrCreateCustomerByExternalIdentity(params: {
       .where(and(eq(externalIdentitiesTable.system, params.system), eq(externalIdentitiesTable.externalId, params.externalId)));
     if (byIdentity) return { id: byIdentity.personId };
 
-    const [byEmail] = await tx.select({ id: customersTable.id }).from(customersTable).where(ilike(customersTable.email, params.email));
+    const [byEmail] = await tx.select({ id: customersTable.id }).from(customersTable).where(caseInsensitiveEmailEq(params.email));
 
     const customerId = byEmail
       ? byEmail.id
@@ -117,7 +130,7 @@ async function tryFindCustomerByExternalIdentityOrEmail(system: string, external
   if (byIdentity) return byIdentity.personId;
 
   if (email) {
-    const [byEmail] = await db.select({ id: customersTable.id }).from(customersTable).where(ilike(customersTable.email, email));
+    const [byEmail] = await db.select({ id: customersTable.id }).from(customersTable).where(caseInsensitiveEmailEq(email));
     if (byEmail) return byEmail.id;
   }
   return undefined;

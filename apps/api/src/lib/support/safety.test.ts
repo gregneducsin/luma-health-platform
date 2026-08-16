@@ -41,6 +41,19 @@ describe("supportPreCheck", () => {
     expect(supportPreCheck("how do I log into the portal")).toEqual({ blocked: false });
   });
 
+  it("does not block plain fulfillment questions that happen to mention medication generically", () => {
+    expect(supportPreCheck("when will my medication ship")).toEqual({ blocked: false });
+    expect(supportPreCheck("has my medication been sent yet")).toEqual({ blocked: false });
+  });
+
+  it("blocks natural rephrasings of prescription-specific questions that previously slipped through", () => {
+    expect(supportPreCheck("how many mg do I take")).toEqual({ blocked: true, code: "PRESCRIPTION_QUESTION" });
+    expect(supportPreCheck("what medication am I on")).toEqual({ blocked: true, code: "PRESCRIPTION_QUESTION" });
+    expect(supportPreCheck("what am I taking")).toEqual({ blocked: true, code: "PRESCRIPTION_QUESTION" });
+    expect(supportPreCheck("why am I prescribed this")).toEqual({ blocked: true, code: "PRESCRIPTION_QUESTION" });
+    expect(supportPreCheck("my dose hasn't changed, is that right")).toEqual({ blocked: true, code: "PRESCRIPTION_QUESTION" });
+  });
+
   it("blocks legal content", () => {
     expect(supportPreCheck("I'm going to get my lawyer involved")).toEqual({ blocked: true, code: "LEGAL_CONTENT" });
   });
@@ -59,6 +72,16 @@ describe("supportPostCheck", () => {
   it("rejects an unapproved URL", () => {
     const result = check(reply({ reply: "Check here: https://example.com/random" }));
     expect(result).toEqual({ ok: false, code: "UNAPPROVED_URL" });
+  });
+
+  it("rejects an unapproved URL even without an http(s):// scheme", () => {
+    const result = check(reply({ reply: "Check out lumahealth-fake.com/abc123 for more." }));
+    expect(result).toEqual({ ok: false, code: "UNAPPROVED_URL" });
+  });
+
+  it("still allows the approved portal URL echoed without its scheme", () => {
+    const result = check(reply({ reply: "You can check that in the portal: go.mylumahealth.com/login" }));
+    expect(result.ok).toBe(true);
   });
 
   it("accepts the approved portal URL", () => {
@@ -93,6 +116,22 @@ describe("supportPostCheck", () => {
   it("rejects dosage/side-effect language unconditionally", () => {
     expect(check(reply({ reply: "The dosing schedule is 5mg weekly." }))).toEqual({ ok: false, code: "PROHIBITED_CLINICAL" });
     expect(check(reply({ reply: "Side effects are common with this medication." }))).toEqual({ ok: false, code: "PROHIBITED_CLINICAL" });
+  });
+
+  it("rejects the bare word 'dose' as well as 'dosage'", () => {
+    expect(check(reply({ reply: "Your dose hasn't changed." }))).toEqual({ ok: false, code: "PROHIBITED_CLINICAL" });
+    expect(check(reply({ reply: "Both doses are still on file." }))).toEqual({ ok: false, code: "PROHIBITED_CLINICAL" });
+  });
+
+  it("rejects brand medication names, not just the generic names", () => {
+    expect(check(reply({ reply: "You're currently on Mounjaro." }))).toEqual({ ok: false, code: "PROHIBITED_CLINICAL" });
+    expect(check(reply({ reply: "That's different from Ozempic." }))).toEqual({ ok: false, code: "PROHIBITED_CLINICAL" });
+    expect(check(reply({ reply: "Wegovy works similarly." }))).toEqual({ ok: false, code: "PROHIBITED_CLINICAL" });
+    expect(check(reply({ reply: "Zepbound is a different brand." }))).toEqual({ ok: false, code: "PROHIBITED_CLINICAL" });
+  });
+
+  it("rejects the noun form 'contraindications', not just the verb 'contraindicated'", () => {
+    expect(check(reply({ reply: "There are no contraindications with this." }))).toEqual({ ok: false, code: "PROHIBITED_CLINICAL" });
   });
 
   it("allows the plain word 'prescription' as a status noun", () => {

@@ -89,6 +89,50 @@ describe("Webhooks", () => {
       expect(allWithEmail).toHaveLength(1);
     });
 
+    it("does not match a different real customer whose email merely fits the other one as a SQL wildcard pattern", async () => {
+      const { db, customersTable, externalIdentitiesTable } = await import("@luma/db");
+      const { eq } = await import("drizzle-orm");
+
+      // Existing customer A. Under a vulnerable ilike() lookup, "_" in a later
+      // webhook's email would match ANY single character here, so "john_doe"
+      // would incorrectly match "john5doe".
+      await request(app)
+        .post("/api/webhooks/ghl-lead")
+        .set("x-webhook-secret", GHL_SECRET)
+        .send({
+          eventId: "ghl-evt-wildcard-a",
+          contactId: "ghl-contact-wildcard-a",
+          firstName: "Customer",
+          lastName: "A",
+          email: "john5doe@example.com",
+          occurredAt: new Date().toISOString(),
+        });
+
+      // A different real customer B, whose email contains a literal "_" that
+      // happens to sit exactly where A's email has a "5".
+      const resB = await request(app)
+        .post("/api/webhooks/ghl-lead")
+        .set("x-webhook-secret", GHL_SECRET)
+        .send({
+          eventId: "ghl-evt-wildcard-b",
+          contactId: "ghl-contact-wildcard-b",
+          firstName: "Customer",
+          lastName: "B",
+          email: "john_doe@example.com",
+          occurredAt: new Date().toISOString(),
+        });
+      expect(resB.status).toBe(200);
+
+      const [customerA] = await db.select().from(customersTable).where(eq(customersTable.email, "john5doe@example.com"));
+      const [customerB] = await db.select().from(customersTable).where(eq(customersTable.email, "john_doe@example.com"));
+      expect(customerA).toBeTruthy();
+      expect(customerB).toBeTruthy();
+      expect(customerB.id).not.toBe(customerA.id);
+
+      const [identityB] = await db.select().from(externalIdentitiesTable).where(eq(externalIdentitiesTable.externalId, "ghl-contact-wildcard-b"));
+      expect(identityB.personId).toBe(customerB.id);
+    });
+
     it("rejects an invalid payload with 400", async () => {
       const res = await request(app)
         .post("/api/webhooks/ghl-lead")
