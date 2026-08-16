@@ -198,16 +198,18 @@ describe("Webhooks", () => {
           eventId: "bask-order-evt-1",
           externalPersonId: "bask-person-1",
           email: "orderer@example.com",
-          orderNumber: "BASK-1",
+          orderId: "BASK-1",
           productName: "Program",
-          amountPaid: "199.00",
-          purchaseDate: "2026-02-01",
-          occurredAt: new Date().toISOString(),
+          amountPaid: 199,
+          purchasedAt: "2026-02-01T10:00:00.000Z",
         });
       expect(res.status).toBe(200);
 
       const purchases = await db.select().from(purchasesTable).where(eq(purchasesTable.customerId, customer!.id));
       expect(purchases).toHaveLength(1);
+      expect(purchases[0].orderNumber).toBe("BASK-1");
+      expect(purchases[0].amountPaid).toBe("199.00");
+      expect(purchases[0].purchaseDate).toBe("2026-02-01");
       expect(purchases[0].orderClassification).toBe("first_order");
       expect(purchases[0].orderClassificationSource).toBe("bask");
     });
@@ -222,11 +224,11 @@ describe("Webhooks", () => {
           email: "neworderer@example.com",
           firstName: "New",
           lastName: "Orderer",
-          orderNumber: "BASK-2",
+          phone: "+15551110002",
+          orderId: "BASK-2",
           productName: "Program",
           amountPaid: "99.00",
-          purchaseDate: "2026-02-05",
-          occurredAt: new Date().toISOString(),
+          purchasedAt: "2026-02-05T09:00:00.000Z",
         });
       expect(res.status).toBe(200);
 
@@ -234,6 +236,31 @@ describe("Webhooks", () => {
       const { eq } = await import("drizzle-orm");
       const [customer] = await db.select().from(customersTable).where(eq(customersTable.email, "neworderer@example.com"));
       expect(customer).toBeTruthy();
+      expect(customer.phone).toBe("+15551110002");
+    });
+
+    it("accepts a formatted-string amountPaid and uses transactionId as ecommerceOrderId when set", async () => {
+      const res = await request(app)
+        .post("/api/webhooks/bask-order")
+        .set("x-webhook-secret", ORDER_SECRET)
+        .send({
+          eventId: "bask-order-evt-transaction-id",
+          externalPersonId: "bask-person-transaction-id",
+          email: "transaction-id@example.com",
+          orderId: "BASK-3",
+          productName: "Program",
+          amountPaid: "149.50",
+          purchasedAt: "2026-02-06T09:00:00.000Z",
+          transactionId: "txn-abc-123",
+        });
+      expect(res.status).toBe(200);
+
+      const { db, customersTable, purchasesTable } = await import("@luma/db");
+      const { eq } = await import("drizzle-orm");
+      const [customer] = await db.select().from(customersTable).where(eq(customersTable.email, "transaction-id@example.com"));
+      const [purchase] = await db.select().from(purchasesTable).where(eq(purchasesTable.customerId, customer!.id));
+      expect(purchase.amountPaid).toBe("149.50");
+      expect(purchase.ecommerceOrderId).toBe("txn-abc-123");
     });
   });
 

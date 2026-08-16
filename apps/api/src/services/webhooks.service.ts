@@ -165,13 +165,17 @@ export async function handleBaskOrderWebhook(payload: BaskOrderWebhookRequest): 
   if (!recorded) return { duplicate: true };
 
   try {
+    const purchaseDate = occurredDate(payload.purchasedAt);
+    const amountPaid = typeof payload.amountPaid === "number" ? payload.amountPaid.toFixed(2) : payload.amountPaid;
+
     const { id: customerId } = await findOrCreateCustomerByExternalIdentity({
       system: "bask",
       externalId: payload.externalPersonId,
       email: payload.email,
       firstName: payload.firstName,
       lastName: payload.lastName,
-      leadReceivedDate: payload.purchaseDate,
+      phone: payload.phone,
+      leadReceivedDate: purchaseDate,
     });
 
     await db.transaction(async (tx) => {
@@ -182,11 +186,11 @@ export async function handleBaskOrderWebhook(payload: BaskOrderWebhookRequest): 
 
       await tx.insert(purchasesTable).values({
         customerId,
-        purchaseDate: payload.purchaseDate,
-        orderNumber: payload.orderNumber,
+        purchaseDate,
+        orderNumber: payload.orderId,
         productName: payload.productName,
-        amountPaid: payload.amountPaid,
-        ecommerceOrderId: payload.ecommerceOrderId,
+        amountPaid,
+        ecommerceOrderId: payload.ecommerceOrderId ?? payload.transactionId,
         orderClassification: earlier ? "recurring" : "first_order",
         orderClassificationSource: "bask",
       });

@@ -25,12 +25,22 @@ export const baskOrderWebhookRequestSchema = z.object({
   email: z.string().email(),
   firstName: z.string().min(1).optional(),
   lastName: z.string().min(1).optional(),
-  orderNumber: z.string().min(1),
+  phone: z.string().min(1).optional(),
+  // Bask's own field name — matches its native payload, not our internal
+  // purchases.orderNumber column name. The handler maps orderId -> orderNumber.
+  orderId: z.string().min(1),
   productName: z.string().min(1),
-  amountPaid: z.string().regex(/^\d+(\.\d{1,2})?$/),
-  purchaseDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  // Bask sends this as a JSON number; other sources may send a formatted
+  // string. The handler normalizes either to a fixed 2-decimal string.
+  amountPaid: z.union([z.string().regex(/^\d+(\.\d{1,2})?$/), z.number().nonnegative()]),
+  // A single full timestamp — the handler derives both the purchase date
+  // (date-only) and the webhook-event occurred date from this one field,
+  // since Bask only provides one timestamp, not two.
+  purchasedAt: z.string().datetime(),
   ecommerceOrderId: z.string().min(1).optional(),
-  occurredAt: z.string().datetime(),
+  // Bask's own transaction identifier — used as ecommerceOrderId when that
+  // field isn't separately provided.
+  transactionId: z.string().min(1).optional(),
 });
 export type BaskOrderWebhookRequest = z.infer<typeof baskOrderWebhookRequestSchema>;
 
