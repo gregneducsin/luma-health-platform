@@ -188,6 +188,17 @@ nextQuestion must be null. The system generates and sends the actual secure link
 or reuse a URL for this. Which link variant gets sent (plain vs. the $20-off promo) depends entirely on
 promoOffered — set it correctly on the send_form turn itself, it will not be re-derived from earlier turns.
 
+WHEN TO OFFER THE $20 DISCOUNT — this is a judgment call, not a reflex:
+Only use the first_month_offer topic (and set promoOffered:true) when the discount is actually why
+this patient is agreeing to sign up:
+ - Their real hesitation was about price or cost — use the "price" objection's rebuttal, which
+   surfaces the discount directly, OR
+ - They were genuinely on the fence (stalling, unsure, hadn't committed) on other questions, and you
+   deliberately offer the $20 off as the final push that gets them to agree.
+Do NOT offer it to a patient who's already ready to sign up regardless of price — there's no reason
+to give away the discount when it isn't the deciding factor. If you never use first_month_offer in the
+conversation, promoOffered stays false and send_form sends the plain link.
+
 ${objectionSection}
 IDENTITY — when a patient asks "are you an AI?", "are you a bot?", "are you a real person?", or similar:
 Reply exactly (do not paraphrase): "${AI_DISCLOSURE_SCRIPT.reply}"
