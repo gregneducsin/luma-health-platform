@@ -624,3 +624,70 @@ describe("Webhooks", () => {
     });
   });
 });
+
+describe("recordWebhookEventIfNew idempotency claim", () => {
+  it("claims a genuinely new event", async () => {
+    const { recordWebhookEventIfNew } = await import("../../services/webhooks.service.js");
+    const claimed = await recordWebhookEventIfNew("ghl_lead", `claim-new-${crypto.randomUUID()}`, { a: 1 });
+    expect(claimed).not.toBeNull();
+  });
+
+  it("does not reclaim an event still in-flight (status=received, recent)", async () => {
+    const { recordWebhookEventIfNew } = await import("../../services/webhooks.service.js");
+    const eventId = `claim-inflight-${crypto.randomUUID()}`;
+    const first = await recordWebhookEventIfNew("ghl_lead", eventId, { a: 1 });
+    expect(first).not.toBeNull();
+
+    // A concurrent/duplicate delivery of the same event while the first is
+    // still (nominally) being processed must not be reprocessed too.
+    const second = await recordWebhookEventIfNew("ghl_lead", eventId, { a: 1 });
+    expect(second).toBeNull();
+  });
+
+  it("does not reclaim an already-processed event", async () => {
+    const { recordWebhookEventIfNew, markWebhookEventProcessed } = await import("../../services/webhooks.service.js");
+    const eventId = `claim-processed-${crypto.randomUUID()}`;
+    const first = await recordWebhookEventIfNew("ghl_lead", eventId, { a: 1 });
+    expect(first).not.toBeNull();
+    await markWebhookEventProcessed(first!.id);
+
+    const replay = await recordWebhookEventIfNew("ghl_lead", eventId, { a: 1 });
+    expect(replay).toBeNull();
+  });
+
+  it("reclaims an event whose previous attempt failed, instead of silently treating the retry as a duplicate", async () => {
+    const { recordWebhookEventIfNew, markWebhookEventFailed } = await import("../../services/webhooks.service.js");
+    const { db, webhookEventsTable } = await import("@luma/db");
+    const { eq } = await import("drizzle-orm");
+    const eventId = `claim-failed-${crypto.randomUUID()}`;
+
+    const first = await recordWebhookEventIfNew("ghl_lead", eventId, { a: 1 });
+    expect(first).not.toBeNull();
+    await markWebhookEventFailed(first!.id, "transient DB timeout");
+
+    // Sender retries the same event after the transient failure.
+    const retry = await recordWebhookEventIfNew("ghl_lead", eventId, { a: 2 });
+    expect(retry).not.toBeNull();
+    expect(retry!.id).toBe(first!.id);
+
+    const [row] = await db.select().from(webhookEventsTable).where(eq(webhookEventsTable.id, first!.id));
+    expect(row.status).toBe("received");
+    expect(row.errorMessage).toBeNull();
+    expect(row.rawPayload).toEqual({ a: 2 });
+  });
+
+  it("reclaims a stuck event: status=received but received long enough ago to imply a crashed process", async () => {
+    const { recordWebhookEventIfNew } = await import("../../services/webhooks.service.js");
+    const { db, webhookEventsTable } = await import("@luma/db");
+    const { eq } = await import("drizzle-orm");
+    const eventId = `claim-stale-received-${crypto.randomUUID()}`;
+
+    const first = await recordWebhookEventIfNew("ghl_lead", eventId, { a: 1 });
+    expect(first).not.toBeNull();
+    await db.update(webhookEventsTable).set({ receivedAt: new Date(Date.now() - 10 * 60 * 1000) }).where(eq(webhookEventsTable.id, first!.id));
+
+    const retry = await recordWebhookEventIfNew("ghl_lead", eventId, { a: 1 });
+    expect(retry).not.toBeNull();
+    expect(retry!.id).toBe(first!.id);
+  });
+});

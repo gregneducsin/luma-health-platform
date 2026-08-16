@@ -37,21 +37,37 @@ function caseInsensitiveEmailEq(email: string) {
 // ── Shared idempotency + audit-log helpers ──────────────────────────────────
 
 /**
- * Atomically records a webhook delivery. Returns null if (source,
- * externalEventId) was already recorded — the caller should treat that as
- * a successful no-op replay (return 200 without reprocessing), not an error.
+ * Atomically claims a webhook delivery for processing. Returns null when the
+ * caller should treat this as a no-op replay (return 200 without
+ * reprocessing) — either it's already `processed`, or another in-flight
+ * request is currently handling it (status `received`, received recently).
+ *
+ * Returns a claimed row (and RESETS status back to `received`) in two cases
+ * beyond a genuinely first-ever delivery: the previous attempt ended in
+ * `failed` (a transient error shouldn't permanently block every future
+ * retry — the row existing was silently treated as "already handled" before
+ * this fix, so the sender got a 200 and the real data never landed), or the
+ * row has been stuck in `received` for more than 5 minutes (processing here
+ * is synchronous within one HTTP request and normally finishes in well
+ * under a second, so anything still `received` that long almost certainly
+ * means the process crashed mid-request, not that it's still working).
  */
 export async function recordWebhookEventIfNew(
   source: WebhookEvent["source"],
   externalEventId: string,
   rawPayload: unknown,
 ): Promise<{ id: string } | null> {
-  const [row] = await db
-    .insert(webhookEventsTable)
-    .values({ source, externalEventId, rawPayload: rawPayload as Record<string, unknown> })
-    .onConflictDoNothing({ target: [webhookEventsTable.source, webhookEventsTable.externalEventId] })
-    .returning({ id: webhookEventsTable.id });
-  return row ?? null;
+  const result = await db.execute<{ id: string }>(sql`
+    INSERT INTO webhook_events (source, external_event_id, raw_payload)
+    VALUES (${source}, ${externalEventId}, ${JSON.stringify(rawPayload)}::jsonb)
+    ON CONFLICT (source, external_event_id) DO UPDATE
+    SET status = 'received', raw_payload = excluded.raw_payload, error_message = null
+    WHERE webhook_events.status = 'failed'
+       OR (webhook_events.status = 'received' AND webhook_events.received_at < now() - interval '5 minutes')
+    RETURNING id
+  `);
+  const row = result.rows[0];
+  return row ? { id: row.id } : null;
 }
 
 export async function markWebhookEventProcessed(id: string, personId?: string): Promise<void> {
