@@ -16,6 +16,7 @@ import type {
   BaskPaymentFailedWebhookRequest,
 } from "@luma/shared";
 import { scheduleAbandonedCartOpener } from "./abandoned-cart.service.js";
+import { sendMetaLeadOpener } from "./meta-lead.service.js";
 
 // ── Shared idempotency + audit-log helpers ──────────────────────────────────
 
@@ -123,11 +124,16 @@ async function tryFindCustomerByExternalIdentityOrEmail(system: string, external
 
 const occurredDate = (iso: string) => iso.slice(0, 10);
 
+/** The exact leadType value GHL sends for a Meta (Facebook/Instagram) lead-gen form submission. */
+const META_FORM_FILL_LEAD_TYPE = "meta form fill";
+const isMetaFormFillLead = (leadType?: string): boolean => (leadType ?? "").trim().toLowerCase() === META_FORM_FILL_LEAD_TYPE;
+
 export async function handleGhlLeadWebhook(payload: GhlLeadWebhookRequest): Promise<{ duplicate: boolean }> {
   const recorded = await recordWebhookEventIfNew("ghl_lead", payload.eventId, payload);
   if (!recorded) return { duplicate: true };
 
   try {
+    const occurredAt = payload.occurredAt ?? new Date().toISOString();
     const { id: customerId } = await findOrCreateCustomerByExternalIdentity({
       system: "ghl",
       externalId: payload.contactId,
@@ -135,9 +141,17 @@ export async function handleGhlLeadWebhook(payload: GhlLeadWebhookRequest): Prom
       firstName: payload.firstName,
       lastName: payload.lastName,
       phone: payload.phone,
-      leadReceivedDate: occurredDate(payload.occurredAt),
+      leadReceivedDate: occurredDate(occurredAt),
       leadType: payload.leadType,
     });
+
+    // Meta form-fill leads are cold outreach — respond as fast as possible,
+    // so the opener fires synchronously on this same request, not off a
+    // scheduled sweep like the abandoned-cart trigger.
+    if (isMetaFormFillLead(payload.leadType)) {
+      await sendMetaLeadOpener(customerId);
+    }
+
     await markWebhookEventProcessed(recorded.id, customerId);
   } catch (err) {
     await markWebhookEventFailed(recorded.id, err instanceof Error ? err.message : String(err));

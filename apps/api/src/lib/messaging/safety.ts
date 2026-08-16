@@ -438,6 +438,18 @@ const SLOT_VALIDATORS: Record<string, readonly (string | null)[]> = {
   readyForForm: [null, "yes", "no"],
 };
 
+/**
+ * Slot keys that hold free text rather than a fixed enum, validated by shape
+ * (non-empty, bounded length) instead of membership. `state` is informational
+ * only — it never gates eligibility, since every state is serviced.
+ */
+const FREE_TEXT_SLOT_KEYS = new Set(["state"]);
+const FREE_TEXT_MAX_LENGTH = 60;
+
+function isValidFreeTextSlotValue(value: unknown): boolean {
+  return value === null || (typeof value === "string" && value.trim().length > 0 && value.length <= FREE_TEXT_MAX_LENGTH);
+}
+
 // Actions for which nextQuestion must be a valid single question
 const REPLY_TYPE_ACTIONS = new Set(["reply", "ask_product", "explain_process", "explain_pricing", "explain_inclusions"]);
 
@@ -702,6 +714,13 @@ export function interactivePostCheck(
   const rawSlotUpdates = effectiveRaw.slotUpdates as Record<string, unknown>;
   const validatedSlotUpdates: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(rawSlotUpdates)) {
+    if (FREE_TEXT_SLOT_KEYS.has(key)) {
+      if (!isValidFreeTextSlotValue(value)) {
+        return { ok: false, code: `INVALID_SLOT_VALUE` };
+      }
+      validatedSlotUpdates[key] = value;
+      continue;
+    }
     const allowed = SLOT_VALIDATORS[key];
     if (!allowed) {
       return { ok: false, code: `INVALID_SLOT_KEY` };

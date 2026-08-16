@@ -66,6 +66,13 @@ describe("Conversations", () => {
     expect(found.firstName).toBe("Route");
     expect(found.lastMessagePreview).toBe("yes I'm interested");
     expect(found.lastSentiment).toBe("positive");
+
+    expect(res.body.stats).toBeDefined();
+    expect(typeof res.body.stats.totalContacted).toBe("number");
+    expect(typeof res.body.stats.totalResponded).toBe("number");
+    expect(typeof res.body.stats.responseRate).toBe("number");
+    // This conversation (outbound then inbound) is included in the global count.
+    expect(res.body.stats.totalResponded).toBeGreaterThanOrEqual(1);
   });
 
   it("returns conversation detail with customer contact and full message history", async () => {

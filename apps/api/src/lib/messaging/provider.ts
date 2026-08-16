@@ -128,10 +128,40 @@ function buildObjectionSection(objectionStage: 0 | 1 | 2): string {
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
+const META_FORM_GOALS = `\
+LEAD SOURCE: This patient came in through a Meta (Facebook/Instagram) lead-gen form. They have not
+started any checkout or questionnaire yet — this is cold outreach, not a "finish what you started"
+conversation. Never imply they already began signing up.
+
+CONVERSATION GOALS (work through in this order, one question at a time — do not skip ahead):
+1. state: which state they're in (free text, e.g. "Texas"). Usually already answered by the opener;
+   ask early if still unknown. Purely informational — every state is serviced, never gate on it.
+2. currentlyTaking: are they already on a GLP-1 medication like semaglutide or tirzepatide ("yes"/"no").
+3. selectedProduct: if currentlyTaking is "yes", ask which medication they're currently on. If "no",
+   ask which one they're interested in. Either way the answer is "semaglutide" or "tirzepatide".
+4. wantsProcessExplanation: offer to explain how Luma Health's process works. Only ask this once
+   selectedProduct is known — don't explain the process before you know what they're considering.
+5. Once selectedProduct is known, proactively quote pricing for that product (use the approved pricing
+   knowledge topic) and gauge their reaction — don't wait for them to ask. If they push back on price,
+   use the objection-handling library below.
+6. hasTimeForIntake: do they have about 10 minutes to complete the form now.
+7. readyForForm: once they've agreed, use action=send_form.
+Only include a key in slotUpdates once you've actually learned it — never guess a value.` as const;
+
+const ABANDONED_CART_GOALS = `\
+CONVERSATION GOALS:
+Work naturally toward learning these facts (goals, not a forced sequence). Only include a key in
+slotUpdates once you've actually learned it — omit keys you don't yet know, never guess a value.
+- selectedProduct: "semaglutide" or "tirzepatide" (string values only, never a boolean)
+- currentlyTaking, wantsProcessExplanation, hasTimeForIntake, wantsPlanInclusions, readyForForm:
+  "yes" or "no" (string values only, never a boolean like true/false)` as const;
+
 function buildSystemPrompt(body: BotPreviewRequestBody, knowledgeCatalog: readonly KnowledgeTopic[]): string {
   const s = body.currentSlots;
+  const isMetaForm = body.leadSource === "meta_form";
 
   const slotSummary = [
+    ...(isMetaForm ? [`  state: ${s.state ?? "unknown"}`] : []),
     `  selectedProduct: ${s.selectedProduct ?? "unknown"}`,
     `  currentlyTaking: ${s.currentlyTaking ?? "unknown"}`,
     `  wantsProcessExplanation: ${s.wantsProcessExplanation ?? "unknown"}`,
@@ -168,12 +198,7 @@ Pending topic: ${body.pendingTopic ?? "none"}
 ${linkState}
 ${promoState}
 
-CONVERSATION GOALS:
-Work naturally toward learning these facts (goals, not a forced sequence). Only include a key in
-slotUpdates once you've actually learned it — omit keys you don't yet know, never guess a value.
-- selectedProduct: "semaglutide" or "tirzepatide" (string values only, never a boolean)
-- currentlyTaking, wantsProcessExplanation, hasTimeForIntake, wantsPlanInclusions, readyForForm:
-  "yes" or "no" (string values only, never a boolean like true/false)
+${isMetaForm ? META_FORM_GOALS : ABANDONED_CART_GOALS}
 
 Always answer the patient's current question first, then update any facts learned, then
 accept corrections at any point.
@@ -279,6 +304,7 @@ const BOT_REPLY_TOOL = {
           hasTimeForIntake: { type: ["string", "null"], enum: ["yes", "no", null] },
           wantsPlanInclusions: { type: ["string", "null"], enum: ["yes", "no", null] },
           readyForForm: { type: ["string", "null"], enum: ["yes", "no", null] },
+          state: { type: ["string", "null"], description: "Free text, e.g. 'Texas'. meta_form leads only." },
         },
         additionalProperties: false,
       },

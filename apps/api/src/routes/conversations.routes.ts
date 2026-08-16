@@ -8,8 +8,11 @@ export function createConversationsRouter(): RouterType {
 
   router.get("/", requireRole("admin", "manager"), async (_req, res, next) => {
     try {
-      const conversations = await conversationsService.listConversationSummaries();
-      res.json({ conversations });
+      const [conversations, stats] = await Promise.all([
+        conversationsService.listConversationSummaries(),
+        conversationsService.getConversationResponseStats(),
+      ]);
+      res.json({ conversations, stats });
     } catch (err) {
       next(err);
     }

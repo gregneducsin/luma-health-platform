@@ -25,18 +25,57 @@ function relativeTime(iso: string | null): string {
   return new Date(iso).toLocaleDateString();
 }
 
+function ResponseRateSummary() {
+  const { data } = useConversationsList();
+  const stats = data?.stats;
+  const ratePct = stats ? Math.round(stats.responseRate * 100) : null;
+
+  return (
+    <Card className="mb-4">
+      <div className="grid grid-cols-3 gap-3">
+        <div>
+          <p className="text-xs font-medium uppercase text-gray-400">Contacted</p>
+          <p className="mt-1 text-2xl font-semibold text-gray-900">{stats?.totalContacted ?? "…"}</p>
+        </div>
+        <div>
+          <p className="text-xs font-medium uppercase text-gray-400">Responded</p>
+          <p className="mt-1 text-2xl font-semibold text-gray-900">{stats?.totalResponded ?? "…"}</p>
+        </div>
+        <div>
+          <p className="text-xs font-medium uppercase text-gray-400">Response rate</p>
+          <p className="mt-1 text-2xl font-semibold text-gray-900">{ratePct === null ? "…" : `${ratePct}%`}</p>
+        </div>
+      </div>
+      <p className="mt-2 text-xs text-gray-400">Each contact counted once, regardless of how many messages went back and forth.</p>
+    </Card>
+  );
+}
+
+type LeadSourceFilter = "all" | "abandoned_cart" | "meta_form";
+
+const LEAD_SOURCE_FILTER_LABELS: Record<LeadSourceFilter, string> = {
+  all: "All sources",
+  abandoned_cart: "Abandoned cart",
+  meta_form: "Meta leads",
+};
+
 function ConversationList({ selectedId, onSelect }: { selectedId: string | null; onSelect: (id: string) => void }) {
   const { data, isLoading } = useConversationsList();
   const [onlyNeedsAttention, setOnlyNeedsAttention] = useState(false);
+  const [leadSourceFilter, setLeadSourceFilter] = useState<LeadSourceFilter>("all");
 
   const attentionCount = data?.conversations.filter((c) => c.needsAttention).length ?? 0;
   const visible = useMemo(() => {
     if (!data) return [];
-    return onlyNeedsAttention ? data.conversations.filter((c) => c.needsAttention) : data.conversations;
-  }, [data, onlyNeedsAttention]);
+    return data.conversations.filter((c) => {
+      if (onlyNeedsAttention && !c.needsAttention) return false;
+      if (leadSourceFilter !== "all" && c.leadSource !== leadSourceFilter) return false;
+      return true;
+    });
+  }, [data, onlyNeedsAttention, leadSourceFilter]);
 
   return (
-    <Card className="flex h-[calc(100vh-180px)] flex-col overflow-hidden p-0">
+    <Card className="flex h-[calc(100vh-268px)] flex-col overflow-hidden p-0">
       <div className="border-b border-gray-200 px-4 py-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-900">Conversations</h2>
@@ -56,12 +95,21 @@ function ConversationList({ selectedId, onSelect }: { selectedId: string | null;
             Needs attention
           </button>
         </div>
+        <div className="mt-1 flex gap-1">
+          {(Object.keys(LEAD_SOURCE_FILTER_LABELS) as LeadSourceFilter[]).map((key) => (
+            <button
+              key={key}
+              onClick={() => setLeadSourceFilter(key)}
+              className={"rounded px-2 py-1 text-xs font-medium " + (leadSourceFilter === key ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600")}
+            >
+              {LEAD_SOURCE_FILTER_LABELS[key]}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto">
         {isLoading && <p className="p-4 text-sm text-gray-400">Loading…</p>}
-        {data && visible.length === 0 && (
-          <p className="p-4 text-sm text-gray-400">{onlyNeedsAttention ? "Nothing needs attention right now." : "No conversations yet."}</p>
-        )}
+        {data && visible.length === 0 && <p className="p-4 text-sm text-gray-400">Nothing matches these filters.</p>}
         {visible.map((c) => (
           <button
             key={c.id}
@@ -79,6 +127,7 @@ function ConversationList({ selectedId, onSelect }: { selectedId: string | null;
             </div>
             <div className="mt-1 flex items-center gap-2">
               <p className="flex-1 truncate text-xs text-gray-500">{c.lastMessagePreview ?? "No messages yet"}</p>
+              {c.leadSource === "meta_form" && <Badge color="purple">Meta lead</Badge>}
               <SentimentBadge sentiment={c.lastSentiment} />
             </div>
           </button>
@@ -108,7 +157,7 @@ function ConversationDetailPanel({ conversationId }: { conversationId: string })
 
   if (isLoading || !data) {
     return (
-      <Card className="flex h-[calc(100vh-180px)] items-center justify-center">
+      <Card className="flex h-[calc(100vh-268px)] items-center justify-center">
         <p className="text-sm text-gray-400">Loading conversation…</p>
       </Card>
     );
@@ -117,7 +166,7 @@ function ConversationDetailPanel({ conversationId }: { conversationId: string })
   const { conversation, customer, messages } = data;
 
   return (
-    <Card className="flex h-[calc(100vh-180px)] flex-col overflow-hidden p-0">
+    <Card className="flex h-[calc(100vh-268px)] flex-col overflow-hidden p-0">
       <div className="border-b border-gray-200 px-4 py-3">
         <div className="flex items-center justify-between">
           <div>
@@ -128,6 +177,7 @@ function ConversationDetailPanel({ conversationId }: { conversationId: string })
             <p className="text-xs text-gray-400">{customer.phone ?? "No phone on file"}</p>
           </div>
           <div className="flex flex-wrap justify-end gap-1">
+            {conversation.leadSource === "meta_form" && <Badge color="purple">Meta lead</Badge>}
             {conversation.selectedProduct && <Badge color="blue">{conversation.selectedProduct}</Badge>}
             {conversation.promoOffered && <Badge color="green">$20 promo offered</Badge>}
             {conversation.linkProvided && <Badge color="gray">link sent</Badge>}
@@ -201,18 +251,21 @@ export function ConversationsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-      <div className="md:col-span-1">
-        <ConversationList selectedId={selectedId} onSelect={setSelectedId} />
-      </div>
-      <div className="md:col-span-2">
-        {selectedId ? (
-          <ConversationDetailPanel conversationId={selectedId} />
-        ) : (
-          <Card className="flex h-[calc(100vh-180px)] items-center justify-center">
-            <p className="text-sm text-gray-400">Select a conversation to view it.</p>
-          </Card>
-        )}
+    <div>
+      <ResponseRateSummary />
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="md:col-span-1">
+          <ConversationList selectedId={selectedId} onSelect={setSelectedId} />
+        </div>
+        <div className="md:col-span-2">
+          {selectedId ? (
+            <ConversationDetailPanel conversationId={selectedId} />
+          ) : (
+            <Card className="flex h-[calc(100vh-268px)] items-center justify-center">
+              <p className="text-sm text-gray-400">Select a conversation to view it.</p>
+            </Card>
+          )}
+        </div>
       </div>
     </div>
   );

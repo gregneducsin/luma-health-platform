@@ -79,6 +79,13 @@ export interface BotPreviewMessage {
 
 export interface BotPreviewRequestBody {
   readonly messages: readonly BotPreviewMessage[];
+  /**
+   * Which script the prompt builder uses. abandoned_cart is the default
+   * (a patient already mid-checkout who needs closing); meta_form is cold
+   * outreach off a Meta lead-gen form and works state/currentlyTaking/product
+   * first — see buildSystemPrompt's leadSource branch.
+   */
+  readonly leadSource: "abandoned_cart" | "meta_form";
   readonly currentSlots: {
     readonly selectedProduct: string | null;
     readonly currentlyTaking: string | null;
@@ -86,6 +93,8 @@ export interface BotPreviewRequestBody {
     readonly hasTimeForIntake: string | null;
     readonly wantsPlanInclusions: string | null;
     readonly readyForForm: string | null;
+    /** Free-text state the patient's in — meta_form only, informational, never gates anything. */
+    readonly state: string | null;
   };
   readonly lastQuestion: string | null;
   readonly pendingTopic: string | null;

@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { describe, expect, it, beforeAll, afterAll, vi } from "vitest";
 import request from "supertest";
 import { createApp } from "../../app.js";
 
@@ -6,6 +6,12 @@ const GHL_SECRET = "test-ghl-secret";
 const ORDER_SECRET = "test-order-secret";
 const QUESTIONNAIRE_SECRET = "test-questionnaire-secret";
 const PAYMENT_FAILED_SECRET = "test-payment-failed-secret";
+
+const sendMessageMock = vi.fn();
+vi.mock("../../lib/sms-provider.js", async () => {
+  const actual = await vi.importActual<typeof import("../../lib/sms-provider.js")>("../../lib/sms-provider.js");
+  return { ...actual, getSmsProvider: () => ({ sendMessage: sendMessageMock }) };
+});
 
 describe("Webhooks", () => {
   let app: ReturnType<typeof createApp>;
@@ -105,6 +111,72 @@ describe("Webhooks", () => {
       const { eq } = await import("drizzle-orm");
       const [customer] = await db.select().from(customersTable).where(eq(customersTable.email, "leadtype@example.com"));
       expect(customer.leadType).toBe("web-form");
+    });
+
+    it("defaults occurredAt to now when the source doesn't provide one", async () => {
+      const payload = {
+        eventId: "ghl-evt-no-timestamp",
+        contactId: "ghl-contact-no-timestamp",
+        firstName: "No",
+        lastName: "Timestamp",
+        email: "ghl-no-timestamp@example.com",
+        // occurredAt intentionally omitted
+      };
+      const res = await request(app).post("/api/webhooks/ghl-lead").set("x-webhook-secret", GHL_SECRET).send(payload);
+      expect(res.status).toBe(200);
+
+      const { db, customersTable } = await import("@luma/db");
+      const { eq } = await import("drizzle-orm");
+      const [customer] = await db.select().from(customersTable).where(eq(customersTable.email, "ghl-no-timestamp@example.com"));
+      expect(customer.leadReceivedDate).toBe(new Date().toISOString().slice(0, 10));
+    });
+
+    it("fires the meta-lead opener instantly for leadType 'Meta Form Fill'", async () => {
+      sendMessageMock.mockClear();
+      sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_meta_webhook" });
+
+      const payload = {
+        eventId: "ghl-evt-meta-1",
+        contactId: "ghl-contact-meta-1",
+        firstName: "Meta",
+        lastName: "Lead",
+        email: "meta-lead-webhook@example.com",
+        phone: "+15557770000",
+        leadType: "Meta Form Fill",
+        occurredAt: new Date().toISOString(),
+      };
+      const res = await request(app).post("/api/webhooks/ghl-lead").set("x-webhook-secret", GHL_SECRET).send(payload);
+      expect(res.status).toBe(200);
+
+      expect(sendMessageMock).toHaveBeenCalledWith("+15557770000", expect.stringContaining("what state you're in"));
+
+      const { db, customersTable } = await import("@luma/db");
+      const { eq } = await import("drizzle-orm");
+      const [customer] = await db.select().from(customersTable).where(eq(customersTable.email, "meta-lead-webhook@example.com"));
+      const { getOrCreateConversation, listMessages } = await import("../../services/conversations.service.js");
+      const conversation = await getOrCreateConversation(customer!.id);
+      expect(conversation.leadSource).toBe("meta_form");
+      const messages = await listMessages(conversation.id);
+      expect(messages.length).toBe(1);
+    });
+
+    it("matches leadType case-insensitively and does not fire the opener for other lead types", async () => {
+      sendMessageMock.mockClear();
+
+      const res = await request(app)
+        .post("/api/webhooks/ghl-lead")
+        .set("x-webhook-secret", GHL_SECRET)
+        .send({
+          eventId: "ghl-evt-not-meta",
+          contactId: "ghl-contact-not-meta",
+          firstName: "Other",
+          lastName: "Lead",
+          email: "not-meta-lead@example.com",
+          leadType: "web-form",
+          occurredAt: new Date().toISOString(),
+        });
+      expect(res.status).toBe(200);
+      expect(sendMessageMock).not.toHaveBeenCalled();
     });
   });
 

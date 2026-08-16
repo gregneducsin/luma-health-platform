@@ -38,3 +38,17 @@ export function renderAbandonedCartOpener(firstName: string): string {
   const name = firstName.trim() || "there";
   return `Hi ${name}, this is Lucy with Luma Health. I noticed you started your online visit but didn't get a chance to finish it. Complete your enrollment now and get $20 off your first month. Want me to send the link to get started?`;
 }
+
+/**
+ * The very first outbound message to a lead who just submitted a Meta
+ * (Facebook/Instagram) lead-gen form — fired instantly on receipt of the
+ * webhook, 24/7, no monitored-hours window. Fixed template, not AI-drafted,
+ * same reasoning as the abandoned-cart opener. Cold outreach, not a
+ * "finish what you started" message — asks for state first (doubles as the
+ * reason for the text: checking current promotions). The normal Lucy
+ * conversation loop (runLucyTurn) takes over from the reply.
+ */
+export function renderMetaLeadOpener(firstName: string): string {
+  const name = firstName.trim() || "there";
+  return `Hey ${name}, this is Lucy with Luma Health. I wanted to check what state you're in to see what promotions we have running for you right now.`;
+}

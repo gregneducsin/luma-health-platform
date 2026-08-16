@@ -74,11 +74,11 @@ export const followUpJobsTable = pgTable(
 );
 
 /**
- * One Lucy conversation thread per customer (1:1 for now — this is the
- * abandoned-cart bot, there's only one thread type). Holds the persisted
- * conversation state that used to be client-supplied per-call
- * (BotPreviewRequestBody) so a proactive opener and a later inbound reply
- * share the same state, and so a chat-log UI has something to read.
+ * One Lucy conversation thread per customer (1:1). `leadSource` selects which
+ * script the prompt builder uses — abandoned_cart assumes the patient already
+ * engaged with checkout and just needs closing; meta_form is cold outreach off
+ * a Meta lead-gen form and works through state/currentlyTaking/product before
+ * pricing means anything. Both share the same knowledge base and guardrails.
  */
 export const conversationsTable = pgTable(
   "conversations",
@@ -87,6 +87,9 @@ export const conversationsTable = pgTable(
     personId: uuid("person_id")
       .notNull()
       .references(() => customersTable.id, { onDelete: "cascade" }),
+    leadSource: text("lead_source", { enum: ["abandoned_cart", "meta_form"] }).notNull().default("abandoned_cart"),
+    /** Free-text state the patient's in, captured off the meta_form opener. Not a validated/gated value — every state is serviced. */
+    state: text("state"),
     selectedProduct: text("selected_product", { enum: ["semaglutide", "tirzepatide"] }),
     currentlyTaking: text("currently_taking", { enum: ["yes", "no"] }),
     wantsProcessExplanation: text("wants_process_explanation", { enum: ["yes", "no"] }),

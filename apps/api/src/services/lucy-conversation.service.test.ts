@@ -28,6 +28,7 @@ async function seedCustomer(): Promise<string> {
 function baseBody(overrides: Partial<BotPreviewRequestBody> = {}): BotPreviewRequestBody {
   return {
     messages: [{ direction: "inbound", body: "Hi, I'm interested in learning more." }],
+    leadSource: "abandoned_cart",
     currentSlots: {
       selectedProduct: null,
       currentlyTaking: null,
@@ -35,6 +36,7 @@ function baseBody(overrides: Partial<BotPreviewRequestBody> = {}): BotPreviewReq
       hasTimeForIntake: null,
       wantsPlanInclusions: null,
       readyForForm: null,
+      state: null,
     },
     lastQuestion: null,
     pendingTopic: null,

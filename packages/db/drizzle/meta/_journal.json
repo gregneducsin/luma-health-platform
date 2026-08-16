@@ -50,6 +50,13 @@
       "when": 1786848309168,
       "tag": "0006_chief_jubilee",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786850343679,
+      "tag": "0007_talented_ultragirl",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { renderFollowUpMessage, renderAbandonedCartOpener, type FollowUpMessageStep } from "./follow-up-templates.js";
+import { renderFollowUpMessage, renderAbandonedCartOpener, renderMetaLeadOpener, type FollowUpMessageStep } from "./follow-up-templates.js";
 
 const STEPS: FollowUpMessageStep[] = ["provider_check_in", "intake_questions_check_in"];
 
@@ -46,5 +46,30 @@ describe("renderAbandonedCartOpener", () => {
   it("interpolates the first name, falling back to 'there' when blank", () => {
     expect(renderAbandonedCartOpener("Jamie")).toContain("Jamie");
     expect(renderAbandonedCartOpener("  ")).toContain("there");
+  });
+});
+
+describe("renderMetaLeadOpener", () => {
+  it("has no question mark and no em dash", () => {
+    const text = renderMetaLeadOpener("Jamie");
+    expect(text).not.toContain("?");
+    expect(text).not.toMatch(/—|--/);
+  });
+
+  it("asks about state and does not include a link", () => {
+    const text = renderMetaLeadOpener("Jamie");
+    expect(text.toLowerCase()).toContain("state");
+    expect(text).not.toMatch(/https?:\/\//);
+  });
+
+  it("does not imply the patient already started signing up", () => {
+    const text = renderMetaLeadOpener("Jamie");
+    expect(text.toLowerCase()).not.toContain("started");
+    expect(text.toLowerCase()).not.toContain("finish");
+  });
+
+  it("interpolates the first name, falling back to 'there' when blank", () => {
+    expect(renderMetaLeadOpener("Jamie")).toContain("Jamie");
+    expect(renderMetaLeadOpener("  ")).toContain("there");
   });
 });

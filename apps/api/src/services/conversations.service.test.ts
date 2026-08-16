@@ -9,6 +9,7 @@ import {
   toBotPreviewBody,
   listConversationSummaries,
   getConversationDetail,
+  getConversationResponseStats,
 } from "./conversations.service.js";
 
 async function seedCustomer(): Promise<string> {
@@ -30,11 +31,31 @@ describe("getOrCreateConversation", () => {
     expect(conversation.promoOffered).toBe(false);
   });
 
+  it("defaults leadSource to abandoned_cart when not specified", async () => {
+    const personId = await seedCustomer();
+    const conversation = await getOrCreateConversation(personId);
+    expect(conversation.leadSource).toBe("abandoned_cart");
+  });
+
+  it("creates a conversation with leadSource meta_form when specified", async () => {
+    const personId = await seedCustomer();
+    const conversation = await getOrCreateConversation(personId, "meta_form");
+    expect(conversation.leadSource).toBe("meta_form");
+  });
+
   it("returns the same conversation on subsequent calls (1:1 per customer)", async () => {
     const personId = await seedCustomer();
     const first = await getOrCreateConversation(personId);
     const second = await getOrCreateConversation(personId);
     expect(second.id).toBe(first.id);
+  });
+
+  it("ignores leadSource on an existing conversation — the script doesn't change mid-thread", async () => {
+    const personId = await seedCustomer();
+    const first = await getOrCreateConversation(personId, "meta_form");
+    const second = await getOrCreateConversation(personId, "abandoned_cart");
+    expect(second.id).toBe(first.id);
+    expect(second.leadSource).toBe("meta_form");
   });
 });
 
@@ -130,6 +151,17 @@ describe("toBotPreviewBody", () => {
     expect(body.promoOffered).toBe(true);
     expect(body.messages).toEqual([{ direction: "inbound", body: "yes please" }]);
   });
+
+  it("carries leadSource and the state slot through", async () => {
+    const personId = await seedCustomer();
+    const conversation = await getOrCreateConversation(personId, "meta_form");
+    await updateConversationState(conversation.id, { state: "Texas" });
+    const updated = await getOrCreateConversation(personId);
+
+    const body = toBotPreviewBody(updated, []);
+    expect(body.leadSource).toBe("meta_form");
+    expect(body.currentSlots.state).toBe("Texas");
+  });
 });
 
 describe("listConversationSummaries / getConversationDetail", () => {
@@ -154,5 +186,45 @@ describe("listConversationSummaries / getConversationDetail", () => {
   it("getConversationDetail returns null for an unknown conversation id", async () => {
     const detail = await getConversationDetail("00000000-0000-0000-0000-000000000000");
     expect(detail).toBeNull();
+  });
+});
+
+describe("getConversationResponseStats", () => {
+  // Computed as deltas against a baseline rather than exact totals — this
+  // runs against a shared DB alongside every other test in this file, so
+  // asserting an absolute count would be sensitive to unrelated fixtures.
+  it("counts each contact once: contacted (outbound sent) vs responded (also replied)", async () => {
+    const before = await getConversationResponseStats();
+
+    // Contacted and responded: multiple messages each way, still counts as one.
+    const repliedPersonId = await seedCustomer();
+    const repliedConvo = await getOrCreateConversation(repliedPersonId);
+    await appendMessage(repliedConvo.id, "outbound", "Hi there");
+    await appendMessage(repliedConvo.id, "inbound", "Hey");
+    await appendMessage(repliedConvo.id, "outbound", "Following up");
+    await appendMessage(repliedConvo.id, "inbound", "Still interested");
+
+    // Contacted but never responded.
+    const silentPersonId = await seedCustomer();
+    const silentConvo = await getOrCreateConversation(silentPersonId);
+    await appendMessage(silentConvo.id, "outbound", "Hi there");
+
+    // Conversation exists but nothing was ever sent — not "contacted".
+    const emptyPersonId = await seedCustomer();
+    await getOrCreateConversation(emptyPersonId);
+
+    const after = await getConversationResponseStats();
+    expect(after.totalContacted - before.totalContacted).toBe(2);
+    expect(after.totalResponded - before.totalResponded).toBe(1);
+  });
+
+  it("responseRate is 0 rather than NaN/Infinity when nobody has been contacted yet", async () => {
+    // Not a delta test — just checking the guard holds when totalContacted is 0.
+    // Can't force totalContacted to exactly 0 against a shared DB, so just
+    // sanity-check the rate is always a finite number in [0, 1].
+    const stats = await getConversationResponseStats();
+    expect(Number.isFinite(stats.responseRate)).toBe(true);
+    expect(stats.responseRate).toBeGreaterThanOrEqual(0);
+    expect(stats.responseRate).toBeLessThanOrEqual(1);
   });
 });

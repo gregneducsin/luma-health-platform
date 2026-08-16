@@ -370,4 +370,35 @@ describe("interactivePostCheck: slot validation", () => {
     const result = check(reply({ slotUpdates: { selectedProduct: "aspirin" } }));
     expect(result).toEqual({ ok: false, code: "INVALID_SLOT_VALUE" });
   });
+
+  it("accepts a free-text state slot value", () => {
+    const result = check(reply({ slotUpdates: { state: "Texas" } }));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.validatedSlotUpdates).toEqual({ state: "Texas" });
+    }
+  });
+
+  it("accepts a null state slot value", () => {
+    const result = check(reply({ slotUpdates: { state: null } }));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.validatedSlotUpdates).toEqual({ state: null });
+    }
+  });
+
+  it("rejects an empty-string state slot value", () => {
+    const result = check(reply({ slotUpdates: { state: "" } }));
+    expect(result).toEqual({ ok: false, code: "INVALID_SLOT_VALUE" });
+  });
+
+  it("rejects a state slot value over the length cap", () => {
+    const result = check(reply({ slotUpdates: { state: "x".repeat(61) } }));
+    expect(result).toEqual({ ok: false, code: "INVALID_SLOT_VALUE" });
+  });
+
+  it("rejects a non-string state slot value", () => {
+    const result = check(reply({ slotUpdates: { state: 12 } }));
+    expect(result).toEqual({ ok: false, code: "INVALID_SLOT_VALUE" });
+  });
 });

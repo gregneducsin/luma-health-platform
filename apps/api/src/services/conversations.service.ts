@@ -11,6 +11,7 @@ export interface ConversationStatePatch {
   readonly hasTimeForIntake?: "yes" | "no" | null;
   readonly wantsPlanInclusions?: "yes" | "no" | null;
   readonly readyForForm?: "yes" | "no" | null;
+  readonly state?: string | null;
   readonly lastQuestion?: string | null;
   readonly pendingTopic?: string | null;
   readonly lastDraft?: string | null;
@@ -20,14 +21,19 @@ export interface ConversationStatePatch {
   readonly needsAttention?: boolean;
 }
 
-/** One conversation per customer. Creates it on first use (opener or inbound reply, whichever comes first). */
-export async function getOrCreateConversation(personId: string): Promise<Conversation> {
+/**
+ * One conversation per customer. Creates it on first use (opener or inbound
+ * reply, whichever comes first). leadSource only takes effect on creation —
+ * it's ignored on an existing conversation, since a thread's script doesn't
+ * change mid-conversation.
+ */
+export async function getOrCreateConversation(personId: string, leadSource: "abandoned_cart" | "meta_form" = "abandoned_cart"): Promise<Conversation> {
   const [existing] = await db.select().from(conversationsTable).where(eq(conversationsTable.personId, personId));
   if (existing) return existing;
 
   const [created] = await db
     .insert(conversationsTable)
-    .values({ personId })
+    .values({ personId, leadSource })
     .onConflictDoNothing({ target: conversationsTable.personId })
     .returning();
   if (created) return created;
@@ -78,6 +84,7 @@ export async function listMessages(conversationId: string, limit = MAX_HISTORY_M
 export function toBotPreviewBody(conversation: Conversation, history: readonly ConversationMessage[]): BotPreviewRequestBody {
   return {
     messages: history.map((m) => ({ direction: m.direction, body: m.body })),
+    leadSource: conversation.leadSource,
     currentSlots: {
       selectedProduct: conversation.selectedProduct,
       currentlyTaking: conversation.currentlyTaking,
@@ -85,6 +92,7 @@ export function toBotPreviewBody(conversation: Conversation, history: readonly C
       hasTimeForIntake: conversation.hasTimeForIntake,
       wantsPlanInclusions: conversation.wantsPlanInclusions,
       readyForForm: conversation.readyForForm,
+      state: conversation.state,
     },
     lastQuestion: conversation.lastQuestion,
     pendingTopic: conversation.pendingTopic,
@@ -100,6 +108,7 @@ export interface ConversationSummary {
   readonly personId: string;
   readonly firstName: string;
   readonly lastName: string;
+  readonly leadSource: "abandoned_cart" | "meta_form";
   readonly status: "active" | "closed";
   readonly lastMessageAt: string | null;
   readonly lastMessagePreview: string | null;
@@ -115,6 +124,7 @@ export async function listConversationSummaries(): Promise<ConversationSummary[]
       personId: conversationsTable.personId,
       firstName: customersTable.firstName,
       lastName: customersTable.lastName,
+      leadSource: conversationsTable.leadSource,
       status: conversationsTable.status,
       needsAttention: conversationsTable.needsAttention,
       lastMessageAt: sql<string | null>`(select max(${conversationMessagesTable.createdAt}) from ${conversationMessagesTable} where ${conversationMessagesTable.conversationId} = ${conversationsTable.id})`,
@@ -126,6 +136,36 @@ export async function listConversationSummaries(): Promise<ConversationSummary[]
     .orderBy(desc(sql`(select max(${conversationMessagesTable.createdAt}) from ${conversationMessagesTable} where ${conversationMessagesTable.conversationId} = ${conversationsTable.id})`));
 
   return rows.map((r) => ({ ...r, lastSentiment: r.lastSentiment as ConversationSummary["lastSentiment"] }));
+}
+
+export interface ConversationResponseStats {
+  readonly totalContacted: number;
+  readonly totalResponded: number;
+  /** 0..1. 0 when totalContacted is 0 (nobody to divide by, not "0% response"). */
+  readonly responseRate: number;
+}
+
+/**
+ * Response rate across all contacts, each contact counted once regardless of
+ * how many messages went back and forth — not a per-message rate. "Contacted"
+ * means we sent at least one outbound message; "responded" means that same
+ * contact sent at least one inbound message back. Grouped directly on
+ * conversation_messages (not a correlated subquery against conversations) so
+ * every column reference is unambiguous within the single table in scope.
+ */
+export async function getConversationResponseStats(): Promise<ConversationResponseStats> {
+  const rows = await db
+    .select({
+      hasOutbound: sql<boolean>`bool_or(${conversationMessagesTable.direction} = 'outbound')`,
+      hasInbound: sql<boolean>`bool_or(${conversationMessagesTable.direction} = 'inbound')`,
+    })
+    .from(conversationMessagesTable)
+    .groupBy(conversationMessagesTable.conversationId);
+
+  const totalContacted = rows.filter((r) => r.hasOutbound).length;
+  const totalResponded = rows.filter((r) => r.hasOutbound && r.hasInbound).length;
+  const responseRate = totalContacted > 0 ? totalResponded / totalContacted : 0;
+  return { totalContacted, totalResponded, responseRate };
 }
 
 export async function getConversationDetail(

@@ -10,7 +10,10 @@ export const ghlLeadWebhookRequestSchema = z.object({
   email: z.string().email(),
   phone: z.string().min(1).optional(),
   leadType: z.string().min(1).optional(),
-  occurredAt: z.string().datetime(),
+  // Optional because some GHL workflow templates don't forward a timestamp
+  // merge field — the handler defaults this to the time the webhook was
+  // received, same pattern as the Bask questionnaire webhook.
+  occurredAt: z.string().datetime().optional(),
 });
 export type GhlLeadWebhookRequest = z.infer<typeof ghlLeadWebhookRequestSchema>;
 
