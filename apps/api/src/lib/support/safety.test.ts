@@ -66,6 +66,20 @@ describe("supportPostCheck", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("accepts the approved write-a-review URL, even though its query string contains a '?'", () => {
+    const result = check(
+      reply({ reply: "We'd love it if you left a review: https://www.consumeraffairs.com/review/write/?brand_id=27277" }),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("still rejects a genuine clarifying question mark alongside an approved URL with a query string", () => {
+    const result = check(
+      reply({ reply: "Would you leave a review? Here's the link: https://www.consumeraffairs.com/review/write/?brand_id=27277" }),
+    );
+    expect(result).toEqual({ ok: false, code: "QUESTION_MARK_IN_REPLY" });
+  });
+
   it("rejects a question mark inside reply", () => {
     const result = check(reply({ reply: "Do you want me to check on that?" }));
     expect(result).toEqual({ ok: false, code: "QUESTION_MARK_IN_REPLY" });

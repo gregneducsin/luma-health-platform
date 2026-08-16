@@ -553,6 +553,16 @@ export function getPreviewEnabledTopics(): readonly KnowledgeTopic[] {
 export const APPROVED_PORTAL_URL = "https://go.mylumahealth.com/login";
 
 /**
+ * Direct "write a review" deep link — Sarah-only, used specifically in the
+ * post-delivery review-request flow when the patient's sentiment is
+ * positive. Distinct from APPROVED_REVIEW_URLS (the two general
+ * read-reviews pages Lucy and Sarah both may share when asked about
+ * reviews generally): this one is for actually asking someone to submit a
+ * review, so it goes straight to the write-a-review form, not an overview page.
+ */
+export const APPROVED_REVIEW_WRITE_URL = "https://www.consumeraffairs.com/review/write/?brand_id=27277";
+
+/**
  * Topic keys Sarah (the post-purchase support bot) is allowed to use — a
  * subset of the same catalog Lucy draws from, reused verbatim rather than
  * duplicated. Deliberately excludes every pre-purchase/sales/clinical topic

@@ -18,7 +18,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { SarahInteractiveResult, SarahPreviewRequestBody } from "./types.js";
 import type { KnowledgeTopic } from "../messaging/knowledge-catalog.js";
-import { APPROVED_REVIEW_URLS, APPROVED_PORTAL_URL } from "../messaging/knowledge-catalog.js";
+import { APPROVED_REVIEW_URLS, APPROVED_PORTAL_URL, APPROVED_REVIEW_WRITE_URL } from "../messaging/knowledge-catalog.js";
 import { SarahInteractiveSchema } from "./safety.js";
 
 const CALL_TIMEOUT_MS = 10_000;
@@ -89,7 +89,10 @@ function buildSystemPrompt(body: SarahPreviewRequestBody, knowledgeCatalog: read
 
   const reviewSection = body.reviewRequested
     ? "REVIEW CHECK-IN: you already asked the patient how their experience has been. " +
-      "Read their reply's sentiment. If it's clearly positive, thank them and share both approved review links, asking if they'd be willing to leave a review. " +
+      `Read their reply's sentiment. If it's clearly positive, thank them in reply and include the write-a-review link there (${APPROVED_REVIEW_WRITE_URL}), ` +
+      "then ask in nextQuestion whether they'd be willing to leave a review — a bare question, no link in it. " +
+      "The link's own '?' in its query string will break nextQuestion's one-question-mark format rule if it ends up there, so the link belongs in reply, never in nextQuestion. " +
+      "Use that write-a-review link specifically here, not the general review-reading links below. " +
       "If it's neutral or negative, thank them for the feedback sincerely, do NOT push a review link, and set requiresStaff:true so a human can follow up on the concern."
     : "The review check-in has not been sent yet — that's a separate scheduled message, not something you initiate mid-conversation.";
 
@@ -136,7 +139,8 @@ If the patient then insists on a human, use action "staff_review".
 ${knowledgeSection}
 APPROVED LINKS — Sarah may output these verbatim, and only these:
  - Patient portal: ${APPROVED_PORTAL_URL}
- - Reviews: ${[...APPROVED_REVIEW_URLS].join(" and ")}
+ - Reviews (general "can I see reviews" questions): ${[...APPROVED_REVIEW_URLS].join(" and ")}
+ - Write a review (only in the REVIEW CHECK-IN flow above, on positive sentiment): ${APPROVED_REVIEW_WRITE_URL}
 
 SMS STYLE — reply like a friendly human texting, not a formal assistant:
  - Always use contractions: "don't", "it's", "we're", "you'll", "that's".

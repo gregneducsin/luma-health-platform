@@ -16,7 +16,7 @@
 
 import { z } from "zod";
 import type { SarahInteractiveResult } from "./types.js";
-import { APPROVED_REVIEW_URLS, APPROVED_PORTAL_URL } from "../messaging/knowledge-catalog.js";
+import { APPROVED_REVIEW_URLS, APPROVED_PORTAL_URL, APPROVED_REVIEW_WRITE_URL } from "../messaging/knowledge-catalog.js";
 
 // ── Zod schema for structured provider output ─────────────────────────────────
 
@@ -119,7 +119,7 @@ export function supportPreCheck(lastInbound: string): SupportPreCheckResult {
 // ── Post-check patterns ───────────────────────────────────────────────────────
 
 const URL_RE = /https?:\/\/[^\s)]+/gi;
-const ALLOWED_URLS = new Set([...APPROVED_REVIEW_URLS, APPROVED_PORTAL_URL]);
+const ALLOWED_URLS = new Set([...APPROVED_REVIEW_URLS, APPROVED_PORTAL_URL, APPROVED_REVIEW_WRITE_URL]);
 
 /**
  * Clinical content in Sarah's OWN reply — always rejected, no exceptions.
@@ -178,7 +178,12 @@ export function supportPostCheck(
       }
     }
 
-    if (reply.includes("?")) {
+    // A "?" that's part of an approved URL's own query string (e.g.
+    // ?brand_id=27277) isn't a clarifying question — strip matched URLs
+    // before checking, so only a real "?" elsewhere in the text trips this.
+    URL_RE.lastIndex = 0;
+    const replyWithoutUrls = reply.replace(URL_RE, "");
+    if (replyWithoutUrls.includes("?")) {
       return { ok: false, code: "QUESTION_MARK_IN_REPLY" };
     }
 
