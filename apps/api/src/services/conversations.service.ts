@@ -17,6 +17,7 @@ export interface ConversationStatePatch {
   readonly objectionStage?: 0 | 1 | 2;
   readonly linkProvided?: boolean;
   readonly promoOffered?: boolean;
+  readonly needsAttention?: boolean;
 }
 
 /** One conversation per customer. Creates it on first use (opener or inbound reply, whichever comes first). */
@@ -38,6 +39,11 @@ export async function getOrCreateConversation(personId: string): Promise<Convers
 
 export async function updateConversationState(conversationId: string, patch: ConversationStatePatch): Promise<void> {
   await db.update(conversationsTable).set(patch).where(eq(conversationsTable.id, conversationId));
+}
+
+/** Staff has looked at a flagged conversation — clears the attention flag until the next thing that needs it. */
+export async function clearNeedsAttention(conversationId: string): Promise<void> {
+  await db.update(conversationsTable).set({ needsAttention: false }).where(eq(conversationsTable.id, conversationId));
 }
 
 export async function appendMessage(
@@ -98,6 +104,7 @@ export interface ConversationSummary {
   readonly lastMessageAt: string | null;
   readonly lastMessagePreview: string | null;
   readonly lastSentiment: "positive" | "neutral" | "negative" | null;
+  readonly needsAttention: boolean;
 }
 
 /** For the dashboard's Conversations tab: one row per conversation, most recently active first. */
@@ -109,6 +116,7 @@ export async function listConversationSummaries(): Promise<ConversationSummary[]
       firstName: customersTable.firstName,
       lastName: customersTable.lastName,
       status: conversationsTable.status,
+      needsAttention: conversationsTable.needsAttention,
       lastMessageAt: sql<string | null>`(select max(${conversationMessagesTable.createdAt}) from ${conversationMessagesTable} where ${conversationMessagesTable.conversationId} = ${conversationsTable.id})`,
       lastMessagePreview: sql<string | null>`(select ${conversationMessagesTable.body} from ${conversationMessagesTable} where ${conversationMessagesTable.conversationId} = ${conversationsTable.id} order by ${conversationMessagesTable.createdAt} desc limit 1)`,
       lastSentiment: sql<string | null>`(select ${conversationMessagesTable.sentiment} from ${conversationMessagesTable} where ${conversationMessagesTable.conversationId} = ${conversationsTable.id} and ${conversationMessagesTable.direction} = 'inbound' order by ${conversationMessagesTable.createdAt} desc limit 1)`,

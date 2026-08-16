@@ -99,6 +99,14 @@ export const conversationsTable = pgTable(
     objectionStage: integer("objection_stage").notNull().default(0),
     linkProvided: boolean("link_provided").notNull().default(false),
     promoOffered: boolean("promo_offered").notNull().default(false),
+    /**
+     * True whenever the most recent turn required staff attention — a
+     * pre-check block (STOP/emergency/suitability/medical/legal), a
+     * model-flagged staff_review, or a turn the guardrail rejected outright
+     * (the customer got silence, not just a routed reply). Cleared by a
+     * staff member reviewing the conversation, not automatically.
+     */
+    needsAttention: boolean("needs_attention").notNull().default(false),
     status: text("status", { enum: ["active", "closed"] }).notNull().default("active"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })

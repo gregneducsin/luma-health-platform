@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { useConversationsList, useConversationDetail, useSendLucyTestMessage } from "../hooks/useConversations";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useConversationsList, useConversationDetail, useSendLucyTestMessage, useClearNeedsAttention } from "../hooks/useConversations";
 import { Badge, Card, Button, Input } from "../components/ui";
 import { ApiError } from "../hooks/useAuth";
 
@@ -27,16 +27,42 @@ function relativeTime(iso: string | null): string {
 
 function ConversationList({ selectedId, onSelect }: { selectedId: string | null; onSelect: (id: string) => void }) {
   const { data, isLoading } = useConversationsList();
+  const [onlyNeedsAttention, setOnlyNeedsAttention] = useState(false);
+
+  const attentionCount = data?.conversations.filter((c) => c.needsAttention).length ?? 0;
+  const visible = useMemo(() => {
+    if (!data) return [];
+    return onlyNeedsAttention ? data.conversations.filter((c) => c.needsAttention) : data.conversations;
+  }, [data, onlyNeedsAttention]);
 
   return (
     <Card className="flex h-[calc(100vh-180px)] flex-col overflow-hidden p-0">
       <div className="border-b border-gray-200 px-4 py-3">
-        <h2 className="text-sm font-semibold text-gray-900">Conversations</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-900">Conversations</h2>
+          {attentionCount > 0 && <Badge color="red">{attentionCount} need attention</Badge>}
+        </div>
+        <div className="mt-2 flex gap-1">
+          <button
+            onClick={() => setOnlyNeedsAttention(false)}
+            className={"rounded px-2 py-1 text-xs font-medium " + (!onlyNeedsAttention ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600")}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setOnlyNeedsAttention(true)}
+            className={"rounded px-2 py-1 text-xs font-medium " + (onlyNeedsAttention ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600")}
+          >
+            Needs attention
+          </button>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto">
         {isLoading && <p className="p-4 text-sm text-gray-400">Loading…</p>}
-        {data?.conversations.length === 0 && <p className="p-4 text-sm text-gray-400">No conversations yet.</p>}
-        {data?.conversations.map((c) => (
+        {data && visible.length === 0 && (
+          <p className="p-4 text-sm text-gray-400">{onlyNeedsAttention ? "Nothing needs attention right now." : "No conversations yet."}</p>
+        )}
+        {visible.map((c) => (
           <button
             key={c.id}
             onClick={() => onSelect(c.id)}
@@ -45,7 +71,8 @@ function ConversationList({ selectedId, onSelect }: { selectedId: string | null;
             }
           >
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-900">
+              <span className="flex items-center gap-1.5 text-sm font-medium text-gray-900">
+                {c.needsAttention && <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" aria-label="Needs attention" />}
                 {c.firstName} {c.lastName}
               </span>
               <span className="text-xs text-gray-400">{relativeTime(c.lastMessageAt)}</span>
@@ -65,6 +92,7 @@ function ConversationDetailPanel({ conversationId }: { conversationId: string })
   const { data, isLoading } = useConversationDetail(conversationId);
   const [input, setInput] = useState("");
   const sendMessage = useSendLucyTestMessage();
+  const clearAttention = useClearNeedsAttention();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -93,8 +121,9 @@ function ConversationDetailPanel({ conversationId }: { conversationId: string })
       <div className="border-b border-gray-200 px-4 py-3">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-semibold text-gray-900">
+            <p className="flex items-center gap-2 text-sm font-semibold text-gray-900">
               {customer.firstName} {customer.lastName}
+              {conversation.needsAttention && <Badge color="red">Needs attention</Badge>}
             </p>
             <p className="text-xs text-gray-400">{customer.phone ?? "No phone on file"}</p>
           </div>
@@ -105,6 +134,14 @@ function ConversationDetailPanel({ conversationId }: { conversationId: string })
             {conversation.objectionStage > 0 && <Badge color="yellow">objection stage {conversation.objectionStage}</Badge>}
           </div>
         </div>
+        {conversation.needsAttention && (
+          <div className="mt-2 flex items-center justify-between rounded-md bg-red-50 px-3 py-2">
+            <p className="text-xs text-red-700">This conversation needs staff attention.</p>
+            <Button variant="secondary" onClick={() => clearAttention.mutate(conversation.id)} disabled={clearAttention.isPending}>
+              {clearAttention.isPending ? "Marking…" : "Mark reviewed"}
+            </Button>
+          </div>
+        )}
       </div>
 
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-3">

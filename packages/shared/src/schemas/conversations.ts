@@ -9,6 +9,7 @@ export const conversationSummarySchema = z.object({
   lastMessageAt: z.string().nullable(),
   lastMessagePreview: z.string().nullable(),
   lastSentiment: z.enum(["positive", "neutral", "negative"]).nullable(),
+  needsAttention: z.boolean(),
 });
 export type ConversationSummary = z.infer<typeof conversationSummarySchema>;
 
@@ -30,6 +31,7 @@ export const conversationDetailSchema = z.object({
     objectionStage: z.number(),
     linkProvided: z.boolean(),
     promoOffered: z.boolean(),
+    needsAttention: z.boolean(),
   }),
   customer: z.object({ firstName: z.string(), lastName: z.string(), phone: z.string().nullable() }),
   messages: z.array(conversationMessageSchema),

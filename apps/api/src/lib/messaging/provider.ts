@@ -147,7 +147,10 @@ function buildSystemPrompt(body: BotPreviewRequestBody, knowledgeCatalog: readon
     : "No signup link has been sent yet.";
 
   const promoState = body.promoOffered
-    ? "The $20-off first-month offer has already been mentioned this session. Set promoOffered:true on every remaining turn — the discount link is what gets sent."
+    ? "The $20-off first-month offer has already been mentioned this session. Set promoOffered:true on every remaining turn — the discount link is what gets sent. " +
+      "This also changes every 1-month price you quote from here on: semaglutide 1-month is $100 (not $120), tirzepatide 1-month is $145 (not $165). " +
+      "The 3-month and 6-month monthly/total figures are unaffected — the discount is only on the first month. " +
+      "If the patient asks the price directly, quote the discounted 1-month figure, not the plain one from the pricing topic — do not make them ask about the promo separately to get the real number."
     : "The $20-off first-month offer has not been mentioned yet. Only mention it via the first_month_offer knowledge topic, and only set promoOffered:true on the turn where you actually use it.";
 
   const knowledgeSection = buildKnowledgeSection(knowledgeCatalog);

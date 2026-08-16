@@ -43,6 +43,13 @@
       "when": 1786846840193,
       "tag": "0005_grey_slayback",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786848309168,
+      "tag": "0006_chief_jubilee",
+      "breakpoints": true
     }
   ]
 }

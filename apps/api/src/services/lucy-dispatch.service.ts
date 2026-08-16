@@ -58,6 +58,9 @@ export async function processInboundMessage(personId: string, inboundBody: strin
 
   if (!result.ok) {
     logger.warn({ personId, conversationId: conversation.id, code: result.code }, "Lucy turn rejected — no outbound message sent");
+    // The customer got silence, not just a routed reply — that's exactly the
+    // kind of thing a human should see, not just a log line.
+    await updateConversationState(conversation.id, { needsAttention: true });
     return result;
   }
 
@@ -81,6 +84,7 @@ export async function processInboundMessage(personId: string, inboundBody: strin
     objectionStage: result.objectionStage,
     linkProvided: result.linkProvided,
     promoOffered: result.promoOffered,
+    ...(result.requiresStaff ? { needsAttention: true } : {}),
   });
 
   return result;

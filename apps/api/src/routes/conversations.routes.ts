@@ -1,6 +1,7 @@
 import { Router, type Router as RouterType } from "express";
 import * as conversationsService from "../services/conversations.service.js";
 import { requireRole } from "../middleware/requireAuth.js";
+import { requireCsrf } from "../middleware/csrf.js";
 
 export function createConversationsRouter(): RouterType {
   const router: RouterType = Router();
@@ -22,6 +23,20 @@ export function createConversationsRouter(): RouterType {
         return;
       }
       res.json(detail);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post("/:id/clear-attention", requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
+    try {
+      const detail = await conversationsService.getConversationDetail(req.params.id as string);
+      if (!detail) {
+        res.status(404).json({ error: "Conversation not found." });
+        return;
+      }
+      await conversationsService.clearNeedsAttention(req.params.id as string);
+      res.json({ ok: true });
     } catch (err) {
       next(err);
     }

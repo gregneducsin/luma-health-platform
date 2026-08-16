@@ -128,7 +128,7 @@ describe("processInboundMessage", () => {
     expect(messages.some((m) => m.direction === "inbound" && m.body === "hello")).toBe(true);
   });
 
-  it("does not send or persist any outbound message when the guardrail rejects the turn", async () => {
+  it("does not send or persist any outbound message when the guardrail rejects the turn, but flags the conversation for staff attention", async () => {
     runLucyTurnMock.mockClear();
     sendMessageMock.mockClear();
     runLucyTurnMock.mockResolvedValueOnce({ ok: false, code: "UNSUPPORTED_PRICING_CLAIM" });
@@ -142,6 +142,34 @@ describe("processInboundMessage", () => {
     const messages = await listMessages(conversation.id);
     expect(messages.length).toBe(1);
     expect(messages[0].direction).toBe("inbound");
+    expect(conversation.needsAttention).toBe(true);
+  });
+
+  it("flags the conversation for staff attention when the model itself flags requiresStaff (e.g. action=staff_review)", async () => {
+    runLucyTurnMock.mockClear();
+    sendMessageMock.mockClear();
+    runLucyTurnMock.mockResolvedValueOnce(
+      okResult({ action: "staff_review", reply: null, nextQuestion: null, requiresStaff: true, source: "pre_check_block" }),
+    );
+
+    const personId = await seedCustomer();
+    await processInboundMessage(personId, "I need to speak to a lawyer");
+
+    const conversation = await getOrCreateConversation(personId);
+    expect(conversation.needsAttention).toBe(true);
+  });
+
+  it("does not flag the conversation when the turn is a normal, non-staff reply", async () => {
+    runLucyTurnMock.mockClear();
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValue({ providerMessageId: "msg_ok" });
+    runLucyTurnMock.mockResolvedValueOnce(okResult({ requiresStaff: false }));
+
+    const personId = await seedCustomer();
+    await processInboundMessage(personId, "how much is semaglutide?");
+
+    const conversation = await getOrCreateConversation(personId);
+    expect(conversation.needsAttention).toBe(false);
   });
 
   it("does not create a duplicate conversation across multiple inbound turns", async () => {

@@ -1,4 +1,4 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ConversationSummary, ConversationDetail, SendLucyTestMessageRequest, LucyTurnResponse } from "@luma/shared";
 import { api } from "../lib/apiClient";
 
@@ -24,7 +24,21 @@ export function useConversationDetail(id: string | null) {
 
 /** Sends a simulated inbound message through the real dispatch pipeline (test/dev tool). */
 export function useSendLucyTestMessage() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: SendLucyTestMessageRequest) => api.post<LucyTurnResponse>("/api/app/lucy-test/message", input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+}
+
+export function useClearNeedsAttention() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (conversationId: string) => api.post<{ ok: true }>(`/api/app/conversations/${conversationId}/clear-attention`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
   });
 }
