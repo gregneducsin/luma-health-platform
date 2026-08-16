@@ -43,11 +43,16 @@ export interface KnowledgeTopic {
 }
 
 /**
- * The one allowlisted intake URL.
- * Claude may output this exact string only when the customer asks for the link
- * or confirms they are ready to sign up. All other URLs remain prohibited.
+ * Fixed URLs Claude is allowed to output verbatim. Deliberately does NOT
+ * include an intake/signup URL: those are minted per-lead by
+ * intake-links.service.ts (createIntakeLink) at send_form time, so Claude
+ * never sees a real token to output. On action=send_form, Claude's reply
+ * must contain no URL at all — the caller appends the freshly minted link.
  */
-export const APPROVED_INTAKE_URL = "https://start.mylumahealth.com/start-online-visit/863ljl-78f0cabe";
+export const APPROVED_REVIEW_URLS = new Set([
+  "https://www.consumeraffairs.com/health/luma-health.html",
+  "https://consumersverified.com/luma-health",
+]);
 
 export const KNOWLEDGE_CATALOG: readonly KnowledgeTopic[] = [
   // ── Product comparison ─────────────────────────────────────────────────────

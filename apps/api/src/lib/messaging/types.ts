@@ -56,6 +56,14 @@ export interface ClaudeInteractiveResult {
    * to select which stage's script applies to the next matching objection.
    */
   readonly objectionStage: 0 | 1 | 2;
+  /**
+   * True when Claude used the first_month_offer knowledge topic at any point
+   * in this session. Determines which signup link variant gets minted on
+   * action=send_form (the $20-off promo URL vs. the plain one) — decided at
+   * link-mint time, not guessed later, since the click happens hours after
+   * the conversation ends and carries no memory of what was discussed.
+   */
+  readonly promoOffered: boolean;
 }
 
 export interface BotPreviewMessage {
@@ -91,4 +99,6 @@ export interface BotPreviewRequestBody {
    * Claude should not repeat the link unless the customer explicitly asks again.
    */
   readonly linkProvided: boolean;
+  /** True once the first_month_offer topic has been used at any point this session. */
+  readonly promoOffered: boolean;
 }

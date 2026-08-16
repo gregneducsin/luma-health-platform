@@ -20,7 +20,7 @@
 
 import { z } from "zod";
 import type { ClaudeInteractiveResult } from "./types.js";
-import { APPROVED_INTAKE_URL, APPROVED_PRICING_TOPIC_KEYS, PRODUCT_PRICING_TOPIC_KEYS } from "./knowledge-catalog.js";
+import { APPROVED_REVIEW_URLS, APPROVED_PRICING_TOPIC_KEYS, PRODUCT_PRICING_TOPIC_KEYS } from "./knowledge-catalog.js";
 
 // ── Zod schema for structured provider output ─────────────────────────────────
 
@@ -67,6 +67,8 @@ export const ClaudeInteractiveSchema = z
      * ClaudeInteractiveResult.objectionStage in types.ts for the stage meanings.
      */
     objectionStage: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional().default(0),
+    /** True once the first_month_offer topic has been used at any point this session. */
+    promoOffered: z.boolean().optional().default(false),
   })
   .superRefine((data, ctx) => {
     // Actions that require a non-empty reply
@@ -533,13 +535,16 @@ export function interactivePostCheck(
   const { reply } = raw;
 
   if (reply !== null) {
-    // URL — only the exact approved intake URL is allowed
+    // URL — only the fixed review-site URLs are allowed. No intake/signup URL
+    // is ever allowlisted here: those are minted per-lead server-side (see
+    // knowledge-catalog.ts's APPROVED_REVIEW_URLS docstring) and Claude must
+    // never output one, even a real one from a prior turn.
     URL_RE.lastIndex = 0;
     const urlMatches = [...reply.matchAll(URL_RE)];
     for (const match of urlMatches) {
       // Strip trailing punctuation that might be appended by Claude
       const url = match[0].replace(/[.,;)'"]+$/, "");
-      if (url !== APPROVED_INTAKE_URL) {
+      if (!APPROVED_REVIEW_URLS.has(url)) {
         return { ok: false, code: "UNAPPROVED_URL" };
       }
     }

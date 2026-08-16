@@ -4,9 +4,10 @@ import { customersTable } from "./customers";
 /**
  * A one-time trigger link we generate and send to a lead (e.g. an
  * abandoned-questionnaire nudge). Clicking it redirects to the universal
- * Bask questionnaire URL and, on the first click only, arms a follow-up job
- * due 2 hours later. Only the SHA-256 hash of the raw token is ever stored —
- * same convention as session/invitation/password-reset tokens.
+ * Bask questionnaire URL (or its $20-off promo variant — see promoApplied)
+ * and, on the first click only, arms a follow-up job due 2 hours later.
+ * Only the SHA-256 hash of the raw token is ever stored — same convention as
+ * session/invitation/password-reset tokens.
  */
 export const intakeLinkTokensTable = pgTable(
   "intake_link_tokens",
@@ -16,6 +17,13 @@ export const intakeLinkTokensTable = pgTable(
       .notNull()
       .references(() => customersTable.id, { onDelete: "cascade" }),
     tokenHash: text("token_hash").notNull(),
+    /**
+     * Which Bask URL variant this link redirects to. Decided at mint time
+     * (e.g. by whether the Lucy conversation used the first_month_offer
+     * topic before agreement), not at click time — the click happens hours
+     * later with no memory of what was discussed.
+     */
+    promoApplied: text("promo_applied", { enum: ["none", "first_month_20"] }).notNull().default("none"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     clickedAt: timestamp("clicked_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

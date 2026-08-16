@@ -12,6 +12,7 @@ import { createCustomersRouter } from "./routes/customers.routes.js";
 import { createPurchasesRouter } from "./routes/purchases.routes.js";
 import { createQuestionnairesRouter } from "./routes/questionnaires.routes.js";
 import { createAiAssistantRouter } from "./routes/ai-assistant.routes.js";
+import { createLucyTestRouter } from "./routes/lucy-test.routes.js";
 import { createEmployeesRouter } from "./routes/payroll/employees.routes.js";
 import { createPayrollWeeksRouter } from "./routes/payroll/weeks.routes.js";
 import { createMarketingSpendRouter } from "./routes/payroll/marketing-spend.routes.js";
@@ -59,6 +60,7 @@ export function createApp(): Express {
   app.use("/api/app/purchases", createPurchasesRouter());
   app.use("/api/app/questionnaires", createQuestionnairesRouter());
   app.use("/api/app/ai-assistant", createAiAssistantRouter());
+  app.use("/api/app/lucy-test", createLucyTestRouter());
   app.use("/api/app/payroll/employees", createEmployeesRouter());
   app.use("/api/app/payroll/weeks", createPayrollWeeksRouter());
   app.use("/api/app/payroll/marketing-spend", createMarketingSpendRouter());

@@ -22,10 +22,16 @@ describe("intake-links.service", () => {
   beforeAll(() => {
     process.env.INTAKE_LINK_BASE_URL = "http://localhost:3000";
     process.env.BASK_QUESTIONNAIRE_URL = "https://bask.example.com/questionnaire";
+    process.env.BASK_QUESTIONNAIRE_PROMO_URL = "https://bask.example.com/questionnaire?promo=Get20";
   });
 
   afterEach(() => {
-    process.env = { ...originalEnv, INTAKE_LINK_BASE_URL: "http://localhost:3000", BASK_QUESTIONNAIRE_URL: "https://bask.example.com/questionnaire" };
+    process.env = {
+      ...originalEnv,
+      INTAKE_LINK_BASE_URL: "http://localhost:3000",
+      BASK_QUESTIONNAIRE_URL: "https://bask.example.com/questionnaire",
+      BASK_QUESTIONNAIRE_PROMO_URL: "https://bask.example.com/questionnaire?promo=Get20",
+    };
   });
 
   describe("createIntakeLink", () => {
@@ -50,6 +56,22 @@ describe("intake-links.service", () => {
       const { createIntakeLink } = await import("./intake-links.service.js");
       const personId = await seedCustomer();
       await expect(createIntakeLink(personId)).rejects.toThrow(/INTAKE_LINK_BASE_URL/);
+    });
+
+    it("defaults to the plain (no-promo) variant", async () => {
+      const { createIntakeLink } = await import("./intake-links.service.js");
+      const personId = await seedCustomer();
+      await createIntakeLink(personId);
+      const [row] = await db.select().from(intakeLinkTokensTable).where(eq(intakeLinkTokensTable.personId, personId));
+      expect(row.promoApplied).toBe("none");
+    });
+
+    it("stores the promo variant when requested", async () => {
+      const { createIntakeLink } = await import("./intake-links.service.js");
+      const personId = await seedCustomer();
+      await createIntakeLink(personId, "first_month_20");
+      const [row] = await db.select().from(intakeLinkTokensTable).where(eq(intakeLinkTokensTable.personId, personId));
+      expect(row.promoApplied).toBe("first_month_20");
     });
   });
 
@@ -110,6 +132,16 @@ describe("intake-links.service", () => {
 
       const jobs = await db.select().from(followUpJobsTable).where(eq(followUpJobsTable.personId, personId));
       expect(jobs.length).toBe(0);
+    });
+
+    it("redirects to the promo URL when the link was minted with the promo variant", async () => {
+      const { createIntakeLink, handleIntakeLinkClick } = await import("./intake-links.service.js");
+      const personId = await seedCustomer();
+      const { url } = await createIntakeLink(personId, "first_month_20");
+      const rawToken = url.split("/go/")[1];
+
+      const { redirectUrl } = await handleIntakeLinkClick(rawToken);
+      expect(redirectUrl).toBe("https://bask.example.com/questionnaire?promo=Get20");
     });
   });
 });

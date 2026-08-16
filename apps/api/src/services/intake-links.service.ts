@@ -1,14 +1,17 @@
-import { and, eq, gt, isNull, sql } from "drizzle-orm";
-import { db, intakeLinkTokensTable, followUpJobsTable } from "@luma/db";
+import { eq, sql } from "drizzle-orm";
+import { db, intakeLinkTokensTable, followUpJobsTable, type IntakeLinkToken } from "@luma/db";
 import { generateRawToken, hashToken } from "../lib/crypto.js";
 
 const INTAKE_LINK_TTL_MS = 24 * 60 * 60 * 1000;
 const FOLLOW_UP_DELAY_MS = 2 * 60 * 60 * 1000;
 
-function baskQuestionnaireUrl(): string {
-  const url = process.env.BASK_QUESTIONNAIRE_URL;
+export type PromoVariant = IntakeLinkToken["promoApplied"];
+
+function baskQuestionnaireUrl(promo: PromoVariant): string {
+  const envVar = promo === "first_month_20" ? "BASK_QUESTIONNAIRE_PROMO_URL" : "BASK_QUESTIONNAIRE_URL";
+  const url = process.env[envVar];
   if (!url) {
-    throw new Error("BASK_QUESTIONNAIRE_URL is not configured.");
+    throw new Error(`${envVar} is not configured.`);
   }
   return url;
 }
@@ -25,14 +28,20 @@ function intakeLinkBaseUrl(): string {
  * Mint a one-time trigger link for a lead (e.g. an abandoned-questionnaire
  * nudge). The raw token is returned exactly once and is never stored — only
  * its SHA-256 hash is persisted, same convention as session/invitation tokens.
+ *
+ * `promo` picks which Bask URL variant this link redirects to, decided now
+ * (e.g. by whether the conversation used the first_month_offer topic) —
+ * never re-derived at click time, which happens hours later with no memory
+ * of the conversation.
  */
-export async function createIntakeLink(personId: string): Promise<{ url: string; expiresAt: Date }> {
+export async function createIntakeLink(personId: string, promo: PromoVariant = "none"): Promise<{ url: string; expiresAt: Date }> {
   const rawToken = generateRawToken();
   const expiresAt = new Date(Date.now() + INTAKE_LINK_TTL_MS);
 
   await db.insert(intakeLinkTokensTable).values({
     personId,
     tokenHash: hashToken(rawToken),
+    promoApplied: promo,
     expiresAt,
   });
 
@@ -40,32 +49,39 @@ export async function createIntakeLink(personId: string): Promise<{ url: string;
 }
 
 /**
- * Resolve a click on an intake link. Always returns the (universal) Bask
- * questionnaire URL to redirect to — an unknown or expired token still
- * redirects there, so a customer never lands on an error page — but only a
- * valid, unexpired, first-time click arms the 2-hour follow-up job.
+ * Resolve a click on an intake link. Always returns a Bask questionnaire URL
+ * to redirect to — an unknown token falls back to the plain URL so a customer
+ * never lands on an error page — but only a valid, unexpired, first-time
+ * click on a known token arms the 2-hour follow-up job.
  */
 export async function handleIntakeLinkClick(rawToken: string): Promise<{ redirectUrl: string }> {
-  const redirectUrl = baskQuestionnaireUrl();
   const tokenHash = hashToken(rawToken);
 
-  const [token] = await db
-    .update(intakeLinkTokensTable)
-    .set({ clickedAt: sql`now()` })
-    .where(and(eq(intakeLinkTokensTable.tokenHash, tokenHash), isNull(intakeLinkTokensTable.clickedAt), gt(intakeLinkTokensTable.expiresAt, sql`now()`)))
-    .returning({ id: intakeLinkTokensTable.id, personId: intakeLinkTokensTable.personId });
+  return db.transaction(async (tx) => {
+    const [token] = await tx
+      .select()
+      .from(intakeLinkTokensTable)
+      .where(eq(intakeLinkTokensTable.tokenHash, tokenHash))
+      .for("update");
 
-  // No row updated means either: unknown token, already clicked once before
-  // (repeat click — redirect only, don't re-arm), or expired. Either way we
-  // still redirect; we just don't schedule a follow-up.
-  if (token) {
-    await db.insert(followUpJobsTable).values({
-      personId: token.personId,
-      intakeLinkTokenId: token.id,
-      jobType: "abandoned_intake_followup",
-      dueAt: new Date(Date.now() + FOLLOW_UP_DELAY_MS),
-    });
-  }
+    if (!token) {
+      return { redirectUrl: baskQuestionnaireUrl("none") };
+    }
 
-  return { redirectUrl };
+    const redirectUrl = baskQuestionnaireUrl(token.promoApplied);
+    const alreadyClicked = token.clickedAt !== null;
+    const expired = token.expiresAt.getTime() <= Date.now();
+
+    if (!alreadyClicked && !expired) {
+      await tx.update(intakeLinkTokensTable).set({ clickedAt: sql`now()` }).where(eq(intakeLinkTokensTable.id, token.id));
+      await tx.insert(followUpJobsTable).values({
+        personId: token.personId,
+        intakeLinkTokenId: token.id,
+        jobType: "abandoned_intake_followup",
+        dueAt: new Date(Date.now() + FOLLOW_UP_DELAY_MS),
+      });
+    }
+
+    return { redirectUrl };
+  });
 }

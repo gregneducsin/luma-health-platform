@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { interactivePreCheck, interactivePostCheck } from "./safety.js";
-import { APPROVED_INTAKE_URL } from "./knowledge-catalog.js";
+import { APPROVED_REVIEW_URLS } from "./knowledge-catalog.js";
 import type { ClaudeInteractiveResult } from "./types.js";
 
 function reply(overrides: Partial<ClaudeInteractiveResult> = {}): ClaudeInteractiveResult {
@@ -18,6 +18,7 @@ function reply(overrides: Partial<ClaudeInteractiveResult> = {}): ClaudeInteract
     nextQuestion: "Would you like to go over the pricing?",
     linkProvided: false,
     objectionStage: 0,
+    promoOffered: false,
     ...overrides,
   };
 }
@@ -90,9 +91,16 @@ describe("interactivePreCheck", () => {
 // ── Post-check: URL allowlisting ──────────────────────────────────────────────
 
 describe("interactivePostCheck: URLs", () => {
-  it("allows the exact approved intake URL", () => {
-    const result = check(reply({ reply: `Here you go: ${APPROVED_INTAKE_URL}` }));
-    expect(result.ok).toBe(true);
+  it("allows the fixed review-site URLs", () => {
+    for (const url of APPROVED_REVIEW_URLS) {
+      const result = check(reply({ reply: `Here you go: ${url}` }));
+      expect(result.ok).toBe(true);
+    }
+  });
+
+  it("rejects an intake/signup-shaped URL even if it looks plausible", () => {
+    const result = check(reply({ reply: "Here you go: https://start.mylumahealth.com/start-online-visit/863ljl-78f0cabe" }));
+    expect(result).toEqual({ ok: false, code: "UNAPPROVED_URL" });
   });
 
   it("rejects any other URL", () => {

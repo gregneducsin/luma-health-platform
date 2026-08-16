@@ -42,3 +42,14 @@ export function createAiAssistantLimiter(): RateLimitRequestHandler {
     message: { error: "Too many assistant requests. Please wait a bit and try again." },
   });
 }
+
+// Same reasoning as createAiAssistantLimiter — one LLM call per request.
+export function createLucyTestLimiter(): RateLimitRequestHandler {
+  return rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many test turns. Please wait a bit and try again." },
+  });
+}
