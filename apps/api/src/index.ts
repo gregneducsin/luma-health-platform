@@ -4,6 +4,7 @@ import { createApp } from "./app.js";
 import { sweepFollowUpJobs } from "./services/follow-up-jobs.service.js";
 import { sweepAbandonedCartTriggers } from "./services/abandoned-cart.service.js";
 import { sweepReviewRequestTriggers } from "./services/order-fulfillment.service.js";
+import { sweepLeadCheckinTriggers } from "./services/lead-checkin.service.js";
 
 // Migrations are applied as a discrete step before this process starts (see
 // packages/db/src/migrate.ts's docstring, the Dockerfile entrypoint, and the
@@ -46,3 +47,12 @@ setInterval(() => {
     logger.error({ err }, "review-request sweep failed");
   });
 }, REVIEW_REQUEST_SWEEP_INTERVAL_MS);
+
+// Lead check-ins are due 6 days out — same coarse tick as the review-request
+// sweep above is plenty precise for a delay measured in days.
+const LEAD_CHECKIN_SWEEP_INTERVAL_MS = 30 * 60 * 1000;
+setInterval(() => {
+  sweepLeadCheckinTriggers().catch((err) => {
+    logger.error({ err }, "lead check-in sweep failed");
+  });
+}, LEAD_CHECKIN_SWEEP_INTERVAL_MS);

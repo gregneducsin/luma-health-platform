@@ -1,6 +1,7 @@
 import { and, eq, lte, sql } from "drizzle-orm";
 import { db, abandonedCartTriggersTable, customersTable, purchasesTable, questionnaireEventsTable } from "@luma/db";
 import { getOrCreateConversation, appendMessage, updateConversationState } from "./conversations.service.js";
+import { scheduleLeadCheckin } from "./lead-checkin.service.js";
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { renderAbandonedCartOpener } from "../lib/messaging/follow-up-templates.js";
 import { logger } from "../lib/logger.js";
@@ -105,6 +106,11 @@ async function sendOpener(personId: string): Promise<SendResult> {
 
   const text = renderAbandonedCartOpener(customer.firstName);
   const conversation = await getOrCreateConversation(personId);
+  // Arms the 6-day check-in the moment we're about to send this lead's very
+  // first message — regardless of whether the send itself succeeds, same as
+  // every other trigger-arming call in this codebase. No-op if a check-in
+  // was already armed for this person (e.g. by the Meta-lead opener).
+  await scheduleLeadCheckin(personId);
 
   try {
     const result = await getSmsProvider().sendMessage(customer.phone, text);

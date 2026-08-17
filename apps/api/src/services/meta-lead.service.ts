@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db, customersTable } from "@luma/db";
 import { getOrCreateConversation, appendMessage } from "./conversations.service.js";
+import { scheduleLeadCheckin } from "./lead-checkin.service.js";
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { renderMetaLeadOpener } from "../lib/messaging/follow-up-templates.js";
 import { logger } from "../lib/logger.js";
@@ -22,6 +23,9 @@ export async function sendMetaLeadOpener(personId: string): Promise<void> {
 
   const text = renderMetaLeadOpener(customer.firstName);
   const conversation = await getOrCreateConversation(personId, "meta_form");
+  // Arms the 6-day check-in the moment we're about to send this lead's very
+  // first message — see the identical comment in abandoned-cart.service.ts.
+  await scheduleLeadCheckin(personId);
 
   try {
     const result = await getSmsProvider().sendMessage(customer.phone, text);

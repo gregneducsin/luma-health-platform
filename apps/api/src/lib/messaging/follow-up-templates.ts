@@ -52,3 +52,22 @@ export function renderMetaLeadOpener(firstName: string): string {
   const name = firstName.trim() || "there";
   return `Hey ${name}, this is Lucy with Luma Health. I wanted to check what state you're in to see what promotions we have running for you right now.`;
 }
+
+/**
+ * The 6-day check-in — fired once per lead, 6 days after the very first
+ * outbound message Lucy ever sent them (see lead-checkin.service.ts), 24/7,
+ * no monitored-hours window. Fixed template, not AI-drafted, same reasoning
+ * as the openers above. Which variant fires depends on the conversation's
+ * currentlyTaking slot at send time: still unanswered -> ask directly;
+ * already answered (yes or no) -> a re-engagement question instead, since
+ * asking the same thing twice would be redundant.
+ */
+export function renderCurrentlyTakingCheckin(firstName: string): string {
+  const name = firstName.trim() || "there";
+  return `Hi ${name}, this is Lucy with Luma Health. Quick question — are you currently taking semaglutide or tirzepatide?`;
+}
+
+export function renderReengagementCheckin(firstName: string): string {
+  const name = firstName.trim() || "there";
+  return `Hi ${name}, this is Lucy with Luma Health. Still thinking it over? What's the biggest thing holding you back from getting started?`;
+}

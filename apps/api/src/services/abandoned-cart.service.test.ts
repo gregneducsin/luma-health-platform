@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { db, customersTable, questionnaireEventsTable, purchasesTable, abandonedCartTriggersTable } from "@luma/db";
+import { db, customersTable, questionnaireEventsTable, purchasesTable, abandonedCartTriggersTable, leadCheckinTriggersTable } from "@luma/db";
 
 const sendMessageMock = vi.fn();
 vi.mock("../lib/sms-provider.js", async () => {
@@ -84,6 +84,10 @@ describe("sweepAbandonedCartTriggers", () => {
     const messages = await listMessages(conversation.id);
     expect(messages.length).toBe(1);
     expect(messages[0].direction).toBe("outbound");
+
+    const [checkin] = await db.select().from(leadCheckinTriggersTable).where(eq(leadCheckinTriggersTable.personId, personId));
+    expect(checkin).toBeDefined();
+    expect(checkin.status).toBe("pending");
   });
 
   it("sends exactly once when a second sweep starts while the first is still mid-send for the same trigger", async () => {

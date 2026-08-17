@@ -182,8 +182,54 @@ export const abandonedCartTriggersTable = pgTable(
   ],
 );
 
+/**
+ * Schedules a one-time check-in 6 days after the very first outbound
+ * message Lucy ever sends a lead (armed from sendOpener in
+ * abandoned-cart.service.ts and sendMetaLeadOpener in meta-lead.service.ts —
+ * whichever fires first for that person). One row per person (unique
+ * index), so it can only ever arm once regardless of which opener path
+ * fires or how many times it's called.
+ *
+ * Which of the two fixed messages the sweep sends depends on the
+ * conversation's currentlyTaking slot at send time (rechecked then, not at
+ * arm time): still null -> ask directly; already answered -> a
+ * re-engagement question instead. See lead-checkin.service.ts.
+ */
+export const leadCheckinTriggersTable = pgTable(
+  "lead_checkin_triggers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => customersTable.id, { onDelete: "cascade" }),
+    dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
+    // "processing" is a transient claim state — see the identical comment on
+    // followUpJobsTable.status.
+    status: text("status", { enum: ["pending", "processing", "sent", "cancelled", "failed"] }).notNull().default("pending"),
+    // Which fixed message actually went out — recorded at send time, null until then.
+    variant: text("variant", { enum: ["currently_taking", "reengagement"] }),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    providerMessageId: text("provider_message_id"),
+    cancelledReason: text("cancelled_reason"),
+    failureReason: text("failure_reason"),
+    // A failed send gets a few retries rather than being lost permanently —
+    // same reasoning and mechanism as reviewRequestTriggersTable.attemptCount.
+    attemptCount: integer("attempt_count").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex("lead_checkin_triggers_person_id_key").on(t.personId),
+    index("lead_checkin_triggers_status_due_at_idx").on(t.status, t.dueAt),
+  ],
+);
+
 export type IntakeLinkToken = typeof intakeLinkTokensTable.$inferSelect;
 export type FollowUpJob = typeof followUpJobsTable.$inferSelect;
 export type Conversation = typeof conversationsTable.$inferSelect;
 export type ConversationMessage = typeof conversationMessagesTable.$inferSelect;
 export type AbandonedCartTrigger = typeof abandonedCartTriggersTable.$inferSelect;
+export type LeadCheckinTrigger = typeof leadCheckinTriggersTable.$inferSelect;

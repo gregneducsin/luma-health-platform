@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { db, customersTable } from "@luma/db";
+import { eq } from "drizzle-orm";
+import { db, customersTable, leadCheckinTriggersTable } from "@luma/db";
 
 const sendMessageMock = vi.fn();
 vi.mock("../lib/sms-provider.js", async () => {
@@ -41,6 +42,21 @@ describe("sendMetaLeadOpener", () => {
     expect(messages[0].direction).toBe("outbound");
     expect(messages[0].providerMessageId).toBe("msg_meta_opener");
     expect(messages[0].body).toContain("Jamie");
+  });
+
+  it("arms the 6-day check-in trigger, due about 6 days out", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_meta_opener2" });
+
+    const personId = await seedCustomer();
+    await sendMetaLeadOpener(personId);
+
+    const [trigger] = await db.select().from(leadCheckinTriggersTable).where(eq(leadCheckinTriggersTable.personId, personId));
+    expect(trigger).toBeDefined();
+    expect(trigger.status).toBe("pending");
+    const dueInMs = new Date(trigger.dueAt).getTime() - Date.now();
+    expect(dueInMs).toBeGreaterThan(6 * 24 * 60 * 60 * 1000 - 10_000);
+    expect(dueInMs).toBeLessThan(6 * 24 * 60 * 60 * 1000 + 10_000);
   });
 
   it("does not call the provider and does not log anything when there's no phone on file", async () => {
