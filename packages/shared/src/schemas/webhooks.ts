@@ -122,3 +122,35 @@ export const baskOrderShippedWebhookRequestSchema = z.object({
   occurredAt: z.string().datetime().optional(),
 });
 export type BaskOrderShippedWebhookRequest = z.infer<typeof baskOrderShippedWebhookRequestSchema>;
+
+// ── iBluSend inbound webhook (outbound from iBluSend's own perspective) ────────
+//
+// The envelope is shared across every event type iBluSend can deliver
+// (message.received, message.sent, message.failed, message.delivered,
+// message.read, reaction.received, contact.created, contact.opted_out,
+// contact.resubscribed, device.status_changed, device.health_changed) — we
+// only act on a subset, so `data` is validated loosely here (passthrough)
+// and narrowed per-event in the handler. `event_id` is what
+// recordWebhookEventIfNew dedupes on — per iBluSend's docs, delivery is
+// at-least-once and event_id is "unique per occurrence and stable across
+// retries," unlike data.message_id, which identifies the message itself,
+// not the delivery attempt.
+
+export const ibluSendWebhookEnvelopeSchema = z.object({
+  event: z.string().min(1),
+  event_id: z.string().min(1),
+  timestamp: z.string().min(1),
+  api_version: z.string().min(1).optional(),
+  data: z.record(z.string(), z.unknown()),
+});
+export type IbluSendWebhookEnvelope = z.infer<typeof ibluSendWebhookEnvelopeSchema>;
+
+export const ibluSendMessageReceivedDataSchema = z.object({
+  message_id: z.string().min(1),
+  phone_number: z.string().min(1),
+  content: z.string().nullable().optional(),
+  direction: z.string().min(1),
+  service_type: z.string().min(1).optional(),
+  media_urls: z.array(z.string()).nullable().optional(),
+});
+export type IbluSendMessageReceivedData = z.infer<typeof ibluSendMessageReceivedDataSchema>;

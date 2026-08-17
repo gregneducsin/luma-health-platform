@@ -11,7 +11,15 @@ export const webhookEventsTable = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     source: text("source", {
-      enum: ["ghl_lead", "bask_order", "bask_questionnaire", "bask_payment_failed", "bask_prescription_written", "bask_order_shipped"],
+      enum: [
+        "ghl_lead",
+        "bask_order",
+        "bask_questionnaire",
+        "bask_payment_failed",
+        "bask_prescription_written",
+        "bask_order_shipped",
+        "iblusend_message",
+      ],
     }).notNull(),
     externalEventId: text("external_event_id").notNull(),
     personId: uuid("person_id").references(() => customersTable.id, { onDelete: "set null" }),

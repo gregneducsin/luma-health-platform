@@ -7,6 +7,8 @@ declare global {
       user: AuthUser | null;
       /** The app_users session row id, when authenticated. */
       sessionId: string | null;
+      /** Raw request body bytes, stashed by express.json()'s verify hook — see app.ts. Used by the iBluSend webhook's HMAC signature check. */
+      rawBody?: Buffer;
     }
   }
 }

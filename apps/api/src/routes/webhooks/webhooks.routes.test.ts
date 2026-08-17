@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { describe, expect, it, beforeAll, afterAll, vi } from "vitest";
 import request from "supertest";
 import { createApp } from "../../app.js";
@@ -8,6 +9,7 @@ const QUESTIONNAIRE_SECRET = "test-questionnaire-secret";
 const PAYMENT_FAILED_SECRET = "test-payment-failed-secret";
 const PRESCRIPTION_WRITTEN_SECRET = "test-prescription-written-secret";
 const ORDER_SHIPPED_SECRET = "test-order-shipped-secret";
+const IBLUSEND_SECRET = "test-iblusend-secret";
 
 const sendMessageMock = vi.fn();
 vi.mock("../../lib/sms-provider.js", async () => {
@@ -26,6 +28,7 @@ describe("Webhooks", () => {
     process.env.FAILED_PAYMENT_WEBHOOK_SECRET = PAYMENT_FAILED_SECRET;
     process.env.PRESCRIPTION_WRITTEN_WEBHOOK_SECRET = PRESCRIPTION_WRITTEN_SECRET;
     process.env.ORDER_SHIPPED_WEBHOOK_SECRET = ORDER_SHIPPED_SECRET;
+    process.env.IBLUSEND_WEBHOOK_SECRET = IBLUSEND_SECRET;
     app = createApp();
   });
 
@@ -621,6 +624,88 @@ describe("Webhooks", () => {
         .from(externalIdentitiesTable)
         .where(eq(externalIdentitiesTable.externalId, "bask-person-unknown"));
       expect(identities).toHaveLength(0);
+    });
+  });
+
+  describe("iBluSend message webhook", () => {
+    function signedRequest(payload: unknown) {
+      const raw = JSON.stringify(payload);
+      const signature = "sha256=" + crypto.createHmac("sha256", IBLUSEND_SECRET).update(raw).digest("hex");
+      return request(app)
+        .post("/api/webhooks/iblusend-message")
+        .set("Content-Type", "application/json")
+        .set("X-iBluSend-Signature", signature)
+        .send(raw);
+    }
+
+    function envelope(overrides: { event?: string; data?: Record<string, unknown> } = {}) {
+      return {
+        event: overrides.event ?? "message.received",
+        event_id: crypto.randomUUID(),
+        timestamp: "2026-08-17T12:00:00.000Z",
+        api_version: "2026-03-07",
+        data: {
+          message_id: crypto.randomUUID(),
+          phone_number: "+15559990000",
+          content: "hi",
+          direction: "incoming",
+          service_type: "iMessage",
+          ...overrides.data,
+        },
+      };
+    }
+
+    it("rejects a missing signature with 401", async () => {
+      const res = await request(app).post("/api/webhooks/iblusend-message").send(envelope());
+      expect(res.status).toBe(401);
+    });
+
+    it("rejects a wrong signature with 401", async () => {
+      const res = await request(app)
+        .post("/api/webhooks/iblusend-message")
+        .set("X-iBluSend-Signature", "sha256=" + "0".repeat(64))
+        .send(envelope());
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 500 if the env var itself is unset", async () => {
+      const saved = process.env.IBLUSEND_WEBHOOK_SECRET;
+      delete process.env.IBLUSEND_WEBHOOK_SECRET;
+      const localApp = createApp();
+      const res = await request(localApp).post("/api/webhooks/iblusend-message").send(envelope());
+      expect(res.status).toBe(500);
+      process.env.IBLUSEND_WEBHOOK_SECRET = saved;
+    });
+
+    it("accepts a correctly signed payload and acknowledges an event type it doesn't act on", async () => {
+      const res = await signedRequest(envelope({ event: "message.delivered", data: { status: "delivered" } }));
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ ok: true, duplicate: false });
+    });
+
+    it("rejects a malformed payload with 400 even when correctly signed", async () => {
+      const res = await signedRequest({ not: "a valid envelope" });
+      expect(res.status).toBe(400);
+    });
+
+    it("reports a repeated event_id as a duplicate on the second delivery", async () => {
+      const payload = envelope({ event: "message.delivered", data: { status: "delivered" } });
+      const raw = JSON.stringify(payload);
+      const signature = "sha256=" + crypto.createHmac("sha256", IBLUSEND_SECRET).update(raw).digest("hex");
+
+      const first = await request(app)
+        .post("/api/webhooks/iblusend-message")
+        .set("Content-Type", "application/json")
+        .set("X-iBluSend-Signature", signature)
+        .send(raw);
+      const second = await request(app)
+        .post("/api/webhooks/iblusend-message")
+        .set("Content-Type", "application/json")
+        .set("X-iBluSend-Signature", signature)
+        .send(raw);
+
+      expect(first.body).toEqual({ ok: true, duplicate: false });
+      expect(second.body).toEqual({ ok: true, duplicate: true });
     });
   });
 });

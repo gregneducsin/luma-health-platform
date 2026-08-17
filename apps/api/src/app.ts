@@ -26,6 +26,7 @@ import { createBaskQuestionnaireWebhookRouter } from "./routes/webhooks/bask-que
 import { createBaskPaymentFailedWebhookRouter } from "./routes/webhooks/bask-payment-failed.routes.js";
 import { createBaskPrescriptionWrittenWebhookRouter } from "./routes/webhooks/bask-prescription-written.routes.js";
 import { createBaskOrderShippedWebhookRouter } from "./routes/webhooks/bask-order-shipped.routes.js";
+import { createIbluSendMessageWebhookRouter } from "./routes/webhooks/iblusend-message.routes.js";
 
 export function createApp(): Express {
   const app = express();
@@ -35,7 +36,17 @@ export function createApp(): Express {
   app.use(security);
   app.use(requestLogger);
   app.use(corsMiddleware);
-  app.use(express.json());
+  // rawBody is stashed for the iBluSend webhook route, which must verify an
+  // HMAC signature over the exact bytes sent — a re-serialized JSON.stringify
+  // of the parsed body is not guaranteed byte-identical (whitespace, key
+  // order), so the signature check needs the original buffer, not req.body.
+  app.use(
+    express.json({
+      verify: (req, _res, buf) => {
+        (req as Request).rawBody = buf;
+      },
+    }),
+  );
   app.use(cookieParser());
 
   // Never cache API responses.
@@ -84,6 +95,7 @@ export function createApp(): Express {
   app.use("/api/webhooks/bask-payment-failed", createBaskPaymentFailedWebhookRouter());
   app.use("/api/webhooks/bask-prescription-written", createBaskPrescriptionWrittenWebhookRouter());
   app.use("/api/webhooks/bask-order-shipped", createBaskOrderShippedWebhookRouter());
+  app.use("/api/webhooks/iblusend-message", createIbluSendMessageWebhookRouter());
 
   app.use(errorHandler);
 
