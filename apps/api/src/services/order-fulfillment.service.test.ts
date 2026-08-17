@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { db, customersTable, reviewRequestTriggersTable } from "@luma/db";
+import { setCustomerDnd } from "./dnd.service.js";
 
 const sendMessageMock = vi.fn();
 vi.mock("../lib/sms-provider.js", async () => {
@@ -49,6 +50,14 @@ describe("sendOrderReceivedOpener", () => {
   it("does not call the provider when there's no phone on file", async () => {
     sendMessageMock.mockClear();
     const personId = await seedCustomer({ phone: null });
+    await sendOrderReceivedOpener(personId);
+    expect(sendMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("does not call the provider when the customer is do-not-disturb", async () => {
+    sendMessageMock.mockClear();
+    const personId = await seedCustomer();
+    await setCustomerDnd(personId, true);
     await sendOrderReceivedOpener(personId);
     expect(sendMessageMock).not.toHaveBeenCalled();
   });
@@ -133,6 +142,25 @@ describe("sweepReviewRequestTriggers", () => {
 
     const conversation = await getOrCreateSupportConversation(personId);
     expect(conversation.reviewRequested).toBe(true);
+  });
+
+  it("cancels a due trigger for a do-not-disturb customer instead of sending", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_shipped" }); // handleOrderShipped's own notice
+
+    const personId = await seedCustomer();
+    await handleOrderShipped(personId, "TRACK-DND");
+    await backdateTrigger(personId);
+    await setCustomerDnd(personId, true);
+
+    sendMessageMock.mockClear();
+    const result = await sweepReviewRequestTriggers();
+    expect(result.cancelledCount).toBeGreaterThanOrEqual(1);
+    expect(sendMessageMock).not.toHaveBeenCalled();
+
+    const [trigger] = await db.select().from(reviewRequestTriggersTable).where(eq(reviewRequestTriggersTable.personId, personId));
+    expect(trigger.status).toBe("cancelled");
+    expect(trigger.cancelledReason).toBe("opted_out");
   });
 
   it("sends exactly once when a second sweep starts while the first is still mid-send for the same trigger", async () => {

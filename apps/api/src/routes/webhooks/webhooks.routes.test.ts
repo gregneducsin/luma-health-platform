@@ -345,6 +345,39 @@ describe("Webhooks", () => {
       const messages = await listSupportMessages(conversation.id);
       expect(messages.length).toBe(1);
     });
+
+    it("clears a previously opted-out customer's DND flag, so the order-received opener isn't itself blocked", async () => {
+      sendMessageMock.mockClear();
+      sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_sarah_opener_dnd" });
+
+      const { db, customersTable, externalIdentitiesTable } = await import("@luma/db");
+      const [customer] = await db
+        .insert(customersTable)
+        .values({ firstName: "Winback", lastName: "Customer", email: "winback@example.com", leadReceivedDate: "2026-01-01", phone: "+15551110098" })
+        .returning();
+      await db.insert(externalIdentitiesTable).values({ personId: customer!.id, system: "bask", externalId: "bask-person-winback" });
+
+      const { setCustomerDnd, isCustomerDnd } = await import("../../services/dnd.service.js");
+      await setCustomerDnd(customer!.id, true);
+      expect(await isCustomerDnd(customer!.id)).toBe(true);
+
+      const res = await request(app)
+        .post("/api/webhooks/bask-order")
+        .set("x-webhook-secret", ORDER_SECRET)
+        .send({
+          eventId: "bask-order-evt-winback",
+          externalPersonId: "bask-person-winback",
+          email: "winback@example.com",
+          orderId: "BASK-WINBACK-1",
+          productName: "Program",
+          amountPaid: 120,
+          purchasedAt: "2026-02-08T09:00:00.000Z",
+        });
+      expect(res.status).toBe(200);
+
+      expect(await isCustomerDnd(customer!.id)).toBe(false);
+      expect(sendMessageMock).toHaveBeenCalledWith("+15551110098", expect.stringContaining("this is Sarah"));
+    });
   });
 
   describe("Bask prescription written", () => {

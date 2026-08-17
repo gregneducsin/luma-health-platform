@@ -13,6 +13,7 @@ import {
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { logger } from "../lib/logger.js";
 import { withPersonLock } from "../lib/db-lock.js";
+import { isCustomerDnd, setCustomerDnd } from "./dnd.service.js";
 
 async function getCustomerContact(personId: string): Promise<{ firstName: string; phone: string | null } | undefined> {
   const [row] = await db.select({ firstName: customersTable.firstName, phone: customersTable.phone }).from(customersTable).where(eq(customersTable.id, personId));
@@ -25,8 +26,18 @@ async function getCustomerContact(personId: string): Promise<{ firstName: string
  * provider configured yet) doesn't erase the fact that this is what Lucy's
  * guardrail-approved reply actually was. Failures are logged, not thrown;
  * this function never blocks the caller on a transport problem.
+ *
+ * DND is checked here rather than earlier in the pipeline, so a customer's
+ * own OPT_OUT confirmation reply still goes out: processInboundMessageLocked
+ * sends this turn's texts before it flips the DND flag, so this check only
+ * ever blocks a *later* turn's sends, never the opt-out confirmation itself.
  */
-async function sendAndLog(conversationId: string, phone: string | null, text: string): Promise<void> {
+async function sendAndLog(personId: string, conversationId: string, phone: string | null, text: string): Promise<void> {
+  if (await isCustomerDnd(personId)) {
+    logger.warn({ personId, conversationId }, "outbound Lucy message not sent: customer is do-not-disturb");
+    return;
+  }
+
   let providerMessageId: string | null = null;
   if (phone) {
     try {
@@ -83,7 +94,13 @@ async function processInboundMessageLocked(personId: string, inboundBody: string
   const customer = await getCustomerContact(personId);
   const textsToSend = [result.reply, result.nextQuestion].filter((t): t is string => Boolean(t));
   for (const text of textsToSend) {
-    await sendAndLog(conversation.id, customer?.phone ?? null, text);
+    await sendAndLog(personId, conversation.id, customer?.phone ?? null, text);
+  }
+
+  // Set DND only after this turn's texts have gone out, so the OPT_OUT
+  // confirmation reply above isn't itself blocked by the flag it's about to set.
+  if (result.preCheckCode === "OPT_OUT") {
+    await setCustomerDnd(personId, true);
   }
 
   const slotPatch: ConversationStatePatch = {};

@@ -81,6 +81,7 @@ describe("runLucyTurn", () => {
       expect(result.action).toBe("pause");
       expect(result.reply).toMatch(/unsubscribed/i);
       expect(result.source).toBe("pre_check_block");
+      expect(result.preCheckCode).toBe("OPT_OUT");
     }
   });
 
@@ -94,6 +95,33 @@ describe("runLucyTurn", () => {
     if (result.ok) {
       expect(result.action).toBe("staff_review");
       expect(result.requiresStaff).toBe(true);
+    }
+  });
+
+  it("responds with a real 911 message on emergency content, and still flags staff attention", async () => {
+    callClaudeInteractiveMock.mockClear();
+    const personId = await seedCustomer();
+    const result = await runLucyTurn(personId, baseBody({ messages: [{ direction: "inbound", body: "I'm having a medical emergency" }] }));
+
+    expect(callClaudeInteractiveMock).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.action).toBe("staff_review");
+      expect(result.requiresStaff).toBe(true);
+      expect(result.reply).toMatch(/call 911/i);
+      expect(result.preCheckCode).toBe("EMERGENCY_CONTENT");
+    }
+  });
+
+  it("does not set preCheckCode on a model-generated turn", async () => {
+    callClaudeInteractiveMock.mockClear();
+    callClaudeInteractiveMock.mockResolvedValueOnce(modelResult());
+    const personId = await seedCustomer();
+    const result = await runLucyTurn(personId, baseBody());
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.preCheckCode).toBeNull();
     }
   });
 

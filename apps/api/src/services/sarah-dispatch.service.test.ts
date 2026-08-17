@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { db, customersTable, supportConversationsTable } from "@luma/db";
 import type { SarahTurnResult } from "./sarah-conversation.service.js";
+import { isCustomerDnd, setCustomerDnd } from "./dnd.service.js";
 
 const runSarahTurnMock = vi.fn();
 vi.mock("./sarah-conversation.service.js", async () => {
@@ -42,6 +43,7 @@ function okResult(overrides: Partial<Extract<SarahTurnResult, { ok: true }>> = {
     requiresStaff: false,
     knowledgeTopicsUsed: [],
     source: "model",
+    preCheckCode: null,
     ...overrides,
   };
 }
@@ -216,5 +218,43 @@ describe("processInboundSupportMessage", () => {
 
     const rows = await db.select().from(supportConversationsTable).where(eq(supportConversationsTable.personId, personId));
     expect(rows.length).toBe(1);
+  });
+
+  it("sends the OPT_OUT confirmation reply, then marks the customer DND — the confirmation itself is not blocked", async () => {
+    runSarahTurnMock.mockClear();
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_optout" });
+    runSarahTurnMock.mockResolvedValueOnce(
+      okResult({
+        action: "pause",
+        reply: "You've been unsubscribed and won't receive further messages. Reply HELP for help.",
+        nextQuestion: null,
+        requiresStaff: false,
+        source: "pre_check_block",
+        preCheckCode: "OPT_OUT",
+      }),
+    );
+
+    const personId = await seedCustomer();
+    expect(await isCustomerDnd(personId)).toBe(false);
+
+    await processInboundSupportMessage(personId, "STOP");
+
+    expect(sendMessageMock).toHaveBeenCalledTimes(1);
+    expect(sendMessageMock).toHaveBeenCalledWith("+15551230001", "You've been unsubscribed and won't receive further messages. Reply HELP for help.");
+    expect(await isCustomerDnd(personId)).toBe(true);
+  });
+
+  it("does not send anything to a customer who is already do-not-disturb", async () => {
+    runSarahTurnMock.mockClear();
+    sendMessageMock.mockClear();
+    runSarahTurnMock.mockResolvedValueOnce(okResult());
+
+    const personId = await seedCustomer();
+    await setCustomerDnd(personId, true);
+
+    await processInboundSupportMessage(personId, "any update on my order?");
+
+    expect(sendMessageMock).not.toHaveBeenCalled();
   });
 });

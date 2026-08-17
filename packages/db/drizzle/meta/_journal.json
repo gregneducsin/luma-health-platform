@@ -92,6 +92,13 @@
       "when": 1786936282401,
       "tag": "0012_curved_wolf_cub",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1786996171383,
+      "tag": "0013_material_vanisher",
+      "breakpoints": true
     }
   ]
 }

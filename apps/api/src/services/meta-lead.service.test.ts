@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { db, customersTable, leadCheckinTriggersTable } from "@luma/db";
+import { setCustomerDnd } from "./dnd.service.js";
 
 const sendMessageMock = vi.fn();
 vi.mock("../lib/sms-provider.js", async () => {
@@ -62,6 +63,19 @@ describe("sendMetaLeadOpener", () => {
   it("does not call the provider and does not log anything when there's no phone on file", async () => {
     sendMessageMock.mockClear();
     const personId = await seedCustomer({ phone: null });
+
+    await sendMetaLeadOpener(personId);
+
+    expect(sendMessageMock).not.toHaveBeenCalled();
+    const conversation = await getOrCreateConversation(personId);
+    const messages = await listMessages(conversation.id);
+    expect(messages.length).toBe(0);
+  });
+
+  it("does not call the provider when the customer is do-not-disturb", async () => {
+    sendMessageMock.mockClear();
+    const personId = await seedCustomer();
+    await setCustomerDnd(personId, true);
 
     await sendMetaLeadOpener(personId);
 

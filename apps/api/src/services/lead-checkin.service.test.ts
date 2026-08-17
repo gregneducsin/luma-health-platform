@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { db, customersTable, purchasesTable, leadCheckinTriggersTable } from "@luma/db";
+import { setCustomerDnd } from "./dnd.service.js";
 
 const sendMessageMock = vi.fn();
 vi.mock("../lib/sms-provider.js", async () => {
@@ -127,6 +128,21 @@ describe("sweepLeadCheckinTriggers", () => {
     const [trigger] = await db.select().from(leadCheckinTriggersTable).where(eq(leadCheckinTriggersTable.personId, personId));
     expect(trigger.status).toBe("cancelled");
     expect(trigger.cancelledReason).toBe("already_purchased");
+  });
+
+  it("cancels when the person is do-not-disturb by the time it's due", async () => {
+    sendMessageMock.mockClear();
+    const personId = await seedCustomer();
+    await scheduleLeadCheckin(personId);
+    await backdateTrigger(personId);
+    await setCustomerDnd(personId, true);
+
+    const result = await sweepLeadCheckinTriggers();
+    expect(result.cancelledCount).toBe(1);
+    expect(sendMessageMock).not.toHaveBeenCalled();
+    const [trigger] = await db.select().from(leadCheckinTriggersTable).where(eq(leadCheckinTriggersTable.personId, personId));
+    expect(trigger.status).toBe("cancelled");
+    expect(trigger.cancelledReason).toBe("opted_out");
   });
 
   it("marks failed with NO_PHONE_NUMBER and does not call the provider when there's no phone on file", async () => {

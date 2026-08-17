@@ -4,6 +4,7 @@ import { getOrCreateConversation, appendMessage } from "./conversations.service.
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { renderCurrentlyTakingCheckin, renderReengagementCheckin } from "../lib/messaging/follow-up-templates.js";
 import { logger } from "../lib/logger.js";
+import { isCustomerDnd } from "./dnd.service.js";
 
 const CHECKIN_DELAY_MS = 6 * 24 * 60 * 60 * 1000;
 
@@ -72,6 +73,12 @@ export async function sweepLeadCheckinTriggers(): Promise<LeadCheckinSweepResult
     const [purchased] = await db.select({ id: purchasesTable.id }).from(purchasesTable).where(and(eq(purchasesTable.customerId, trigger.personId), eq(purchasesTable.status, "completed"))).limit(1);
     if (purchased) {
       await db.update(leadCheckinTriggersTable).set({ status: "cancelled", cancelledReason: "already_purchased" }).where(eq(leadCheckinTriggersTable.id, trigger.id));
+      cancelledCount++;
+      continue;
+    }
+
+    if (await isCustomerDnd(trigger.personId)) {
+      await db.update(leadCheckinTriggersTable).set({ status: "cancelled", cancelledReason: "opted_out" }).where(eq(leadCheckinTriggersTable.id, trigger.id));
       cancelledCount++;
       continue;
     }

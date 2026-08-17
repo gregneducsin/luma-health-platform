@@ -13,14 +13,24 @@ import {
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { logger } from "../lib/logger.js";
 import { withPersonLock } from "../lib/db-lock.js";
+import { isCustomerDnd, setCustomerDnd } from "./dnd.service.js";
 
 async function getCustomerContact(personId: string): Promise<{ firstName: string; phone: string | null } | undefined> {
   const [row] = await db.select({ firstName: customersTable.firstName, phone: customersTable.phone }).from(customersTable).where(eq(customersTable.id, personId));
   return row;
 }
 
-/** Same fail-soft send+log pattern as Lucy's dispatch (lucy-dispatch.service.ts's sendAndLog). */
-async function sendAndLog(conversationId: string, phone: string | null, text: string): Promise<void> {
+/**
+ * Same fail-soft send+log pattern as Lucy's dispatch (lucy-dispatch.service.ts's
+ * sendAndLog), including the same DND-checked-here-not-earlier reasoning — see
+ * that function's docstring.
+ */
+async function sendAndLog(personId: string, conversationId: string, phone: string | null, text: string): Promise<void> {
+  if (await isCustomerDnd(personId)) {
+    logger.warn({ personId, conversationId }, "outbound Sarah message not sent: customer is do-not-disturb");
+    return;
+  }
+
   let providerMessageId: string | null = null;
   if (phone) {
     try {
@@ -67,7 +77,13 @@ async function processInboundSupportMessageLocked(personId: string, inboundBody:
   const customer = await getCustomerContact(personId);
   const textsToSend = [result.reply, result.nextQuestion].filter((t): t is string => Boolean(t));
   for (const text of textsToSend) {
-    await sendAndLog(conversation.id, customer?.phone ?? null, text);
+    await sendAndLog(personId, conversation.id, customer?.phone ?? null, text);
+  }
+
+  // Set DND only after this turn's texts have gone out — see the identical
+  // comment in lucy-dispatch.service.ts's processInboundMessageLocked.
+  if (result.preCheckCode === "OPT_OUT") {
+    await setCustomerDnd(personId, true);
   }
 
   const statePatch: SupportConversationStatePatch = {

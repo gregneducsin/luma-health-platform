@@ -502,6 +502,29 @@ describe("Purchases", () => {
     expect(audits[0].changedBy).toBe("admin4@example.com");
   });
 
+  it("clears a customer's do-not-disturb flag when a purchase is recorded", async () => {
+    await seedUser("admin-dnd@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "admin-dnd@example.com");
+
+    const customerRes = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Opted", lastName: "Out", email: "opted-out@example.com", leadReceivedDate: "2026-01-01" });
+    const customerId = customerRes.body.customer.id;
+
+    const { setCustomerDnd, isCustomerDnd } = await import("../services/dnd.service.js");
+    await setCustomerDnd(customerId, true);
+    expect(await isCustomerDnd(customerId)).toBe(true);
+
+    const purchaseRes = await agent
+      .post(`/api/app/customers/${customerId}/purchases`)
+      .set("x-csrf-token", csrf)
+      .send({ purchaseDate: "2026-01-10", orderNumber: "ORD-DND", productName: "Gadget", amountPaid: "75.00" });
+    expect(purchaseRes.status).toBe(201);
+
+    expect(await isCustomerDnd(customerId)).toBe(false);
+  });
+
   it("returns 404 for an unknown purchase id", async () => {
     await seedUser("admin5@example.com", "admin");
     const { agent, csrf } = await loginAgent(app, "admin5@example.com");

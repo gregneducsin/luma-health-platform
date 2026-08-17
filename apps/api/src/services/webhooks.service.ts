@@ -20,6 +20,7 @@ import type {
 import { scheduleAbandonedCartOpener } from "./abandoned-cart.service.js";
 import { sendMetaLeadOpener } from "./meta-lead.service.js";
 import { sendOrderReceivedOpener, handlePrescriptionWritten, handleOrderShipped } from "./order-fulfillment.service.js";
+import { setCustomerDnd } from "./dnd.service.js";
 
 /**
  * Case-insensitive exact email match — NOT ilike(), which treats `_` and `%`
@@ -232,6 +233,11 @@ export async function handleBaskOrderWebhook(payload: BaskOrderWebhookRequest): 
         orderClassificationSource: "bask",
       });
     });
+
+    // A purchase is treated as fresh consent to be messaged again — cleared
+    // before the opener below so a previously opted-out customer's order
+    // confirmation isn't itself blocked by a now-stale DND flag.
+    await setCustomerDnd(customerId, false);
 
     // Sarah's opening "doctor is reviewing it" message fires the moment the
     // order lands — instant, same as the Meta lead opener, not a scheduled sweep.

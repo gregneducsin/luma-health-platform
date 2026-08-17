@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, lte, sql, getTableColumns } from "drizzle-orm";
 import { db, customersTable, purchasesTable, purchaseClassificationAuditsTable, type PurchaseStatus } from "@luma/db";
 import type { CreatePurchaseRequest, ListPurchasesQuery, PurchasesSummaryQuery, UpdatePurchaseRequest } from "@luma/shared";
+import { setCustomerDnd } from "./dnd.service.js";
 
 export async function listPurchasesForCustomer(customerId: string) {
   return db
@@ -92,7 +93,7 @@ export async function getPurchasesSummary(query: PurchasesSummaryQuery) {
  * see "no strictly-earlier purchase" and collide on the unique index above.
  */
 export async function createPurchase(customerId: string, input: CreatePurchaseRequest) {
-  return db.transaction(async (tx) => {
+  const purchase = await db.transaction(async (tx) => {
     await tx.select({ id: customersTable.id }).from(customersTable).where(eq(customersTable.id, customerId)).for("update");
 
     const [earlier] = await tx
@@ -100,7 +101,7 @@ export async function createPurchase(customerId: string, input: CreatePurchaseRe
       .from(purchasesTable)
       .where(and(eq(purchasesTable.customerId, customerId), lte(purchasesTable.purchaseDate, input.purchaseDate)));
 
-    const [purchase] = await tx
+    const [inserted] = await tx
       .insert(purchasesTable)
       .values({
         customerId,
@@ -114,8 +115,14 @@ export async function createPurchase(customerId: string, input: CreatePurchaseRe
         orderClassificationSource: "manual",
       })
       .returning();
-    return purchase;
+    return inserted;
   });
+
+  // A purchase is treated as fresh consent to be messaged again — see
+  // dnd.service.ts's setCustomerDnd docstring.
+  await setCustomerDnd(customerId, false);
+
+  return purchase;
 }
 
 export class DuplicateFirstOrderError extends Error {

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { db, customersTable, conversationsTable } from "@luma/db";
 import type { LucyTurnResult } from "./lucy-conversation.service.js";
+import { isCustomerDnd, setCustomerDnd } from "./dnd.service.js";
 
 const runLucyTurnMock = vi.fn();
 vi.mock("./lucy-conversation.service.js", async () => {
@@ -47,6 +48,7 @@ function okResult(overrides: Partial<Extract<LucyTurnResult, { ok: true }>> = {}
     knowledgeTopicsUsed: ["semaglutide_pricing"],
     validatedSlotUpdates: {},
     source: "model",
+    preCheckCode: null,
     ...overrides,
   };
 }
@@ -228,5 +230,43 @@ describe("processInboundMessage", () => {
 
     const rows = await db.select().from(conversationsTable).where(eq(conversationsTable.personId, personId));
     expect(rows.length).toBe(1);
+  });
+
+  it("sends the OPT_OUT confirmation reply, then marks the customer DND — the confirmation itself is not blocked", async () => {
+    runLucyTurnMock.mockClear();
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_optout" });
+    runLucyTurnMock.mockResolvedValueOnce(
+      okResult({
+        action: "pause",
+        reply: "You've been unsubscribed and won't receive further messages. Reply HELP for help.",
+        nextQuestion: null,
+        requiresStaff: false,
+        source: "pre_check_block",
+        preCheckCode: "OPT_OUT",
+      }),
+    );
+
+    const personId = await seedCustomer();
+    expect(await isCustomerDnd(personId)).toBe(false);
+
+    await processInboundMessage(personId, "STOP");
+
+    expect(sendMessageMock).toHaveBeenCalledTimes(1);
+    expect(sendMessageMock).toHaveBeenCalledWith("+15551230000", "You've been unsubscribed and won't receive further messages. Reply HELP for help.");
+    expect(await isCustomerDnd(personId)).toBe(true);
+  });
+
+  it("does not send anything to a customer who is already do-not-disturb", async () => {
+    runLucyTurnMock.mockClear();
+    sendMessageMock.mockClear();
+    runLucyTurnMock.mockResolvedValueOnce(okResult());
+
+    const personId = await seedCustomer();
+    await setCustomerDnd(personId, true);
+
+    await processInboundMessage(personId, "how much is tirzepatide?");
+
+    expect(sendMessageMock).not.toHaveBeenCalled();
   });
 });

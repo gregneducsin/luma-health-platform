@@ -4,6 +4,7 @@ import { getOrCreateSupportConversation, appendSupportMessage, updateSupportConv
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { renderOrderReceivedMessage, renderPrescriptionWrittenMessage, renderOrderShippedMessage, renderReviewRequestMessage } from "../lib/support/templates.js";
 import { logger } from "../lib/logger.js";
+import { isCustomerDnd } from "./dnd.service.js";
 
 /**
  * ASSUMPTION pending owner confirmation: there's no explicit "delivered"
@@ -41,6 +42,10 @@ export async function sendOrderReceivedOpener(personId: string): Promise<void> {
     logger.warn({ personId }, "order-received opener not sent: no phone number on file");
     return;
   }
+  if (await isCustomerDnd(personId)) {
+    logger.warn({ personId }, "order-received opener not sent: customer is do-not-disturb");
+    return;
+  }
 
   const text = renderOrderReceivedMessage(customer.firstName);
   const conversation = await getOrCreateSupportConversation(personId);
@@ -65,6 +70,10 @@ export async function handlePrescriptionWritten(personId: string): Promise<void>
     logger.warn({ personId }, "prescription-written notice not sent: no phone number on file");
     return;
   }
+  if (await isCustomerDnd(personId)) {
+    logger.warn({ personId }, "prescription-written notice not sent: customer is do-not-disturb");
+    return;
+  }
   const text = renderPrescriptionWrittenMessage(customer.firstName);
   try {
     const result = await getSmsProvider().sendMessage(customer.phone, text);
@@ -84,7 +93,8 @@ export async function handleOrderShipped(personId: string, trackingNumber: strin
   const conversation = await getOrCreateSupportConversation(personId);
   await updateSupportConversationState(conversation.id, { orderShipped: true, orderShippedAt: new Date(), trackingNumber });
 
-  if (customer?.phone) {
+  const dnd = await isCustomerDnd(personId);
+  if (customer?.phone && !dnd) {
     const text = renderOrderShippedMessage(customer.firstName, trackingNumber);
     try {
       const result = await getSmsProvider().sendMessage(customer.phone, text);
@@ -94,7 +104,7 @@ export async function handleOrderShipped(personId: string, trackingNumber: strin
       await appendSupportMessage(conversation.id, "outbound", text, {});
     }
   } else {
-    logger.warn({ personId }, "order-shipped notice not sent: no phone number on file");
+    logger.warn({ personId, reason: dnd ? "do_not_disturb" : "no_phone_number" }, "order-shipped notice not sent");
   }
 
   await db
@@ -106,6 +116,7 @@ export async function handleOrderShipped(personId: string, trackingNumber: strin
 export interface ReviewRequestSweepResult {
   readonly sentCount: number;
   readonly failedCount: number;
+  readonly cancelledCount: number;
 }
 
 /**
@@ -137,8 +148,18 @@ export async function sweepReviewRequestTriggers(): Promise<ReviewRequestSweepRe
 
   let sentCount = 0;
   let failedCount = 0;
+  let cancelledCount = 0;
 
   for (const trigger of claimed) {
+    if (await isCustomerDnd(trigger.personId)) {
+      await db
+        .update(reviewRequestTriggersTable)
+        .set({ status: "cancelled", cancelledReason: "opted_out" })
+        .where(eq(reviewRequestTriggersTable.id, trigger.id));
+      cancelledCount++;
+      continue;
+    }
+
     const customer = await getCustomerContact(trigger.personId);
     const conversation = await getOrCreateSupportConversation(trigger.personId);
     const nextAttemptCount = trigger.attemptCount + 1;
@@ -177,9 +198,9 @@ export async function sweepReviewRequestTriggers(): Promise<ReviewRequestSweepRe
     }
   }
 
-  if (sentCount > 0 || failedCount > 0) {
-    logger.info({ sentCount, failedCount }, "review-request sweep completed");
+  if (sentCount > 0 || failedCount > 0 || cancelledCount > 0) {
+    logger.info({ sentCount, failedCount, cancelledCount }, "review-request sweep completed");
   }
 
-  return { sentCount, failedCount };
+  return { sentCount, failedCount, cancelledCount };
 }

@@ -14,6 +14,7 @@ export type SarahTurnResult =
       requiresStaff: boolean;
       knowledgeTopicsUsed: readonly string[];
       source: "pre_check_block" | "model";
+      preCheckCode: string | null;
     }
   | { ok: false; code: string };
 
@@ -21,7 +22,11 @@ export type SarahTurnResult =
 const PRE_CHECK_RESULTS: Record<string, { action: "pause" | "staff_review"; reply: string | null }> = {
   OPT_OUT: { action: "pause", reply: "You've been unsubscribed and won't receive further messages. Reply HELP for help." },
   STOP_WORD: { action: "staff_review", reply: null },
-  EMERGENCY_CONTENT: { action: "staff_review", reply: null },
+  EMERGENCY_CONTENT: {
+    action: "staff_review",
+    reply:
+      "If this is a medical emergency, please call 911 or go to your nearest emergency room right away. This text line isn't monitored for emergencies — our team has been notified and will follow up with you.",
+  },
   PRESCRIPTION_QUESTION: { action: "staff_review", reply: null },
   LEGAL_CONTENT: { action: "staff_review", reply: null },
 };
@@ -49,6 +54,7 @@ export async function runSarahTurn(body: SarahPreviewRequestBody): Promise<Sarah
         requiresStaff: deterministic.action === "staff_review",
         knowledgeTopicsUsed: [],
         source: "pre_check_block",
+        preCheckCode: pre.code,
       };
     }
   }
@@ -93,5 +99,6 @@ export async function runSarahTurn(body: SarahPreviewRequestBody): Promise<Sarah
     requiresStaff: result.requiresStaff,
     knowledgeTopicsUsed: result.knowledgeTopicsUsed,
     source: "model",
+    preCheckCode: null,
   };
 }

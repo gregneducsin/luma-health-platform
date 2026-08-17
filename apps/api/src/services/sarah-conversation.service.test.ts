@@ -50,6 +50,7 @@ describe("runSarahTurn", () => {
     if (result.ok) {
       expect(result.action).toBe("pause");
       expect(result.source).toBe("pre_check_block");
+      expect(result.preCheckCode).toBe("OPT_OUT");
     }
   });
 
@@ -62,6 +63,31 @@ describe("runSarahTurn", () => {
     if (result.ok) {
       expect(result.action).toBe("staff_review");
       expect(result.requiresStaff).toBe(true);
+    }
+  });
+
+  it("responds with a real 911 message on emergency content, and still flags staff attention", async () => {
+    callSarahInteractiveMock.mockClear();
+    const result = await runSarahTurn(baseBody({ messages: [{ direction: "inbound", body: "this is an emergency" }] }));
+
+    expect(callSarahInteractiveMock).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.action).toBe("staff_review");
+      expect(result.requiresStaff).toBe(true);
+      expect(result.reply).toMatch(/call 911/i);
+      expect(result.preCheckCode).toBe("EMERGENCY_CONTENT");
+    }
+  });
+
+  it("does not set preCheckCode on a model-generated turn", async () => {
+    callSarahInteractiveMock.mockClear();
+    callSarahInteractiveMock.mockResolvedValueOnce(modelResult());
+    const result = await runSarahTurn(baseBody());
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.preCheckCode).toBeNull();
     }
   });
 

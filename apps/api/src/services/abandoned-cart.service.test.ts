@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { db, customersTable, questionnaireEventsTable, purchasesTable, abandonedCartTriggersTable, leadCheckinTriggersTable } from "@luma/db";
+import { setCustomerDnd } from "./dnd.service.js";
 
 const sendMessageMock = vi.fn();
 vi.mock("../lib/sms-provider.js", async () => {
@@ -161,6 +162,22 @@ describe("sweepAbandonedCartTriggers", () => {
 
     const [trigger] = await db.select().from(abandonedCartTriggersTable).where(eq(abandonedCartTriggersTable.personId, personId));
     expect(trigger.cancelledReason).toBe("no_longer_abandoned");
+  });
+
+  it("cancels when the customer is do-not-disturb by the time it's due", async () => {
+    sendMessageMock.mockClear();
+    const personId = await seedCustomer();
+    const questionnaireEventId = await seedAbandonedQuestionnaire(personId);
+    await scheduleAbandonedCartOpener(personId, questionnaireEventId);
+    await backdateTrigger(personId);
+    await setCustomerDnd(personId, true);
+
+    const result = await sweepAbandonedCartTriggers();
+    expect(result.cancelledCount).toBe(1);
+    expect(sendMessageMock).not.toHaveBeenCalled();
+
+    const [trigger] = await db.select().from(abandonedCartTriggersTable).where(eq(abandonedCartTriggersTable.personId, personId));
+    expect(trigger.cancelledReason).toBe("opted_out");
   });
 
   it("marks failed with NO_PHONE_NUMBER and does not call the provider when there's no phone on file", async () => {

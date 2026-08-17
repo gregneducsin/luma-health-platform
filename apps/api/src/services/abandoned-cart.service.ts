@@ -5,6 +5,7 @@ import { scheduleLeadCheckin } from "./lead-checkin.service.js";
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { renderAbandonedCartOpener } from "../lib/messaging/follow-up-templates.js";
 import { logger } from "../lib/logger.js";
+import { isCustomerDnd } from "./dnd.service.js";
 
 const OPENER_DELAY_MS = 10 * 60 * 1000;
 
@@ -89,6 +90,8 @@ type EligibilityResult = { ok: true } | { ok: false; reason: string };
 async function isStillEligible(personId: string, questionnaireEventId: string): Promise<EligibilityResult> {
   const [purchased] = await db.select({ id: purchasesTable.id }).from(purchasesTable).where(and(eq(purchasesTable.customerId, personId), eq(purchasesTable.status, "completed"))).limit(1);
   if (purchased) return { ok: false, reason: "already_purchased" };
+
+  if (await isCustomerDnd(personId)) return { ok: false, reason: "opted_out" };
 
   const [event] = await db.select({ status: questionnaireEventsTable.status }).from(questionnaireEventsTable).where(eq(questionnaireEventsTable.id, questionnaireEventId));
   if (!event || event.status !== "abandoned") return { ok: false, reason: "no_longer_abandoned" };
