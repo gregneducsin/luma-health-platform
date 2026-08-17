@@ -211,6 +211,11 @@ export async function handleBaskOrderWebhook(payload: BaskOrderWebhookRequest): 
     });
 
     await db.transaction(async (tx) => {
+      // Lock the customer row so two near-simultaneous order webhooks for the
+      // same customer can't both read "no earlier purchase" and both classify
+      // as first_order — see the identical comment on createPurchase.
+      await tx.select({ id: customersTable.id }).from(customersTable).where(eq(customersTable.id, customerId)).for("update");
+
       const [earlier] = await tx
         .select({ id: purchasesTable.id })
         .from(purchasesTable)

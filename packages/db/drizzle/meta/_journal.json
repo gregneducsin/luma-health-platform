@@ -71,6 +71,13 @@
       "when": 1786853330351,
       "tag": "0009_right_lilith",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1786928996802,
+      "tag": "0010_unknown_radioactive_man",
+      "breakpoints": true
     }
   ]
 }

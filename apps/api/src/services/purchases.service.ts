@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, lt, sql, getTableColumns } from "drizzle-orm";
+import { and, asc, desc, eq, lte, sql, getTableColumns } from "drizzle-orm";
 import { db, customersTable, purchasesTable, purchaseClassificationAuditsTable, type PurchaseStatus } from "@luma/db";
 import type { CreatePurchaseRequest, ListPurchasesQuery, PurchasesSummaryQuery, UpdatePurchaseRequest } from "@luma/shared";
 
@@ -76,13 +76,29 @@ export async function getPurchasesSummary(query: PurchasesSummaryQuery) {
  * ("classified based on order within the person's history"), with
  * source="manual" since this is the admin-driven creation path (webhooks
  * in Phase 5 will use source="bask" instead).
+ *
+ * Locks the customer row for the duration of the transaction so two
+ * concurrent purchase-creation calls for the same customer can't both read
+ * "no earlier purchase" and both classify as first_order — the second
+ * transaction blocks on the lock until the first commits, then sees the
+ * first's row and correctly classifies as recurring. purchases_customer_
+ * first_order_key (a partial unique index) is the DB-level backstop in case
+ * this lock is ever bypassed.
+ *
+ * Uses <=, not <: two purchases landing on the same calendar date (a same-
+ * day repeat order, or two concurrent purchases with equal purchaseDate)
+ * have no other way to order themselves, so whichever already exists wins
+ * first_order and this one is recurring — otherwise both would independently
+ * see "no strictly-earlier purchase" and collide on the unique index above.
  */
 export async function createPurchase(customerId: string, input: CreatePurchaseRequest) {
   return db.transaction(async (tx) => {
+    await tx.select({ id: customersTable.id }).from(customersTable).where(eq(customersTable.id, customerId)).for("update");
+
     const [earlier] = await tx
       .select({ id: purchasesTable.id })
       .from(purchasesTable)
-      .where(and(eq(purchasesTable.customerId, customerId), lt(purchasesTable.purchaseDate, input.purchaseDate)));
+      .where(and(eq(purchasesTable.customerId, customerId), lte(purchasesTable.purchaseDate, input.purchaseDate)));
 
     const [purchase] = await tx
       .insert(purchasesTable)
@@ -102,33 +118,53 @@ export async function createPurchase(customerId: string, input: CreatePurchaseRe
   });
 }
 
+export class DuplicateFirstOrderError extends Error {
+  statusCode = 409;
+  constructor() {
+    super("This customer already has a purchase classified as first_order. Reclassify that one first.");
+  }
+}
+
 export async function updatePurchase(id: number, input: UpdatePurchaseRequest, actor: { id: string; email: string }) {
-  return db.transaction(async (tx) => {
-    const [existing] = await tx.select().from(purchasesTable).where(eq(purchasesTable.id, id));
-    if (!existing) return null;
+  try {
+    return await db.transaction(async (tx) => {
+      const [existing] = await tx.select().from(purchasesTable).where(eq(purchasesTable.id, id));
+      if (!existing) return null;
 
-    const patch: Partial<typeof purchasesTable.$inferInsert> = {
-      ...(input.purchaseDate !== undefined ? { purchaseDate: input.purchaseDate } : {}),
-      ...(input.orderNumber !== undefined ? { orderNumber: input.orderNumber } : {}),
-      ...(input.productName !== undefined ? { productName: input.productName } : {}),
-      ...(input.amountPaid !== undefined ? { amountPaid: input.amountPaid } : {}),
-      ...(input.status !== undefined ? { status: input.status as PurchaseStatus } : {}),
-    };
+      const patch: Partial<typeof purchasesTable.$inferInsert> = {
+        ...(input.purchaseDate !== undefined ? { purchaseDate: input.purchaseDate } : {}),
+        ...(input.orderNumber !== undefined ? { orderNumber: input.orderNumber } : {}),
+        ...(input.productName !== undefined ? { productName: input.productName } : {}),
+        ...(input.amountPaid !== undefined ? { amountPaid: input.amountPaid } : {}),
+        ...(input.status !== undefined ? { status: input.status as PurchaseStatus } : {}),
+      };
 
-    if (input.orderClassification !== undefined && input.orderClassification !== existing.orderClassification) {
-      patch.orderClassification = input.orderClassification;
-      patch.orderClassificationSource = "manual";
-      await tx.insert(purchaseClassificationAuditsTable).values({
-        purchaseId: id,
-        changedBy: actor.email,
-        previousClassification: existing.orderClassification,
-        newClassification: input.orderClassification,
-        previousSource: existing.orderClassificationSource,
-        newSource: "manual",
-      });
+      if (input.orderClassification !== undefined && input.orderClassification !== existing.orderClassification) {
+        patch.orderClassification = input.orderClassification;
+        patch.orderClassificationSource = "manual";
+        await tx.insert(purchaseClassificationAuditsTable).values({
+          purchaseId: id,
+          changedBy: actor.email,
+          previousClassification: existing.orderClassification,
+          newClassification: input.orderClassification,
+          previousSource: existing.orderClassificationSource,
+          newSource: "manual",
+        });
+      }
+
+      const [updated] = await tx.update(purchasesTable).set(patch).where(eq(purchasesTable.id, id)).returning();
+      return updated;
+    });
+  } catch (err) {
+    // Manually reclassifying a purchase to first_order when the customer
+    // already has one hits purchases_customer_first_order_key — surface a
+    // clear 409 instead of a raw Postgres constraint error. drizzle wraps
+    // the raw pg driver error (with .code/.constraint) as `.cause` on its
+    // own DrizzleQueryError, so check both levels.
+    const pgErr = err && typeof err === "object" && "cause" in err && err.cause && typeof err.cause === "object" ? err.cause : err;
+    if (pgErr && typeof pgErr === "object" && "code" in pgErr && pgErr.code === "23505" && "constraint" in pgErr && pgErr.constraint === "purchases_customer_first_order_key") {
+      throw new DuplicateFirstOrderError();
     }
-
-    const [updated] = await tx.update(purchasesTable).set(patch).where(eq(purchasesTable.id, id)).returning();
-    return updated;
-  });
+    throw err;
+  }
 }

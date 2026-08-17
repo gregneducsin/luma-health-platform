@@ -1,4 +1,5 @@
 import { pgTable, text, serial, uuid, integer, date, numeric, timestamp, index, uniqueIndex, foreignKey } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { customersTable } from "./customers";
 
 export const purchaseStatusEnum = ["pending", "completed", "refunded", "cancelled"] as const;
@@ -30,6 +31,13 @@ export const purchasesTable = pgTable(
     }).onDelete("cascade"),
     uniqueIndex("purchases_ecommerce_order_id_key").on(t.ecommerceOrderId),
     index("purchases_customer_id_idx").on(t.customerId),
+    // A customer can have at most one purchase classified "first_order" —
+    // this is the backstop against the classification race (concurrent
+    // purchase creation both reading "no earlier purchase" before either
+    // commits), not the primary defense; see the per-customer row lock in
+    // createPurchase/handleBaskOrderWebhook. Partial index so "recurring"
+    // and "unknown" rows are unaffected.
+    uniqueIndex("purchases_customer_first_order_key").on(t.customerId).where(sql`${t.orderClassification} = 'first_order'`),
   ],
 );
 

@@ -486,6 +486,66 @@ describe("Purchases", () => {
     expect(res.status).toBe(404);
   });
 
+  it("classifies exactly one of two concurrently-created purchases as first_order, not both", async () => {
+    await seedUser("admin-race@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "admin-race@example.com");
+
+    const customerRes = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Race", lastName: "Condition", email: "race-condition@example.com", leadReceivedDate: "2026-01-01" });
+    const customerId = customerRes.body.customer.id;
+
+    // Two purchases fired concurrently, same purchase date, so neither can
+    // win the "earlier purchase" check by being submitted first — this is
+    // exactly the shape of two near-simultaneous webhook deliveries. The
+    // per-customer row lock in createPurchase must serialize them so only
+    // one ends up first_order.
+    const [r1, r2] = await Promise.all([
+      agent
+        .post(`/api/app/customers/${customerId}/purchases`)
+        .set("x-csrf-token", csrf)
+        .send({ purchaseDate: "2026-02-01", orderNumber: "ORD-RACE-1", productName: "Widget", amountPaid: "49.99" }),
+      agent
+        .post(`/api/app/customers/${customerId}/purchases`)
+        .set("x-csrf-token", csrf)
+        .send({ purchaseDate: "2026-02-01", orderNumber: "ORD-RACE-2", productName: "Widget", amountPaid: "49.99" }),
+    ]);
+    expect(r1.status).toBe(201);
+    expect(r2.status).toBe(201);
+    const classifications = [r1.body.purchase.orderClassification, r2.body.purchase.orderClassification].sort();
+    expect(classifications).toEqual(["first_order", "recurring"]);
+  });
+
+  it("rejects reclassifying a purchase to first_order when the customer already has one", async () => {
+    await seedUser("admin-dup-first-order@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "admin-dup-first-order@example.com");
+
+    const customerRes = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Dup", lastName: "FirstOrder", email: "dup-first-order@example.com", leadReceivedDate: "2026-01-01" });
+    const customerId = customerRes.body.customer.id;
+
+    const purchase1 = await agent
+      .post(`/api/app/customers/${customerId}/purchases`)
+      .set("x-csrf-token", csrf)
+      .send({ purchaseDate: "2026-01-01", orderNumber: "ORD-DUP-1", productName: "Thing", amountPaid: "10.00" });
+    expect(purchase1.body.purchase.orderClassification).toBe("first_order");
+
+    const purchase2 = await agent
+      .post(`/api/app/customers/${customerId}/purchases`)
+      .set("x-csrf-token", csrf)
+      .send({ purchaseDate: "2026-02-01", orderNumber: "ORD-DUP-2", productName: "Thing", amountPaid: "10.00" });
+    expect(purchase2.body.purchase.orderClassification).toBe("recurring");
+
+    const reclassify = await agent
+      .patch(`/api/app/purchases/${purchase2.body.purchase.id}`)
+      .set("x-csrf-token", csrf)
+      .send({ orderClassification: "first_order" });
+    expect(reclassify.status).toBe(409);
+  });
+
   it("lists purchases across all customers with the customer's name attached", async () => {
     await seedUser("admin-orders@example.com", "admin");
     const { agent, csrf } = await loginAgent(app, "admin-orders@example.com");
