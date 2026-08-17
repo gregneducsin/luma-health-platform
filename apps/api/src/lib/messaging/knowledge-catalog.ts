@@ -271,9 +271,8 @@ export const KNOWLEDGE_CATALOG: readonly KnowledgeTopic[] = [
   },
 
   // ── Plan inclusions ────────────────────────────────────────────────────────
-  // STATUS: EXCLUDED from lucy-knowledge-v1 itself — owner-confirmed separately.
-  // Must not be sent to Claude until separately approved.
-  // enabledForPreview: false prevents it from appearing in getPreviewEnabledTopics().
+  // STATUS: EXCLUDED from lucy-knowledge-v1 itself, but separately owner-
+  // confirmed approved for Lucy's use — see legalStatus/enabledForPreview below.
   {
     key: "plan_inclusions",
     approvedText:
