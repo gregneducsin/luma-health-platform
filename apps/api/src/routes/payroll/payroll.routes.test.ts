@@ -137,6 +137,58 @@ describe("Payroll week lifecycle", () => {
     expect(actions).toEqual(["bonus_added", "hours_entered", "hours_updated", "week_approved", "week_paid"]);
   });
 
+  it("entering hours for a second employee in the same week doesn't attribute the first employee's row to them", async () => {
+    const employeeARes = await agent
+      .post("/api/app/payroll/employees")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Alice", lastName: "First", email: "alice.first@example.com", hourlyRate: "20.00" });
+    const employeeAId = employeeARes.body.employee.id;
+
+    const employeeBRes = await agent
+      .post("/api/app/payroll/employees")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Bea", lastName: "Second", email: "bea.second@example.com", hourlyRate: "30.00" });
+    const employeeBId = employeeBRes.body.employee.id;
+
+    const weekRes = await agent
+      .post("/api/app/payroll/weeks")
+      .set("x-csrf-token", csrf)
+      .send({ weekStart: "2026-04-03", weekEnd: "2026-04-09" });
+    const weekId = weekRes.body.week.id;
+
+    // Employee A enters hours first.
+    const aRes = await agent
+      .put(`/api/app/payroll/weeks/${weekId}/hours`)
+      .set("x-csrf-token", csrf)
+      .send({ employeeId: employeeAId, hoursWorked: "40" });
+    expect(aRes.body.entry.hourlyEarnings).toBe("800.00"); // 40 * 20.00
+
+    // Employee B enters hours for the first time in this same week — this
+    // must NOT be misread as an update to employee A's row.
+    const bRes = await agent
+      .put(`/api/app/payroll/weeks/${weekId}/hours`)
+      .set("x-csrf-token", csrf)
+      .send({ employeeId: employeeBId, hoursWorked: "10" });
+    expect(bRes.body.entry.hourlyEarnings).toBe("300.00"); // 10 * 30.00
+    expect(bRes.body.entry.employeeId).toBe(employeeBId);
+
+    // Employee A's row must be untouched.
+    const detailRes = await agent.get(`/api/app/payroll/weeks/${weekId}`);
+    const aEntry = detailRes.body.hours.find((h: { employeeId: string }) => h.employeeId === employeeAId);
+    expect(aEntry.hourlyEarnings).toBe("800.00");
+
+    const { db, payrollAuditEventsTable } = await import("@luma/db");
+    const { eq, and } = await import("drizzle-orm");
+    const [bAudit] = await db
+      .select()
+      .from(payrollAuditEventsTable)
+      .where(and(eq(payrollAuditEventsTable.payrollWeekId, weekId), eq(payrollAuditEventsTable.employeeId, employeeBId)));
+    // Must be logged as a first-time entry, with no previousValues leaked
+    // from employee A's already-existing row in the same week.
+    expect(bAudit.action).toBe("hours_entered");
+    expect(bAudit.previousValues).toBeNull();
+  });
+
   it("returns 404 for an unknown week id on approve", async () => {
     const res = await agent.post("/api/app/payroll/weeks/00000000-0000-0000-0000-000000000000/approve").set("x-csrf-token", csrf);
     expect(res.status).toBe(400); // service returns "not found" as a 400-level business error, not a route 404

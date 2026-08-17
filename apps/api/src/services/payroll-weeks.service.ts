@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, payrollWeeksTable, employeeWeeklyHoursTable, employeeBonusesTable, employeesTable } from "@luma/db";
 import { calculateHourlyEarnings, type CreatePayrollWeekRequest, type UpsertWeeklyHoursRequest, type CreateBonusRequest } from "@luma/shared";
 import { writePayrollAuditEvent } from "./audit.service.js";
@@ -102,7 +102,7 @@ export async function upsertWeeklyHours(
     const [existing] = await tx
       .select({ id: employeeWeeklyHoursTable.id, hoursWorked: employeeWeeklyHoursTable.hoursWorked, hourlyEarnings: employeeWeeklyHoursTable.hourlyEarnings })
       .from(employeeWeeklyHoursTable)
-      .where(eq(employeeWeeklyHoursTable.payrollWeekId, weekId));
+      .where(and(eq(employeeWeeklyHoursTable.payrollWeekId, weekId), eq(employeeWeeklyHoursTable.employeeId, input.employeeId)));
 
     const values = {
       payrollWeekId: weekId,
