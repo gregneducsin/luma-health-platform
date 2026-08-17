@@ -68,9 +68,13 @@ export async function handleIntakeLinkClick(rawToken: string): Promise<{ redirec
       return { redirectUrl: baskQuestionnaireUrl("none") };
     }
 
-    const redirectUrl = baskQuestionnaireUrl(token.promoApplied);
     const alreadyClicked = token.clickedAt !== null;
     const expired = token.expiresAt.getTime() <= Date.now();
+    // Expiry only ever gated whether this click armed the follow-up job —
+    // an expired link still honored its promo variant forever, so a $20-off
+    // link kept discounting orders well past the offer's 24-hour window.
+    // Once expired, fall back to the plain URL, same as an unknown token.
+    const redirectUrl = expired ? baskQuestionnaireUrl("none") : baskQuestionnaireUrl(token.promoApplied);
 
     if (!alreadyClicked && !expired) {
       await tx.update(intakeLinkTokensTable).set({ clickedAt: sql`now()` }).where(eq(intakeLinkTokensTable.id, token.id));

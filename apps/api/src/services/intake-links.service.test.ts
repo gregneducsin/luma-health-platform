@@ -134,6 +134,21 @@ describe("intake-links.service", () => {
       expect(jobs.length).toBe(0);
     });
 
+    it("an expired promo link falls back to the plain URL, not the promo one", async () => {
+      const { handleIntakeLinkClick } = await import("./intake-links.service.js");
+      const personId = await seedCustomer();
+      const rawToken = "expired-promo-test-token";
+      await db.insert(intakeLinkTokensTable).values({
+        personId,
+        tokenHash: hashToken(rawToken),
+        promoApplied: "first_month_20",
+        expiresAt: new Date(Date.now() - 1000),
+      });
+
+      const { redirectUrl } = await handleIntakeLinkClick(rawToken);
+      expect(redirectUrl).toBe("https://bask.example.com/questionnaire");
+    });
+
     it("redirects to the promo URL when the link was minted with the promo variant", async () => {
       const { createIntakeLink, handleIntakeLinkClick } = await import("./intake-links.service.js");
       const personId = await seedCustomer();
