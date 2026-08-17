@@ -89,7 +89,12 @@ export function useCreateCustomer() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: CreateCustomerRequest) => api.post<{ customer: Customer }>("/api/app/customers", input),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["customers", "list"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["customers", "list"] });
+      // A new lead changes the dashboard's lead-count tiles — without this,
+      // the summary bar stays stale until a full page reload.
+      queryClient.invalidateQueries({ queryKey: ["customers", "summary"] });
+    },
   });
 }
 
@@ -111,6 +116,11 @@ export function useCreatePurchase(customerId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers", "detail", customerId] });
       queryClient.invalidateQueries({ queryKey: ["customers", "list"] });
+      // A new purchase changes purchaser/revenue counts on the customers
+      // summary bar, and the order itself needs to show up on the Orders tab.
+      queryClient.invalidateQueries({ queryKey: ["customers", "summary"] });
+      queryClient.invalidateQueries({ queryKey: ["purchases", "list"] });
+      queryClient.invalidateQueries({ queryKey: ["purchases", "summary"] });
     },
   });
 }
@@ -128,6 +138,14 @@ export function useUpdatePurchase(customerId: string) {
       api.patch<{ purchase: Purchase }>(`/api/app/purchases/${id}`, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers", "detail", customerId] });
+      // Editing a purchase (amount, status, or first_order/recurring
+      // classification) changes what the customers list row shows
+      // (purchaseCount/totalPaid), the customers/purchases summary tiles,
+      // and the Orders tab list — none of these were being refreshed before.
+      queryClient.invalidateQueries({ queryKey: ["customers", "list"] });
+      queryClient.invalidateQueries({ queryKey: ["customers", "summary"] });
+      queryClient.invalidateQueries({ queryKey: ["purchases", "list"] });
+      queryClient.invalidateQueries({ queryKey: ["purchases", "summary"] });
     },
   });
 }
