@@ -1,4 +1,4 @@
-import { pgTable, text, uuid, timestamp, boolean, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, uuid, timestamp, boolean, integer, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { customersTable } from "./customers";
 
 /**
@@ -88,6 +88,11 @@ export const reviewRequestTriggersTable = pgTable(
     providerMessageId: text("provider_message_id"),
     cancelledReason: text("cancelled_reason"),
     failureReason: text("failure_reason"),
+    // A failed send used to be permanently lost — the sweep only ever looked
+    // at status="pending", so a transient SMS-provider error on attempt 1
+    // meant that customer never got a review request again. attemptCount lets
+    // the sweep retry a failed trigger a bounded number of times instead.
+    attemptCount: integer("attempt_count").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()

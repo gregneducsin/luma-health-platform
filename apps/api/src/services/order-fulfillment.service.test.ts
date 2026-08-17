@@ -169,7 +169,11 @@ describe("sweepReviewRequestTriggers", () => {
 
   it("marks failed with NO_PHONE_NUMBER and does not call the provider when there's no phone on file", async () => {
     sendMessageMock.mockClear();
-    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_shipped_no_phone" });
+    // No mockResolvedValueOnce here: handleOrderShipped never calls
+    // sendMessage when the customer has no phone, so a queued once-value
+    // would go unconsumed here and silently leak into the next test's mock
+    // queue (mockClear() doesn't purge queued once-implementations) —
+    // that's exactly what was happening before this comment was added.
 
     const personId = await seedCustomer({ phone: null });
     await handleOrderShipped(personId, "TRACK1");
@@ -183,6 +187,90 @@ describe("sweepReviewRequestTriggers", () => {
     const [trigger] = await db.select().from(reviewRequestTriggersTable).where(eq(reviewRequestTriggersTable.personId, personId));
     expect(trigger.status).toBe("failed");
     expect(trigger.failureReason).toBe("NO_PHONE_NUMBER");
+  });
+
+  it("does not mark reviewRequested true when the send itself fails", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_shipped" }); // handleOrderShipped's own notice
+    sendMessageMock.mockRejectedValueOnce(new Error("SMS_PROVIDER_TIMEOUT"));
+
+    const personId = await seedCustomer();
+    await handleOrderShipped(personId, "TRACK-FAIL");
+    await backdateTrigger(personId);
+
+    await sweepReviewRequestTriggers();
+
+    const [trigger] = await db.select().from(reviewRequestTriggersTable).where(eq(reviewRequestTriggersTable.personId, personId));
+    expect(trigger.status).toBe("failed");
+    expect(trigger.attemptCount).toBe(1);
+
+    // Must NOT be true — the patient never actually received the review
+    // check-in message, so Sarah's next reply must not be parsed as a
+    // sentiment answer to a question that was never sent.
+    const conversation = await getOrCreateSupportConversation(personId);
+    expect(conversation.reviewRequested).toBe(false);
+  });
+
+  it("retries a failed trigger once it cools down, and succeeds on the retry", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_shipped" }); // handleOrderShipped's own notice
+    sendMessageMock.mockRejectedValueOnce(new Error("SMS_PROVIDER_TIMEOUT"));
+
+    const personId = await seedCustomer();
+    await handleOrderShipped(personId, "TRACK-RETRY");
+    await backdateTrigger(personId);
+
+    const first = await sweepReviewRequestTriggers();
+    expect(first.failedCount).toBe(1);
+
+    // Still within the cooldown window — must not be retried yet.
+    sendMessageMock.mockClear();
+    const tooSoon = await sweepReviewRequestTriggers();
+    expect(tooSoon.sentCount).toBe(0);
+    expect(tooSoon.failedCount).toBe(0);
+    expect(sendMessageMock).not.toHaveBeenCalled();
+
+    // Simulate the cooldown having elapsed.
+    await db.update(reviewRequestTriggersTable).set({ updatedAt: new Date(Date.now() - 60 * 60 * 1000) }).where(eq(reviewRequestTriggersTable.personId, personId));
+
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_retry_success" });
+    const retry = await sweepReviewRequestTriggers();
+    expect(retry.sentCount).toBe(1);
+
+    const [trigger] = await db.select().from(reviewRequestTriggersTable).where(eq(reviewRequestTriggersTable.personId, personId));
+    expect(trigger.status).toBe("sent");
+    expect(trigger.attemptCount).toBe(2);
+    expect(trigger.providerMessageId).toBe("msg_retry_success");
+
+    const conversation = await getOrCreateSupportConversation(personId);
+    expect(conversation.reviewRequested).toBe(true);
+  });
+
+  it("stops retrying once the attempt cap is reached, leaving it permanently failed", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_shipped" }); // handleOrderShipped's own notice
+
+    const personId = await seedCustomer();
+    await handleOrderShipped(personId, "TRACK-EXHAUST");
+    await backdateTrigger(personId);
+
+    // Directly set the trigger to "failed" at the attempt cap, cooled down —
+    // simulating it having already exhausted every retry.
+    await db
+      .update(reviewRequestTriggersTable)
+      .set({ status: "failed", failureReason: "SMS_PROVIDER_TIMEOUT", attemptCount: 3, updatedAt: new Date(Date.now() - 60 * 60 * 1000) })
+      .where(eq(reviewRequestTriggersTable.personId, personId));
+
+    sendMessageMock.mockClear();
+    const result = await sweepReviewRequestTriggers();
+    expect(result.sentCount).toBe(0);
+    expect(result.failedCount).toBe(0);
+    expect(sendMessageMock).not.toHaveBeenCalled();
+
+    const [trigger] = await db.select().from(reviewRequestTriggersTable).where(eq(reviewRequestTriggersTable.personId, personId));
+    expect(trigger.status).toBe("failed");
+    expect(trigger.attemptCount).toBe(3);
   });
 
   it("leaves not-yet-due triggers untouched", async () => {

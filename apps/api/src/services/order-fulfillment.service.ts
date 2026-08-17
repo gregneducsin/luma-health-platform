@@ -1,4 +1,4 @@
-import { and, eq, lte, sql } from "drizzle-orm";
+import { and, eq, lt, lte, or, sql } from "drizzle-orm";
 import { db, customersTable, reviewRequestTriggersTable } from "@luma/db";
 import { getOrCreateSupportConversation, appendSupportMessage, updateSupportConversationState } from "./support-conversations.service.js";
 import { getSmsProvider } from "../lib/sms-provider.js";
@@ -14,6 +14,16 @@ import { logger } from "../lib/logger.js";
  * arrived by then); adjust REVIEW_REQUEST_DELAY_MS if that's wrong.
  */
 const REVIEW_REQUEST_DELAY_MS = 5 * 24 * 60 * 60 * 1000;
+
+/**
+ * A failed send (SMS provider timeout, no phone on file yet, etc.) gets a
+ * few more chances rather than being lost the moment it first fails — up to
+ * MAX_SEND_ATTEMPTS total attempts, each at least RETRY_COOLDOWN_MS apart so
+ * a flapping provider isn't hammered. After the cap, the row stays "failed"
+ * permanently, same as before this retry mechanism existed.
+ */
+const MAX_SEND_ATTEMPTS = 3;
+const RETRY_COOLDOWN_MS = 30 * 60 * 1000;
 
 async function getCustomerContact(personId: string): Promise<{ firstName: string; phone: string | null } | undefined> {
   const [row] = await db.select({ firstName: customersTable.firstName, phone: customersTable.phone }).from(customersTable).where(eq(customersTable.id, personId));
@@ -99,21 +109,31 @@ export interface ReviewRequestSweepResult {
 }
 
 /**
- * Sends every due `pending` review-request trigger. Fully automated, no
- * manual step.
+ * Sends every due `pending` review-request trigger, plus any `failed`
+ * trigger that hasn't exhausted its retry attempts and has cooled down
+ * since its last attempt. Fully automated, no manual step.
  *
  * Safe to call repeatedly, including from overlapping sweep runs — see the
  * identical comment on sweepFollowUpJobs: the claim step atomically flips
- * each due row from `pending` to `processing` in a single UPDATE before any
- * SMS work happens, so two sweeps racing on the same due trigger can't both
- * send it.
+ * each due row to `processing` in a single UPDATE before any SMS work
+ * happens, so two sweeps racing on the same due trigger can't both send it.
  */
 export async function sweepReviewRequestTriggers(): Promise<ReviewRequestSweepResult> {
+  const retryEligibleBefore = new Date(Date.now() - RETRY_COOLDOWN_MS);
   const claimed = await db
     .update(reviewRequestTriggersTable)
     .set({ status: "processing" })
-    .where(and(eq(reviewRequestTriggersTable.status, "pending"), lte(reviewRequestTriggersTable.dueAt, sql`now()`)))
-    .returning({ id: reviewRequestTriggersTable.id, personId: reviewRequestTriggersTable.personId });
+    .where(
+      or(
+        and(eq(reviewRequestTriggersTable.status, "pending"), lte(reviewRequestTriggersTable.dueAt, sql`now()`)),
+        and(
+          eq(reviewRequestTriggersTable.status, "failed"),
+          lt(reviewRequestTriggersTable.attemptCount, MAX_SEND_ATTEMPTS),
+          lte(reviewRequestTriggersTable.updatedAt, retryEligibleBefore),
+        ),
+      ),
+    )
+    .returning({ id: reviewRequestTriggersTable.id, personId: reviewRequestTriggersTable.personId, attemptCount: reviewRequestTriggersTable.attemptCount });
 
   let sentCount = 0;
   let failedCount = 0;
@@ -121,9 +141,13 @@ export async function sweepReviewRequestTriggers(): Promise<ReviewRequestSweepRe
   for (const trigger of claimed) {
     const customer = await getCustomerContact(trigger.personId);
     const conversation = await getOrCreateSupportConversation(trigger.personId);
+    const nextAttemptCount = trigger.attemptCount + 1;
 
     if (!customer?.phone) {
-      await db.update(reviewRequestTriggersTable).set({ status: "failed", failureReason: "NO_PHONE_NUMBER" }).where(eq(reviewRequestTriggersTable.id, trigger.id));
+      await db
+        .update(reviewRequestTriggersTable)
+        .set({ status: "failed", failureReason: "NO_PHONE_NUMBER", attemptCount: nextAttemptCount })
+        .where(eq(reviewRequestTriggersTable.id, trigger.id));
       failedCount++;
       continue;
     }
@@ -132,17 +156,23 @@ export async function sweepReviewRequestTriggers(): Promise<ReviewRequestSweepRe
     try {
       const result = await getSmsProvider().sendMessage(customer.phone, text);
       await appendSupportMessage(conversation.id, "outbound", text, { providerMessageId: result.providerMessageId });
+      // Only flip reviewRequested on an actual successful send — setting it
+      // on a failed attempt (as this used to) made Sarah's conversation loop
+      // treat the patient's next reply as a sentiment answer to a review
+      // check-in question they were never actually sent.
       await updateSupportConversationState(conversation.id, { reviewRequested: true });
       await db
         .update(reviewRequestTriggersTable)
-        .set({ status: "sent", sentAt: sql`now()`, providerMessageId: result.providerMessageId })
+        .set({ status: "sent", sentAt: sql`now()`, providerMessageId: result.providerMessageId, attemptCount: nextAttemptCount })
         .where(eq(reviewRequestTriggersTable.id, trigger.id));
       sentCount++;
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       await appendSupportMessage(conversation.id, "outbound", text, {});
-      await updateSupportConversationState(conversation.id, { reviewRequested: true });
-      await db.update(reviewRequestTriggersTable).set({ status: "failed", failureReason: reason }).where(eq(reviewRequestTriggersTable.id, trigger.id));
+      await db
+        .update(reviewRequestTriggersTable)
+        .set({ status: "failed", failureReason: reason, attemptCount: nextAttemptCount })
+        .where(eq(reviewRequestTriggersTable.id, trigger.id));
       failedCount++;
     }
   }
