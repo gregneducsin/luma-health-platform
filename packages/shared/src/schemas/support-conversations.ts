@@ -38,3 +38,14 @@ export const supportConversationDetailSchema = z.object({
   messages: z.array(supportConversationMessageSchema),
 });
 export type SupportConversationDetail = z.infer<typeof supportConversationDetailSchema>;
+
+export const sendSupportConversationReplyRequestSchema = z.object({
+  body: z.string().min(1).max(2000),
+});
+export type SendSupportConversationReplyRequest = z.infer<typeof sendSupportConversationReplyRequestSchema>;
+
+export const sendSupportConversationReplyResponseSchema = z.object({
+  sent: z.boolean(),
+  reason: z.enum(["not_found", "no_phone", "send_failed"]).optional(),
+});
+export type SendSupportConversationReplyResponse = z.infer<typeof sendSupportConversationReplyResponseSchema>;

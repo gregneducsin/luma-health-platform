@@ -1,5 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { SupportConversationSummary, SupportConversationDetail, SendSarahTestMessageRequest, SarahTurnResponse } from "@luma/shared";
+import type {
+  SupportConversationSummary,
+  SupportConversationDetail,
+  SendSarahTestMessageRequest,
+  SarahTurnResponse,
+  SendSupportConversationReplyResponse,
+} from "@luma/shared";
 import { api } from "../lib/apiClient";
 
 const LIST_POLL_INTERVAL_MS = 8_000;
@@ -37,6 +43,18 @@ export function useClearSupportNeedsAttention() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (conversationId: string) => api.post<{ ok: true }>(`/api/app/support-conversations/${conversationId}/clear-attention`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["support-conversations"] });
+    },
+  });
+}
+
+/** A staff-authored reply, sent through the real SMS provider and logged into the conversation like any other outbound message. */
+export function useSendStaffReply() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ conversationId, body }: { conversationId: string; body: string }) =>
+      api.post<SendSupportConversationReplyResponse>(`/api/app/support-conversations/${conversationId}/reply`, { body }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["support-conversations"] });
     },

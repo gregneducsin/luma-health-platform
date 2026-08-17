@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { useSupportConversationsList, useSupportConversationDetail, useSendSarahTestMessage, useClearSupportNeedsAttention } from "../hooks/useSupportConversations";
+import {
+  useSupportConversationsList,
+  useSupportConversationDetail,
+  useSendSarahTestMessage,
+  useClearSupportNeedsAttention,
+  useSendStaffReply,
+} from "../hooks/useSupportConversations";
 import { Badge, Card, Button, Input } from "../components/ui";
 import { ApiError } from "../hooks/useAuth";
 
@@ -88,6 +94,47 @@ function SupportConversationList({ selectedId, onSelect }: { selectedId: string 
   );
 }
 
+/** A staff-authored reply — sent through the real SMS provider and logged into the conversation like any other outbound message. */
+function StaffReplyBox({ conversationId }: { conversationId: string }) {
+  const [text, setText] = useState("");
+  const sendReply = useSendStaffReply();
+
+  function handleSend() {
+    const body = text.trim();
+    if (!body || sendReply.isPending) return;
+    sendReply.mutate(
+      { conversationId, body },
+      { onSuccess: (data) => { if (data.sent) setText(""); } },
+    );
+  }
+
+  return (
+    <div className="mt-2">
+      <div className="flex items-center gap-2">
+        <Input
+          className="flex-1"
+          placeholder="Reply as staff…"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          disabled={sendReply.isPending}
+        />
+        <Button onClick={handleSend} disabled={sendReply.isPending || !text.trim()}>
+          {sendReply.isPending ? "Sending…" : "Send reply"}
+        </Button>
+      </div>
+      {sendReply.isSuccess && sendReply.data.sent === false && (
+        <p className="mt-1 text-xs text-red-600">
+          {sendReply.data.reason === "no_phone" && "No phone number on file — nothing was sent."}
+          {sendReply.data.reason === "send_failed" && "Send failed — the message was logged, but nothing actually went out."}
+        </p>
+      )}
+      {sendReply.isError && (
+        <p className="mt-1 text-xs text-red-600">{sendReply.error instanceof ApiError ? sendReply.error.message : "Something went wrong."}</p>
+      )}
+    </div>
+  );
+}
+
 function SupportConversationDetailPanel({ conversationId }: { conversationId: string }) {
   const { data, isLoading } = useSupportConversationDetail(conversationId);
   const [input, setInput] = useState("");
@@ -135,11 +182,14 @@ function SupportConversationDetailPanel({ conversationId }: { conversationId: st
           </div>
         </div>
         {conversation.needsAttention && (
-          <div className="mt-2 flex items-center justify-between rounded-md bg-red-50 px-3 py-2">
-            <p className="text-xs text-red-700">This conversation needs staff attention.</p>
-            <Button variant="secondary" onClick={() => clearAttention.mutate(conversation.id)} disabled={clearAttention.isPending}>
-              {clearAttention.isPending ? "Marking…" : "Mark reviewed"}
-            </Button>
+          <div className="mt-2 rounded-md bg-red-50 px-3 py-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-red-700">This conversation needs staff attention.</p>
+              <Button variant="secondary" onClick={() => clearAttention.mutate(conversation.id)} disabled={clearAttention.isPending}>
+                {clearAttention.isPending ? "Marking…" : "Mark reviewed"}
+              </Button>
+            </div>
+            <StaffReplyBox conversationId={conversation.id} />
           </div>
         )}
       </div>
@@ -170,7 +220,9 @@ function SupportConversationDetailPanel({ conversationId }: { conversationId: st
 
       <form onSubmit={handleSubmit} className="border-t border-gray-200 p-3">
         <p className="mb-2 text-xs text-gray-400">
-          No SMS provider is connected yet — simulate what the patient would text back to test the live guardrails.
+          Simulates what the patient would text back, running the real Sarah pipeline (Claude call, guardrails,
+          persistence) — an SMS provider is now connected, so this <strong>will</strong> send a real reply to this
+          patient's phone number if one is on file. Only use this against test/fake customer records.
         </p>
         <div className="flex items-center gap-2">
           <Input

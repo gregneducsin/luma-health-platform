@@ -47,3 +47,14 @@ export const conversationDetailSchema = z.object({
   messages: z.array(conversationMessageSchema),
 });
 export type ConversationDetail = z.infer<typeof conversationDetailSchema>;
+
+export const sendConversationReplyRequestSchema = z.object({
+  body: z.string().min(1).max(2000),
+});
+export type SendConversationReplyRequest = z.infer<typeof sendConversationReplyRequestSchema>;
+
+export const sendConversationReplyResponseSchema = z.object({
+  sent: z.boolean(),
+  reason: z.enum(["not_found", "no_phone", "send_failed"]).optional(),
+});
+export type SendConversationReplyResponse = z.infer<typeof sendConversationReplyResponseSchema>;

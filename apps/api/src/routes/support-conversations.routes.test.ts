@@ -1,8 +1,15 @@
-import { describe, expect, it, beforeAll } from "vitest";
+import { describe, expect, it, beforeAll, vi } from "vitest";
 import request from "supertest";
 import { db, customersTable } from "@luma/db";
-import { createApp } from "../app.js";
 import { getOrCreateSupportConversation, appendSupportMessage } from "../services/support-conversations.service.js";
+
+const sendMessageMock = vi.fn();
+vi.mock("../lib/sms-provider.js", async () => {
+  const actual = await vi.importActual<typeof import("../lib/sms-provider.js")>("../lib/sms-provider.js");
+  return { ...actual, getSmsProvider: () => ({ sendMessage: sendMessageMock }) };
+});
+
+const { createApp } = await import("../app.js");
 
 const PASSWORD = "CorrectHorseBattery1";
 
@@ -23,10 +30,16 @@ async function loginAgent(app: ReturnType<typeof createApp>, email: string) {
   return { agent, csrf };
 }
 
-async function seedCustomer(): Promise<string> {
+async function seedCustomer(opts: { phone?: string | null } = {}): Promise<string> {
   const [row] = await db
     .insert(customersTable)
-    .values({ firstName: "Route", lastName: "Support", email: `route-support-${crypto.randomUUID()}@example.com`, leadReceivedDate: "2026-08-16" })
+    .values({
+      firstName: "Route",
+      lastName: "Support",
+      email: `route-support-${crypto.randomUUID()}@example.com`,
+      leadReceivedDate: "2026-08-16",
+      phone: opts.phone === undefined ? "+15556660001" : opts.phone,
+    })
     .returning({ id: customersTable.id });
   return row.id;
 }
@@ -115,5 +128,69 @@ describe("Support conversations", () => {
     const { agent, csrf } = await loginAgent(app, "support-admin4@example.com");
     const res = await agent.post("/api/app/support-conversations/00000000-0000-0000-0000-000000000000/clear-attention").set("x-csrf-token", csrf).send({});
     expect(res.status).toBe(404);
+  });
+
+  describe("staff reply", () => {
+    it("sends the reply, logs it, and clears needsAttention", async () => {
+      sendMessageMock.mockClear();
+      sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_route_support_reply_1" });
+
+      await seedUser("support-reply1@example.com", "admin");
+      const { agent, csrf } = await loginAgent(app, "support-reply1@example.com");
+
+      const personId = await seedCustomer({ phone: "+15556660020" });
+      const conversation = await getOrCreateSupportConversation(personId);
+      const { updateSupportConversationState } = await import("../services/support-conversations.service.js");
+      await updateSupportConversationState(conversation.id, { needsAttention: true });
+
+      const res = await agent
+        .post(`/api/app/support-conversations/${conversation.id}/reply`)
+        .set("x-csrf-token", csrf)
+        .send({ body: "Your label has the exact timing instructions." });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ sent: true });
+      expect(sendMessageMock).toHaveBeenCalledWith("+15556660020", "Your label has the exact timing instructions.");
+
+      const detailRes = await agent.get(`/api/app/support-conversations/${conversation.id}`);
+      expect(detailRes.body.conversation.needsAttention).toBe(false);
+      expect(detailRes.body.messages.at(-1)).toMatchObject({ direction: "outbound", body: "Your label has the exact timing instructions." });
+    });
+
+    it("rejects an empty body with 400", async () => {
+      await seedUser("support-reply2@example.com", "admin");
+      const { agent, csrf } = await loginAgent(app, "support-reply2@example.com");
+      const personId = await seedCustomer();
+      const conversation = await getOrCreateSupportConversation(personId);
+
+      const res = await agent.post(`/api/app/support-conversations/${conversation.id}/reply`).set("x-csrf-token", csrf).send({ body: "" });
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 404 for an unknown conversation id", async () => {
+      await seedUser("support-reply3@example.com", "admin");
+      const { agent, csrf } = await loginAgent(app, "support-reply3@example.com");
+      const res = await agent
+        .post("/api/app/support-conversations/00000000-0000-0000-0000-000000000000/reply")
+        .set("x-csrf-token", csrf)
+        .send({ body: "hi" });
+      expect(res.status).toBe(404);
+    });
+
+    it("requires authentication", async () => {
+      const personId = await seedCustomer();
+      const conversation = await getOrCreateSupportConversation(personId);
+      const res = await request(app).post(`/api/app/support-conversations/${conversation.id}/reply`).send({ body: "hi" });
+      expect(res.status).toBe(401);
+    });
+
+    it("rejects employee role", async () => {
+      await seedUser("support-reply4@example.com", "employee");
+      const { agent, csrf } = await loginAgent(app, "support-reply4@example.com");
+      const personId = await seedCustomer();
+      const conversation = await getOrCreateSupportConversation(personId);
+      const res = await agent.post(`/api/app/support-conversations/${conversation.id}/reply`).set("x-csrf-token", csrf).send({ body: "hi" });
+      expect(res.status).toBe(403);
+    });
   });
 });

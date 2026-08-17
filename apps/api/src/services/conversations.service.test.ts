@@ -1,6 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { db, customersTable } from "@luma/db";
-import {
+
+const sendMessageMock = vi.fn();
+vi.mock("../lib/sms-provider.js", async () => {
+  const actual = await vi.importActual<typeof import("../lib/sms-provider.js")>("../lib/sms-provider.js");
+  return { ...actual, getSmsProvider: () => ({ sendMessage: sendMessageMock }) };
+});
+
+const {
   getOrCreateConversation,
   appendMessage,
   setMessageSentiment,
@@ -10,12 +17,19 @@ import {
   listConversationSummaries,
   getConversationDetail,
   getConversationResponseStats,
-} from "./conversations.service.js";
+  sendStaffReply,
+} = await import("./conversations.service.js");
 
-async function seedCustomer(): Promise<string> {
+async function seedCustomer(opts: { phone?: string | null } = {}): Promise<string> {
   const [row] = await db
     .insert(customersTable)
-    .values({ firstName: "Convo", lastName: "Test", email: `convo-${crypto.randomUUID()}@example.com`, leadReceivedDate: "2026-08-15" })
+    .values({
+      firstName: "Convo",
+      lastName: "Test",
+      email: `convo-${crypto.randomUUID()}@example.com`,
+      leadReceivedDate: "2026-08-15",
+      phone: opts.phone === undefined ? "+15558880001" : opts.phone,
+    })
     .returning({ id: customersTable.id });
   return row.id;
 }
@@ -226,5 +240,65 @@ describe("getConversationResponseStats", () => {
     expect(Number.isFinite(stats.responseRate)).toBe(true);
     expect(stats.responseRate).toBeGreaterThanOrEqual(0);
     expect(stats.responseRate).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("sendStaffReply", () => {
+  it("sends through the SMS provider, logs the outbound message, and clears needsAttention", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_staff_1" });
+
+    const personId = await seedCustomer({ phone: "+15558880010" });
+    const conversation = await getOrCreateConversation(personId);
+    await updateConversationState(conversation.id, { needsAttention: true });
+
+    const result = await sendStaffReply(conversation.id, "Following up on your question.");
+
+    expect(result).toEqual({ sent: true });
+    expect(sendMessageMock).toHaveBeenCalledWith("+15558880010", "Following up on your question.");
+
+    const messages = await listMessages(conversation.id);
+    expect(messages[0]).toMatchObject({ direction: "outbound", body: "Following up on your question.", providerMessageId: "msg_staff_1" });
+
+    const updated = await getConversationDetail(conversation.id);
+    expect(updated?.conversation.needsAttention).toBe(false);
+  });
+
+  it("returns not_found for an unknown conversation id, without touching the provider", async () => {
+    sendMessageMock.mockClear();
+    const result = await sendStaffReply("00000000-0000-0000-0000-000000000000", "hi");
+    expect(result).toEqual({ sent: false, reason: "not_found" });
+    expect(sendMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("returns no_phone and sends nothing when the customer has no phone on file", async () => {
+    sendMessageMock.mockClear();
+    const personId = await seedCustomer({ phone: null });
+    const conversation = await getOrCreateConversation(personId);
+
+    const result = await sendStaffReply(conversation.id, "hi");
+
+    expect(result).toEqual({ sent: false, reason: "no_phone" });
+    expect(sendMessageMock).not.toHaveBeenCalled();
+    const messages = await listMessages(conversation.id);
+    expect(messages).toHaveLength(0);
+  });
+
+  it("still logs the message and leaves needsAttention set when the provider send fails", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockRejectedValueOnce(new Error("iBluSend send failed: 429"));
+
+    const personId = await seedCustomer({ phone: "+15558880011" });
+    const conversation = await getOrCreateConversation(personId);
+    await updateConversationState(conversation.id, { needsAttention: true });
+
+    const result = await sendStaffReply(conversation.id, "trying to reply");
+
+    expect(result).toEqual({ sent: false, reason: "send_failed" });
+    const messages = await listMessages(conversation.id);
+    expect(messages[0]).toMatchObject({ direction: "outbound", body: "trying to reply", providerMessageId: null });
+
+    const updated = await getConversationDetail(conversation.id);
+    expect(updated?.conversation.needsAttention).toBe(true);
   });
 });

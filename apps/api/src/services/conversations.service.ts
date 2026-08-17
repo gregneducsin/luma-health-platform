@@ -1,6 +1,8 @@
 import { desc, eq, sql } from "drizzle-orm";
 import { db, conversationsTable, conversationMessagesTable, customersTable, type Conversation, type ConversationMessage } from "@luma/db";
 import type { BotPreviewRequestBody } from "../lib/messaging/types.js";
+import { getSmsProvider } from "../lib/sms-provider.js";
+import { logger } from "../lib/logger.js";
 
 const MAX_HISTORY_MESSAGES = 20;
 
@@ -50,6 +52,43 @@ export async function updateConversationState(conversationId: string, patch: Con
 /** Staff has looked at a flagged conversation — clears the attention flag until the next thing that needs it. */
 export async function clearNeedsAttention(conversationId: string): Promise<void> {
   await db.update(conversationsTable).set({ needsAttention: false }).where(eq(conversationsTable.id, conversationId));
+}
+
+export type StaffReplyResult = { readonly sent: true } | { readonly sent: false; readonly reason: "not_found" | "no_phone" | "send_failed" };
+
+/**
+ * A human-authored reply, sent through the same SMS provider Lucy uses and
+ * logged into the same conversation timeline the same way a bot reply is
+ * (direction: "outbound") — so the CRM history reads as one continuous
+ * conversation regardless of who actually wrote each message. Only clears
+ * needsAttention on an actual successful send: a send failure means the
+ * conversation still needs attention, not less of it.
+ *
+ * The message is logged even when the send fails (providerMessageId null),
+ * same philosophy as sendAndLog in lucy-dispatch.service.ts — a transport
+ * failure doesn't erase the fact that this is what staff actually tried to
+ * say; the caller still gets sent: false so the UI can show the failure.
+ */
+export async function sendStaffReply(conversationId: string, body: string): Promise<StaffReplyResult> {
+  const detail = await getConversationDetail(conversationId);
+  if (!detail) return { sent: false, reason: "not_found" };
+  if (!detail.customer.phone) return { sent: false, reason: "no_phone" };
+
+  let providerMessageId: string | null = null;
+  let sendFailed = false;
+  try {
+    const result = await getSmsProvider().sendMessage(detail.customer.phone, body);
+    providerMessageId = result.providerMessageId;
+  } catch (err) {
+    sendFailed = true;
+    logger.warn({ conversationId, reason: err instanceof Error ? err.message : String(err) }, "staff reply send failed");
+  }
+
+  await appendMessage(conversationId, "outbound", body, { providerMessageId });
+  if (sendFailed) return { sent: false, reason: "send_failed" };
+
+  await clearNeedsAttention(conversationId);
+  return { sent: true };
 }
 
 export async function appendMessage(

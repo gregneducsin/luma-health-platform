@@ -1,6 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { db, customersTable } from "@luma/db";
-import {
+
+const sendMessageMock = vi.fn();
+vi.mock("../lib/sms-provider.js", async () => {
+  const actual = await vi.importActual<typeof import("../lib/sms-provider.js")>("../lib/sms-provider.js");
+  return { ...actual, getSmsProvider: () => ({ sendMessage: sendMessageMock }) };
+});
+
+const {
   getOrCreateSupportConversation,
   appendSupportMessage,
   setSupportMessageSentiment,
@@ -9,12 +16,19 @@ import {
   toSarahPreviewBody,
   listSupportConversationSummaries,
   getSupportConversationDetail,
-} from "./support-conversations.service.js";
+  sendStaffReply,
+} = await import("./support-conversations.service.js");
 
-async function seedCustomer(): Promise<string> {
+async function seedCustomer(opts: { phone?: string | null } = {}): Promise<string> {
   const [row] = await db
     .insert(customersTable)
-    .values({ firstName: "Support", lastName: "Test", email: `support-${crypto.randomUUID()}@example.com`, leadReceivedDate: "2026-08-16" })
+    .values({
+      firstName: "Support",
+      lastName: "Test",
+      email: `support-${crypto.randomUUID()}@example.com`,
+      leadReceivedDate: "2026-08-16",
+      phone: opts.phone === undefined ? "+15557770001" : opts.phone,
+    })
     .returning({ id: customersTable.id });
   return row.id;
 }
@@ -130,5 +144,69 @@ describe("listSupportConversationSummaries / getSupportConversationDetail", () =
   it("getSupportConversationDetail returns null for an unknown conversation id", async () => {
     const detail = await getSupportConversationDetail("00000000-0000-0000-0000-000000000000");
     expect(detail).toBeNull();
+  });
+});
+
+describe("sendStaffReply", () => {
+  it("sends through the SMS provider, logs the outbound message, and clears needsAttention", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_staff_support_1" });
+
+    const personId = await seedCustomer({ phone: "+15557770010" });
+    const conversation = await getOrCreateSupportConversation(personId);
+    await updateSupportConversationState(conversation.id, { needsAttention: true });
+
+    const result = await sendStaffReply(conversation.id, "The label has your exact dosing instructions.");
+
+    expect(result).toEqual({ sent: true });
+    expect(sendMessageMock).toHaveBeenCalledWith("+15557770010", "The label has your exact dosing instructions.");
+
+    const messages = await listSupportMessages(conversation.id);
+    expect(messages[0]).toMatchObject({
+      direction: "outbound",
+      body: "The label has your exact dosing instructions.",
+      providerMessageId: "msg_staff_support_1",
+    });
+
+    const updated = await getSupportConversationDetail(conversation.id);
+    expect(updated?.conversation.needsAttention).toBe(false);
+  });
+
+  it("returns not_found for an unknown conversation id, without touching the provider", async () => {
+    sendMessageMock.mockClear();
+    const result = await sendStaffReply("00000000-0000-0000-0000-000000000000", "hi");
+    expect(result).toEqual({ sent: false, reason: "not_found" });
+    expect(sendMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("returns no_phone and sends nothing when the customer has no phone on file", async () => {
+    sendMessageMock.mockClear();
+    const personId = await seedCustomer({ phone: null });
+    const conversation = await getOrCreateSupportConversation(personId);
+
+    const result = await sendStaffReply(conversation.id, "hi");
+
+    expect(result).toEqual({ sent: false, reason: "no_phone" });
+    expect(sendMessageMock).not.toHaveBeenCalled();
+    const messages = await listSupportMessages(conversation.id);
+    expect(messages).toHaveLength(0);
+  });
+
+  it("still logs the message and leaves needsAttention set when the provider send fails", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockRejectedValueOnce(new Error("iBluSend send failed: 429"));
+
+    const personId = await seedCustomer({ phone: "+15557770011" });
+    const conversation = await getOrCreateSupportConversation(personId);
+    await updateSupportConversationState(conversation.id, { needsAttention: true });
+
+    const result = await sendStaffReply(conversation.id, "trying to reply");
+
+    expect(result).toEqual({ sent: false, reason: "send_failed" });
+    const messages = await listSupportMessages(conversation.id);
+    expect(messages[0]).toMatchObject({ direction: "outbound", body: "trying to reply", providerMessageId: null });
+
+    const updated = await getSupportConversationDetail(conversation.id);
+    expect(updated?.conversation.needsAttention).toBe(true);
   });
 });
