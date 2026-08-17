@@ -77,7 +77,10 @@ export async function handleIbluSendWebhook(envelope: IbluSendWebhookEnvelope): 
           await markWebhookEventProcessed(recorded.id, personId);
           return { duplicate: false };
         }
-        logger.warn({ phone: data.phone_number }, "inbound iBluSend message from an unrecognized phone number — no matching customer");
+        logger.warn(
+          { phoneLastFour: data.phone_number.slice(-4) },
+          "inbound iBluSend message from an unrecognized phone number — no matching customer",
+        );
       }
     }
     await markWebhookEventProcessed(recorded.id);
