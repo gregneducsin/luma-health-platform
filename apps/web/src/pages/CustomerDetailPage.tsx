@@ -11,6 +11,12 @@ const STATUS_COLORS: Record<string, "gray" | "green" | "yellow" | "red"> = {
   cancelled: "red",
 };
 
+const QUESTIONNAIRE_BADGE_COLOR: Record<string, "gray" | "green" | "yellow" | "blue"> = {
+  started: "blue",
+  abandoned: "yellow",
+  submitted: "green",
+};
+
 export function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data, isLoading } = useCustomer(id);
@@ -19,7 +25,7 @@ export function CustomerDetailPage() {
   if (isLoading) return <p className="text-sm text-gray-500">Loading…</p>;
   if (!data) return <p className="text-sm text-gray-500">Customer not found.</p>;
 
-  const { customer, purchases } = data;
+  const { customer, purchases, questionnaireEvents } = data;
 
   return (
     <div className="space-y-4">
@@ -50,6 +56,24 @@ export function CustomerDetailPage() {
           </div>
         </dl>
       </Card>
+
+      {questionnaireEvents.length > 0 && (
+        <Card>
+          <h2 className="text-sm font-semibold text-gray-900">Questionnaire / Funnel</h2>
+          <p className="text-xs text-gray-500">Where this lead came from — every questionnaire they have an event for, most recent first.</p>
+          <div className="mt-3 space-y-2">
+            {questionnaireEvents.map((qe) => (
+              <div key={qe.questionnaireId} className="flex items-center justify-between rounded-md border border-gray-100 px-3 py-2">
+                <span className="text-sm text-gray-800">{qe.questionnaireId}</span>
+                <div className="flex items-center gap-2">
+                  <Badge color={QUESTIONNAIRE_BADGE_COLOR[qe.status] ?? "gray"}>{qe.status}</Badge>
+                  <span className="text-xs text-gray-400">as of {new Date(qe.lastEventAt).toLocaleDateString()}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <IntakeLinkCard customerId={customer.id} />
 

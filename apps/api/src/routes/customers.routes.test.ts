@@ -76,6 +76,28 @@ describe("Customers CRUD", () => {
     expect(getRes.status).toBe(200);
     expect(getRes.body.customer.email).toBe("jane.doe@example.com");
     expect(getRes.body.purchases).toEqual([]);
+    expect(getRes.body.questionnaireEvents).toEqual([]);
+
+    // Detail response surfaces every questionnaire this customer has an
+    // event for, most recently active first.
+    const { db, questionnaireEventsTable } = await import("@luma/db");
+    await db.insert(questionnaireEventsTable).values({
+      personId: customer.id,
+      questionnaireId: "Q-OLDER",
+      status: "started",
+      lastEventAt: new Date("2026-01-01T00:00:00Z"),
+    });
+    await db.insert(questionnaireEventsTable).values({
+      personId: customer.id,
+      questionnaireId: "Q-NEWER",
+      status: "abandoned",
+      lastEventAt: new Date("2026-02-01T00:00:00Z"),
+    });
+    const withEvents = await agent.get(`/api/app/customers/${customer.id}`);
+    expect(withEvents.body.questionnaireEvents).toHaveLength(2);
+    expect(withEvents.body.questionnaireEvents[0].questionnaireId).toBe("Q-NEWER");
+    expect(withEvents.body.questionnaireEvents[0].status).toBe("abandoned");
+    expect(withEvents.body.questionnaireEvents[1].questionnaireId).toBe("Q-OLDER");
 
     const updateRes = await agent
       .patch(`/api/app/customers/${customer.id}`)
@@ -209,6 +231,7 @@ describe("Customers CRUD", () => {
     expect(byQuestionnaireId.body.total).toBe(1);
     expect(byQuestionnaireId.body.customers[0].id).toBe(nonPurchaser.body.customer.id);
     expect(byQuestionnaireId.body.customers[0].questionnaireStatus).toBe("abandoned");
+    expect(byQuestionnaireId.body.customers[0].questionnaireId).toBe("Q-FILT-1");
 
     // A different questionnaire ID shouldn't match this customer's event.
     const byOtherQuestionnaireId = await agent.get("/api/app/customers").query({ leadType: "Referral Filter Test", questionnaireId: "Q-DOES-NOT-EXIST" });

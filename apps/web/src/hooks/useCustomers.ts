@@ -17,6 +17,7 @@ import type {
   QuestionnairesQuery,
   QuestionnairesResponse,
   IntakeLinkResponse,
+  CustomerQuestionnaireEvent,
 } from "@luma/shared";
 import { api } from "../lib/apiClient";
 
@@ -80,7 +81,8 @@ export function usePurchasesSummary(query: Partial<PurchasesSummaryQuery>) {
 export function useCustomer(id: string | undefined) {
   return useQuery({
     queryKey: ["customers", "detail", id],
-    queryFn: () => api.get<{ customer: Customer; purchases: Purchase[] }>(`/api/app/customers/${id}`),
+    queryFn: () =>
+      api.get<{ customer: Customer; purchases: Purchase[]; questionnaireEvents: CustomerQuestionnaireEvent[] }>(`/api/app/customers/${id}`),
     enabled: !!id,
   });
 }

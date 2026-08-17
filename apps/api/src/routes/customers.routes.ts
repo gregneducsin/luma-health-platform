@@ -71,7 +71,8 @@ export function createCustomersRouter(): RouterType {
         return;
       }
       const purchases = await purchasesService.listPurchasesForCustomer(customer.id);
-      res.json({ customer, purchases });
+      const questionnaireEvents = await customersService.listQuestionnaireEventsForCustomer(customer.id);
+      res.json({ customer, purchases, questionnaireEvents });
     } catch (err) {
       next(err);
     }

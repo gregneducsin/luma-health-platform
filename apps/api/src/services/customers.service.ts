@@ -19,6 +19,14 @@ const questionnaireStatusSubquery = sql<string | null>`(
   limit 1
 )`;
 
+const questionnaireIdSubquery = sql<string | null>`(
+  select ${questionnaireEventsTable.questionnaireId}
+  from ${questionnaireEventsTable}
+  where ${questionnaireEventsTable.personId} = ${customersTable.id}
+  order by ${questionnaireEventsTable.lastEventAt} desc
+  limit 1
+)`;
+
 export async function listCustomers(query: ListCustomersQuery) {
   const { search, sortBy, sortDir, limit, offset, leadType, purchaseStatus, questionnaireId, dateFrom, dateTo } = query;
 
@@ -64,6 +72,7 @@ export async function listCustomers(query: ListCustomersQuery) {
       mostRecentPurchaseDate: sql<string | null>`max(${purchasesTable.purchaseDate})`,
       qualifyingPurchaseDate: sql<string | null>`min(${purchasesTable.purchaseDate}) filter (where ${qualifyingPurchaseSql})`,
       questionnaireStatus: questionnaireStatusSubquery,
+      questionnaireId: questionnaireIdSubquery,
     })
     .from(customersTable)
     .leftJoin(purchasesTable, eq(purchasesTable.customerId, customersTable.id))
@@ -162,6 +171,21 @@ export async function listDistinctQuestionnaireIds() {
 export async function getCustomer(id: string) {
   const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, id));
   return customer ?? null;
+}
+
+/** Every questionnaire this customer has an event for, most recently active first — answers "where did this lead come from." */
+export async function listQuestionnaireEventsForCustomer(personId: string) {
+  return db
+    .select({
+      questionnaireId: questionnaireEventsTable.questionnaireId,
+      status: questionnaireEventsTable.status,
+      startedAt: questionnaireEventsTable.startedAt,
+      abandonedAt: questionnaireEventsTable.abandonedAt,
+      lastEventAt: questionnaireEventsTable.lastEventAt,
+    })
+    .from(questionnaireEventsTable)
+    .where(eq(questionnaireEventsTable.personId, personId))
+    .orderBy(desc(questionnaireEventsTable.lastEventAt));
 }
 
 export async function createCustomer(input: CreateCustomerRequest) {

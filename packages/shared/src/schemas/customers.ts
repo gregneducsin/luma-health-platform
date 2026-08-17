@@ -14,6 +14,15 @@ export const customerSchema = z.object({
 });
 export type Customer = z.infer<typeof customerSchema>;
 
+export const customerQuestionnaireEventSchema = z.object({
+  questionnaireId: z.string(),
+  status: z.string(),
+  startedAt: z.string().nullable(),
+  abandonedAt: z.string().nullable(),
+  lastEventAt: z.string(),
+});
+export type CustomerQuestionnaireEvent = z.infer<typeof customerQuestionnaireEventSchema>;
+
 export const createCustomerRequestSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
@@ -60,8 +69,11 @@ export const customerWithStatsSchema = customerSchema.extend({
   // which reflect the customer's full order history regardless of
   // classification.
   qualifyingPurchaseDate: z.string().nullable(),
-  // Most recent questionnaire_events row for this customer, if any.
+  // Most recent questionnaire_events row for this customer, if any — status
+  // and questionnaireId are the same row (paired by the same "most recent
+  // by lastEventAt" subquery), so they're always in sync with each other.
   questionnaireStatus: z.string().nullable(),
+  questionnaireId: z.string().nullable(),
 });
 export type CustomerWithStats = z.infer<typeof customerWithStatsSchema>;
 
