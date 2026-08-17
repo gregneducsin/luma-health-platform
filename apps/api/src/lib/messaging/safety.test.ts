@@ -249,6 +249,40 @@ describe("interactivePostCheck: insurance-acceptance negation", () => {
     const result = check(reply({ reply: "We don't take insurance.", knowledgeTopicsUsed: [] }));
     expect(result).toEqual({ ok: false, code: "UNSUPPORTED_PRICING_CLAIM" });
   });
+
+  it("rejects affirmative acceptance claims phrased with verbs beyond accept/work-with/bill", () => {
+    const cases = [
+      "We take insurance.",
+      "Your insurance covers this.",
+      "This is covered by insurance.",
+      "We honor insurance plans.",
+      "Insurance is welcome here.",
+      "You can use your insurance for this.",
+      "We are in-network with most insurance plans.",
+      "Insurance may cover part of this.",
+    ];
+    for (const text of cases) {
+      const result = check(reply({ reply: text, knowledgeTopicsUsed: ["insurance_payment"] }));
+      expect(result).toEqual({ ok: false, code: "UNSUPPORTED_PRICING_CLAIM" });
+    }
+  });
+
+  it("allows the correctly negated form of every expanded acceptance verb, including contracted 'to be' negation", () => {
+    const cases = [
+      "We don't take insurance.",
+      "Your insurance doesn't cover this.",
+      "This isn't covered by insurance.",
+      "We don't honor insurance plans.",
+      "We can't use your insurance for this.",
+      "We're not in-network with insurance.",
+      "Insurance isn't accepted here.",
+      "Insurance isn't welcome here — we work on a self-pay basis.",
+    ];
+    for (const text of cases) {
+      const result = check(reply({ reply: text, knowledgeTopicsUsed: ["insurance_payment"] }));
+      expect(result.ok).toBe(true);
+    }
+  });
 });
 
 // ── Post-check: promotion rules ───────────────────────────────────────────────

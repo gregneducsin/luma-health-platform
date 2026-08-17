@@ -385,20 +385,40 @@ const UNSUPPORTED_FINANCING_RE = [
  *   insurance [auxiliary] accepted  (passive: "insurance is accepted", "may be accepted")
  *   work / works / worked with [0–2 words] insurance
  *   bill / bills / billed [0–2 words] insurance
+ *   take / takes / took [0–3 words] insurance
+ *   honor / honors / honored [0–2 words] insurance
+ *   insurance covers / will cover / is covered  (active and passive)
+ *   covered by [0–2 words] insurance
+ *   use [0–2 words] insurance
+ *   in-network with [0–3 words] insurance
+ *   insurance [is] welcome
  */
 const INSURANCE_ACCEPTANCE_PATTERNS: readonly RegExp[] = [
   /\baccept(?:s|ed)?\s+(?:\w+\s+){0,3}insurance\b/gi,
   /\binsurance\s+(?:(?:is|are|was|were|gets?)\s+|(?:will|may|might|could|should)\s+be\s+)accepted\b/gi,
   /\bwork(?:s|ed)?\s+with\s+(?:\w+\s+){0,2}insurance\b/gi,
   /\bbill(?:s|ed)?\s+(?:\w+\s+){0,2}insurance\b/gi,
+  /\b(?:tak(?:e|es|en)|took)\s+(?:\w+\s+){0,3}insurance\b/gi,
+  /\bhonor(?:s|ed)?\s+(?:\w+\s+){0,2}insurance\b/gi,
+  /\binsurance\s+(?:(?:usually|typically|often|generally)\s+)?(?:(?:will|may|might|could|should)\s+)?covers?\b/gi,
+  /\binsurance\s+(?:is|are|was|were)\s+covered\b/gi,
+  /\bcover(?:ed|s)?\s+by\s+(?:\w+\s+){0,2}insurance\b/gi,
+  /\buse\s+(?:\w+\s+){0,2}insurance\b/gi,
+  /\bin[\s-]network\s+(?:\w+\s+){0,3}insurance\b/gi,
+  /\binsurance\s+(?:is\s+)?welcome\b/gi,
 ];
 
 /**
  * Negation markers that, when present before an insurance-acceptance verb within its
  * clause, indicate the claim is correctly negated (approved form).
+ *
+ * Includes contracted negated "to be" forms (isn't/aren't/wasn't/weren't) — without
+ * these, a correctly-negated claim built on a "covered"/"welcome" pattern ("This
+ * isn't covered by insurance") was wrongly treated as unnegated and blocked, since
+ * "is not" (spelled out) was covered but its contraction wasn't.
  */
 const INSURANCE_ACCEPTANCE_NEGATION_RE =
-  /\b(don't|do\s+not|doesn't|does\s+not|didn't|did\s+not|won't|will\s+not|can't|cannot|could\s+not|may\s+not|might\s+not|never|not)\b/;
+  /\b(don't|do\s+not|doesn't|does\s+not|didn't|did\s+not|won't|will\s+not|can't|cannot|could\s+not|may\s+not|might\s+not|isn't|is\s+not|aren't|are\s+not|wasn't|was\s+not|weren't|were\s+not|never|not)\b/;
 
 /**
  * Insurance mention — permitted when the insurance_payment Lucy topic is
@@ -519,6 +539,10 @@ const NO_QUESTION_ACTIONS = new Set(["pause", "send_form", "staff_review", "no_r
  *   "We may accept insurance."          "We accept some insurance."
  *   "We accept insurance indirectly."   "Your insurance is accepted."
  *   "We work with your insurance."      "We can bill your insurance."
+ *   "We take insurance."                "Your insurance covers this."
+ *   "This is covered by insurance."     "We honor insurance plans."
+ *   "Insurance is welcome here."        "You can use your insurance for this."
+ *   "We're in-network with insurance."  "Insurance may cover part of this."
  */
 function hasUnnegatedInsuranceAcceptance(reply: string): boolean {
   const lower = reply.toLowerCase();
