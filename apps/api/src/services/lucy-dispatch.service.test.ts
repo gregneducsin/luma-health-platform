@@ -172,6 +172,50 @@ describe("processInboundMessage", () => {
     expect(conversation.needsAttention).toBe(false);
   });
 
+  it("serializes two double-texted inbound messages instead of racing them", async () => {
+    runLucyTurnMock.mockClear();
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValue({ providerMessageId: "msg_race" });
+
+    const seenHistoryLengths: number[] = [];
+    runLucyTurnMock.mockImplementation(async (_personId: string, body: { messages: readonly unknown[] }) => {
+      // Snapshot synchronously at call time — before any delay — so this
+      // reflects exactly what conversation history was visible the instant
+      // Claude was invoked for this turn.
+      seenHistoryLengths.push(body.messages.length);
+      const isFirstCall = seenHistoryLengths.length === 1;
+      if (isFirstCall) {
+        // Force real overlap: the second processInboundMessage call starts
+        // while this first one is still mid-turn.
+        await new Promise((resolve) => setTimeout(resolve, 60));
+      }
+      return okResult({ reply: isFirstCall ? "First reply." : "Second reply.", nextQuestion: null });
+    });
+
+    const personId = await seedCustomer();
+    const [r1, r2] = await Promise.all([processInboundMessage(personId, "first text"), processInboundMessage(personId, "second text")]);
+
+    expect(r1.ok).toBe(true);
+    expect(r2.ok).toBe(true);
+
+    // Without serialization, the second call's Claude turn would start
+    // immediately and only see its own inbound message (history length 1) —
+    // blind to the first text entirely, let alone the first turn's reply.
+    // With the lock, the second call only starts once the first has fully
+    // persisted both its inbound message and its outbound reply, so it sees
+    // both of those plus its own inbound message.
+    expect(seenHistoryLengths).toEqual([1, 3]);
+
+    const conversation = await getOrCreateConversation(personId);
+    const messages = await listMessages(conversation.id);
+    expect(messages.map((m) => ({ direction: m.direction, body: m.body }))).toEqual([
+      { direction: "inbound", body: "first text" },
+      { direction: "outbound", body: "First reply." },
+      { direction: "inbound", body: "second text" },
+      { direction: "outbound", body: "Second reply." },
+    ]);
+  });
+
   it("does not create a duplicate conversation across multiple inbound turns", async () => {
     runLucyTurnMock.mockClear();
     sendMessageMock.mockClear();

@@ -12,6 +12,7 @@ import {
 } from "./support-conversations.service.js";
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { logger } from "../lib/logger.js";
+import { withPersonLock } from "../lib/db-lock.js";
 
 async function getCustomerContact(personId: string): Promise<{ firstName: string; phone: string | null } | undefined> {
   const [row] = await db.select({ firstName: customersTable.firstName, phone: customersTable.phone }).from(customersTable).where(eq(customersTable.id, personId));
@@ -38,8 +39,16 @@ async function sendAndLog(conversationId: string, phone: string | null, text: st
  * Full inbound-turn pipeline for Sarah, mirroring processInboundMessage in
  * lucy-dispatch.service.ts: persist the inbound message, run the guardrail
  * loop, tag sentiment, send+log the validated reply, persist updated state.
+ *
+ * Wrapped in withPersonLock for the same reason as Lucy's dispatch — see
+ * the comment there — so a patient double-texting can't race two turns
+ * into clobbering each other's conversation-state write.
  */
 export async function processInboundSupportMessage(personId: string, inboundBody: string): Promise<SarahTurnResult> {
+  return withPersonLock(personId, () => processInboundSupportMessageLocked(personId, inboundBody));
+}
+
+async function processInboundSupportMessageLocked(personId: string, inboundBody: string): Promise<SarahTurnResult> {
   const conversation = await getOrCreateSupportConversation(personId);
   const priorMessages = await listSupportMessages(conversation.id);
   const inboundMessage = await appendSupportMessage(conversation.id, "inbound", inboundBody);

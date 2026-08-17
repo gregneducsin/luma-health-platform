@@ -12,6 +12,7 @@ import {
 } from "./conversations.service.js";
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { logger } from "../lib/logger.js";
+import { withPersonLock } from "../lib/db-lock.js";
 
 async function getCustomerContact(personId: string): Promise<{ firstName: string; phone: string | null } | undefined> {
   const [row] = await db.select({ firstName: customersTable.firstName, phone: customersTable.phone }).from(customersTable).where(eq(customersTable.id, personId));
@@ -47,8 +48,21 @@ async function sendAndLog(conversationId: string, phone: string | null, text: st
  * the real dispatch path — it calls the SMS provider for real, same as the
  * follow-up pipeline, and fails the same way (cleanly, loudly, not silently)
  * until a provider is actually configured.
+ *
+ * Wrapped in withPersonLock: a customer double-texting sends two inbound
+ * webhooks in quick succession, and without serialization both calls would
+ * read the same stale conversation state, run independent Claude turns
+ * blind to each other's inbound message, and race to write the final state
+ * back — losing whichever slot updates the earlier call made. The lock
+ * makes the second call wait for the first to fully finish (Claude call,
+ * sends, and state write) before it starts, so it always builds its turn on
+ * top of what the first one actually did.
  */
 export async function processInboundMessage(personId: string, inboundBody: string): Promise<LucyTurnResult> {
+  return withPersonLock(personId, () => processInboundMessageLocked(personId, inboundBody));
+}
+
+async function processInboundMessageLocked(personId: string, inboundBody: string): Promise<LucyTurnResult> {
   const conversation = await getOrCreateConversation(personId);
   const priorMessages = await listMessages(conversation.id);
   const inboundMessage = await appendMessage(conversation.id, "inbound", inboundBody);
