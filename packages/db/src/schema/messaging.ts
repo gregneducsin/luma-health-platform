@@ -55,7 +55,10 @@ export const followUpJobsTable = pgTable(
       .notNull()
       .default("provider_check_in"),
     dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
-    status: text("status", { enum: ["pending", "sent", "cancelled", "failed"] }).notNull().default("pending"),
+    // "processing" is a transient claim state: sweepFollowUpJobs atomically
+    // flips due "pending" rows to "processing" in one UPDATE before doing any
+    // SMS work, so an overlapping sweep run can't claim the same row twice.
+    status: text("status", { enum: ["pending", "processing", "sent", "cancelled", "failed"] }).notNull().default("pending"),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     providerMessageId: text("provider_message_id"),
     cancelledReason: text("cancelled_reason"),
@@ -159,7 +162,9 @@ export const abandonedCartTriggersTable = pgTable(
       .notNull()
       .references(() => questionnaireEventsTable.id, { onDelete: "cascade" }),
     dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
-    status: text("status", { enum: ["pending", "sent", "cancelled", "failed"] }).notNull().default("pending"),
+    // "processing" is a transient claim state — see the identical comment on
+    // followUpJobsTable.status.
+    status: text("status", { enum: ["pending", "processing", "sent", "cancelled", "failed"] }).notNull().default("pending"),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     providerMessageId: text("provider_message_id"),
     cancelledReason: text("cancelled_reason"),

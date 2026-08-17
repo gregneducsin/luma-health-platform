@@ -26,28 +26,28 @@ export interface FollowUpSweepResult {
  *     missing phone number), mark `failed` with a reason. Not retried
  *     automatically — this is expected and correct until a provider exists.
  *
- * Safe to call repeatedly — jobs are only ever read while `pending` and
- * moved to a terminal state for this attempt, so a job is never double-sent.
+ * Safe to call repeatedly, including from overlapping sweep runs: the claim
+ * step atomically flips each due row from `pending` to `processing` in a
+ * single UPDATE before any SMS work happens, so two sweeps racing on the
+ * same due job can't both see it as `pending` and both send it — the second
+ * sweep's UPDATE simply matches zero rows for a job the first already
+ * claimed. Jobs are moved to a terminal state for this attempt afterward, so
+ * a job is never double-sent.
  */
 export async function sweepFollowUpJobs(): Promise<FollowUpSweepResult> {
-  const dueJobs = await db
-    .select({
-      jobId: followUpJobsTable.id,
-      personId: followUpJobsTable.personId,
-      intakeLinkTokenId: followUpJobsTable.intakeLinkTokenId,
-      messageStep: followUpJobsTable.messageStep,
-      clickedAt: intakeLinkTokensTable.clickedAt,
-    })
-    .from(followUpJobsTable)
-    .innerJoin(intakeLinkTokensTable, eq(intakeLinkTokensTable.id, followUpJobsTable.intakeLinkTokenId))
-    .where(and(eq(followUpJobsTable.status, "pending"), lte(followUpJobsTable.dueAt, sql`now()`)));
+  const claimed = await db
+    .update(followUpJobsTable)
+    .set({ status: "processing" })
+    .where(and(eq(followUpJobsTable.status, "pending"), lte(followUpJobsTable.dueAt, sql`now()`)))
+    .returning({ jobId: followUpJobsTable.id, personId: followUpJobsTable.personId, intakeLinkTokenId: followUpJobsTable.intakeLinkTokenId, messageStep: followUpJobsTable.messageStep });
 
   let sentCount = 0;
   let cancelledCount = 0;
   let failedCount = 0;
 
-  for (const job of dueJobs) {
-    const completed = await hasCompletedSinceClick(job.personId, job.clickedAt);
+  for (const job of claimed) {
+    const [token] = await db.select({ clickedAt: intakeLinkTokensTable.clickedAt }).from(intakeLinkTokensTable).where(eq(intakeLinkTokensTable.id, job.intakeLinkTokenId));
+    const completed = await hasCompletedSinceClick(job.personId, token?.clickedAt ?? null);
 
     if (completed) {
       await db

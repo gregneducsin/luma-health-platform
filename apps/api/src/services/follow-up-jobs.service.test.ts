@@ -206,6 +206,35 @@ describe("sweepFollowUpJobs", () => {
     expect(jobs.length).toBe(1);
   });
 
+  it("sends exactly once when a second sweep starts while the first is still mid-send for the same job", async () => {
+    sendMessageMock.mockClear();
+    // Delay only the first send so a second, overlapping sweep call has a
+    // real window to start (and, on the old select-then-update-at-the-end
+    // code, re-claim the same still-"pending" job) before the first finishes.
+    let callCount = 0;
+    sendMessageMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          callCount += 1;
+          const providerMessageId = callCount === 1 ? "msg_first" : "msg_second";
+          setTimeout(() => resolve({ providerMessageId }), callCount === 1 ? 60 : 0);
+        }),
+    );
+
+    const personId = await seedCustomer();
+    const { jobId } = await seedPendingJob(personId, new Date(Date.now() - 3 * 60 * 60 * 1000), new Date(Date.now() - 60_000));
+
+    const first = sweepFollowUpJobs();
+    await new Promise((resolve) => setTimeout(resolve, 20)); // let the first sweep's claim UPDATE land before the second starts
+    const second = sweepFollowUpJobs();
+    const [r1, r2] = await Promise.all([first, second]);
+
+    expect(r1.sentCount + r2.sentCount).toBe(1);
+    expect(sendMessageMock).toHaveBeenCalledTimes(1);
+    const [job] = await db.select().from(followUpJobsTable).where(eq(followUpJobsTable.id, jobId));
+    expect(job.status).toBe("sent");
+  });
+
   it("does not reprocess a job that already resolved", async () => {
     sendMessageMock.mockClear();
     sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_first" });

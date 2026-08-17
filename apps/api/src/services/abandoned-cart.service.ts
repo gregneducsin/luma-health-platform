@@ -31,18 +31,25 @@ export async function scheduleAbandonedCartOpener(personId: string, questionnair
  * Sends every due `pending` opener trigger, unless the lead is no longer
  * eligible (already purchased, or the questionnaire is no longer abandoned —
  * both rechecked right now, not trusted from when the trigger was armed).
+ *
+ * Safe to call repeatedly, including from overlapping sweep runs — see the
+ * identical comment on sweepFollowUpJobs: the claim step atomically flips
+ * each due row from `pending` to `processing` in a single UPDATE before any
+ * SMS work happens, so two sweeps racing on the same due trigger can't both
+ * send it.
  */
 export async function sweepAbandonedCartTriggers(): Promise<AbandonedCartSweepResult> {
-  const dueTriggers = await db
-    .select({ id: abandonedCartTriggersTable.id, personId: abandonedCartTriggersTable.personId, questionnaireEventId: abandonedCartTriggersTable.questionnaireEventId })
-    .from(abandonedCartTriggersTable)
-    .where(and(eq(abandonedCartTriggersTable.status, "pending"), lte(abandonedCartTriggersTable.dueAt, sql`now()`)));
+  const claimed = await db
+    .update(abandonedCartTriggersTable)
+    .set({ status: "processing" })
+    .where(and(eq(abandonedCartTriggersTable.status, "pending"), lte(abandonedCartTriggersTable.dueAt, sql`now()`)))
+    .returning({ id: abandonedCartTriggersTable.id, personId: abandonedCartTriggersTable.personId, questionnaireEventId: abandonedCartTriggersTable.questionnaireEventId });
 
   let sentCount = 0;
   let cancelledCount = 0;
   let failedCount = 0;
 
-  for (const trigger of dueTriggers) {
+  for (const trigger of claimed) {
     const eligible = await isStillEligible(trigger.personId, trigger.questionnaireEventId);
 
     if (!eligible.ok) {

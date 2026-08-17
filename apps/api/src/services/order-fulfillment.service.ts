@@ -98,17 +98,27 @@ export interface ReviewRequestSweepResult {
   readonly failedCount: number;
 }
 
-/** Sends every due `pending` review-request trigger. Fully automated, no manual step. */
+/**
+ * Sends every due `pending` review-request trigger. Fully automated, no
+ * manual step.
+ *
+ * Safe to call repeatedly, including from overlapping sweep runs — see the
+ * identical comment on sweepFollowUpJobs: the claim step atomically flips
+ * each due row from `pending` to `processing` in a single UPDATE before any
+ * SMS work happens, so two sweeps racing on the same due trigger can't both
+ * send it.
+ */
 export async function sweepReviewRequestTriggers(): Promise<ReviewRequestSweepResult> {
-  const dueTriggers = await db
-    .select({ id: reviewRequestTriggersTable.id, personId: reviewRequestTriggersTable.personId })
-    .from(reviewRequestTriggersTable)
-    .where(and(eq(reviewRequestTriggersTable.status, "pending"), lte(reviewRequestTriggersTable.dueAt, sql`now()`)));
+  const claimed = await db
+    .update(reviewRequestTriggersTable)
+    .set({ status: "processing" })
+    .where(and(eq(reviewRequestTriggersTable.status, "pending"), lte(reviewRequestTriggersTable.dueAt, sql`now()`)))
+    .returning({ id: reviewRequestTriggersTable.id, personId: reviewRequestTriggersTable.personId });
 
   let sentCount = 0;
   let failedCount = 0;
 
-  for (const trigger of dueTriggers) {
+  for (const trigger of claimed) {
     const customer = await getCustomerContact(trigger.personId);
     const conversation = await getOrCreateSupportConversation(trigger.personId);
 

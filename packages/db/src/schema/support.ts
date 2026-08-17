@@ -81,7 +81,9 @@ export const reviewRequestTriggersTable = pgTable(
       .notNull()
       .references(() => customersTable.id, { onDelete: "cascade" }),
     dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
-    status: text("status", { enum: ["pending", "sent", "cancelled", "failed"] }).notNull().default("pending"),
+    // "processing" is a transient claim state — see the identical comment on
+    // followUpJobsTable.status in schema/messaging.ts.
+    status: text("status", { enum: ["pending", "processing", "sent", "cancelled", "failed"] }).notNull().default("pending"),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     providerMessageId: text("provider_message_id"),
     cancelledReason: text("cancelled_reason"),
