@@ -78,6 +78,19 @@ describe("interactivePreCheck", () => {
 
   it("blocks legal content", () => {
     expect(interactivePreCheck("I'm going to sue you")).toEqual({ blocked: true, code: "LEGAL_CONTENT" });
+    // No trailing space/comma after "sue" — was previously missed.
+    expect(interactivePreCheck("I am going to sue")).toEqual({ blocked: true, code: "LEGAL_CONTENT" });
+    expect(interactivePreCheck("I will sue.")).toEqual({ blocked: true, code: "LEGAL_CONTENT" });
+    expect(interactivePreCheck("are you going to sue?")).toEqual({ blocked: true, code: "LEGAL_CONTENT" });
+    expect(interactivePreCheck("I might sue!")).toEqual({ blocked: true, code: "LEGAL_CONTENT" });
+    expect(interactivePreCheck("she sued her last provider")).toEqual({ blocked: true, code: "LEGAL_CONTENT" });
+  });
+
+  it("does not false-positive on words that merely contain the substring 'sue'", () => {
+    // "pursue this" previously matched the old "sue " substring check.
+    expect(interactivePreCheck("I want to pursue this further")).toEqual({ blocked: false });
+    expect(interactivePreCheck("this is an issue with my order")).toEqual({ blocked: false });
+    expect(interactivePreCheck("hopefully nothing bad will ensue")).toEqual({ blocked: false });
   });
 
   it("does not block general side-effect questions (handled by topic-gated post-check instead)", () => {

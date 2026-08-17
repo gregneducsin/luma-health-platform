@@ -150,7 +150,19 @@ const MEDICAL_WORDS_LOWER = [
   "dosing",
 ] as const;
 
-const LEGAL_WORDS_LOWER = ["attorney", "lawyer", "lawsuit", "sue ", "sue,", " suing", "litigation", "legal action"] as const;
+const LEGAL_WORDS_LOWER = ["attorney", "lawyer", "lawsuit", "litigation", "legal action"] as const;
+/**
+ * "sue"/"sues"/"sued"/"suing" as a standalone word — split out from
+ * LEGAL_WORDS_LOWER because a plain substring check can't get this right in
+ * either direction: "sue" alone matches inside "issue"/"pursue"/"ensue", but
+ * padding it as "sue " / "sue," / " suing" (the previous approach) missed a
+ * message that ends in "sue" with no trailing space ("I'm going to sue") or
+ * ends in punctuation ("I will sue.", "sue!", "sue?") — while still
+ * false-positiving on "pursue this" (contains the literal substring "sue ").
+ * \b anchors correctly at start/end of string and at punctuation, so this
+ * gets both directions right at once.
+ */
+const LEGAL_SUE_RE = /\bsu(?:e|es|ed|ing)\b/i;
 
 /**
  * Phrases that indicate a request for individualized clinical suitability
@@ -239,7 +251,7 @@ export function interactivePreCheck(lastInbound: string): InteractivePreCheckRes
   if (MEDICAL_WORDS_LOWER.some((w) => lower.includes(w))) {
     return { blocked: true, code: "MEDICAL_CONTENT" };
   }
-  if (LEGAL_WORDS_LOWER.some((w) => lower.includes(w))) {
+  if (LEGAL_WORDS_LOWER.some((w) => lower.includes(w)) || LEGAL_SUE_RE.test(lower)) {
     return { blocked: true, code: "LEGAL_CONTENT" };
   }
 

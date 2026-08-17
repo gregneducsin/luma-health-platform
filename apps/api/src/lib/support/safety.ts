@@ -67,7 +67,19 @@ const OPT_OUT_PHRASES_LOWER = [
 ] as const;
 const STOP_WORDS_UPPER = ["END", "QUIT"] as const;
 const EMERGENCY_WORDS_LOWER = ["emergency", "crisis", "suicide", "self-harm", "self harm", "911"] as const;
-const LEGAL_WORDS_LOWER = ["attorney", "lawyer", "lawsuit", "sue ", "sue,", " suing", "litigation", "legal action"] as const;
+const LEGAL_WORDS_LOWER = ["attorney", "lawyer", "lawsuit", "litigation", "legal action"] as const;
+/**
+ * "sue"/"sues"/"sued"/"suing" as a standalone word — split out from
+ * LEGAL_WORDS_LOWER because a plain substring check can't get this right in
+ * either direction: "sue" alone matches inside "issue"/"pursue"/"ensue", but
+ * padding it as "sue " / "sue," / " suing" (the previous approach) missed a
+ * message that ends in "sue" with no trailing space ("I'm going to sue") or
+ * ends in punctuation ("I will sue.", "sue!", "sue?") — while still
+ * false-positiving on "pursue this" (contains the literal substring "sue ").
+ * \b anchors correctly at start/end of string and at punctuation, so this
+ * gets both directions right at once.
+ */
+const LEGAL_SUE_RE = /\bsu(?:e|es|ed|ing)\b/i;
 
 /**
  * Any question about prescription specifics — dose, medication identity,
@@ -127,7 +139,7 @@ export function supportPreCheck(lastInbound: string): SupportPreCheckResult {
   if (STOP_WORDS_UPPER.some((w) => tokens.includes(w))) return { blocked: true, code: "STOP_WORD" };
   if (EMERGENCY_WORDS_LOWER.some((w) => lower.includes(w))) return { blocked: true, code: "EMERGENCY_CONTENT" };
   if (PRESCRIPTION_QUESTION_PHRASES_LOWER.some((w) => lower.includes(w))) return { blocked: true, code: "PRESCRIPTION_QUESTION" };
-  if (LEGAL_WORDS_LOWER.some((w) => lower.includes(w))) return { blocked: true, code: "LEGAL_CONTENT" };
+  if (LEGAL_WORDS_LOWER.some((w) => lower.includes(w)) || LEGAL_SUE_RE.test(lower)) return { blocked: true, code: "LEGAL_CONTENT" };
 
   return { blocked: false };
 }

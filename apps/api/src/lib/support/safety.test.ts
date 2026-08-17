@@ -56,6 +56,16 @@ describe("supportPreCheck", () => {
 
   it("blocks legal content", () => {
     expect(supportPreCheck("I'm going to get my lawyer involved")).toEqual({ blocked: true, code: "LEGAL_CONTENT" });
+    // No trailing space/comma after "sue" — was previously missed.
+    expect(supportPreCheck("I am going to sue")).toEqual({ blocked: true, code: "LEGAL_CONTENT" });
+    expect(supportPreCheck("I will sue.")).toEqual({ blocked: true, code: "LEGAL_CONTENT" });
+    expect(supportPreCheck("are you going to sue?")).toEqual({ blocked: true, code: "LEGAL_CONTENT" });
+  });
+
+  it("does not false-positive on words that merely contain the substring 'sue'", () => {
+    // "pursue this" previously matched the old "sue " substring check.
+    expect(supportPreCheck("I want to pursue this further")).toEqual({ blocked: false });
+    expect(supportPreCheck("this is an issue with my order")).toEqual({ blocked: false });
   });
 });
 
