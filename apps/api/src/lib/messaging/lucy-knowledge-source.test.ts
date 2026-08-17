@@ -314,6 +314,11 @@ describe("LK-17: getPreviewEnabledTopics() includes all Lucy-v1 topic keys and e
     expect(enabledKeys.has("plan_inclusions")).toBe(true);
   });
 
+  it("portal_help is NOT in Lucy's topic list — it's Sarah-only (a prospect has no portal account)", () => {
+    const enabledKeys = new Set(getPreviewEnabledTopics().map((t) => t.key));
+    expect(enabledKeys.has("portal_help")).toBe(false);
+  });
+
   it("first_month_offer is in the catalog and is preview-enabled (lucy-promotion-v1)", () => {
     const topic = getTopicByKey("first_month_offer");
     expect(topic).toBeDefined();

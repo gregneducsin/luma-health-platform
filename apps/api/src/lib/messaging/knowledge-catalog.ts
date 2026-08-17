@@ -270,6 +270,30 @@ export const KNOWLEDGE_CATALOG: readonly KnowledgeTopic[] = [
     enabledForPreview: true,
   },
 
+  // ── How it works, for a patient who already purchased ──────────────────────
+  // Sarah's own version of how_luma_works above. That topic is written for a
+  // prospect who hasn't signed up yet ("you select your plan... complete the
+  // questionnaire... guide the customer toward completing the questionnaire")
+  // — every sentence of it is wrong for a patient Sarah is talking to, who has
+  // already done all of that. This describes the same underlying process
+  // (medical review -> prescription -> pharmacy -> shipping) from "what
+  // happens after you've ordered" instead, using only facts already approved
+  // elsewhere for Sarah (see lib/support/templates.ts's fixed status
+  // messages) — no new claims, just the appropriate framing for the audience.
+  {
+    key: "how_luma_works_after_purchase",
+    approvedText:
+      "After your order comes in, a licensed medical provider reviews the information you submitted. " +
+      "If approved, your prescription is written and sent to the pharmacy, then shipped to you with a tracking number. " +
+      "You can check where things stand anytime through the patient portal.",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-17",
+    prohibitedClaims: ["guaranteed_approval_timing", "guaranteed_delivery_speed", "guaranteed_prescription_approval"],
+    enabledForPreview: true,
+  },
+
   // ── Plan inclusions ────────────────────────────────────────────────────────
   // STATUS: EXCLUDED from lucy-knowledge-v1 itself, but separately owner-
   // confirmed approved for Lucy's use — see legalStatus/enabledForPreview below.
@@ -540,9 +564,25 @@ export const KNOWLEDGE_CATALOG: readonly KnowledgeTopic[] = [
   },
 ] as const;
 
+/**
+ * Topic keys explicitly marked Sarah-only in their catalog entry's comment —
+ * excluded from Lucy's topic list even though enabledForPreview is true.
+ *
+ * portal_help: Lucy has no legitimate use for a patient-portal login link
+ * aimed at a prospect who hasn't purchased and has no account to log into.
+ * (Lucy's URL allowlist would also reject the literal link if Claude tried
+ * to output it, but that shouldn't be the only thing stopping her from
+ * citing/paraphrasing the topic in the first place.)
+ *
+ * how_luma_works_after_purchase: written entirely from "after your order
+ * comes in..." — premature and wrong for a prospect who hasn't ordered yet.
+ * Lucy has her own pre-purchase version, how_luma_works.
+ */
+const LUCY_EXCLUDED_TOPIC_KEYS = new Set(["portal_help", "how_luma_works_after_purchase"]);
+
 /** All topics available for the development bot-test preview. */
 export function getPreviewEnabledTopics(): readonly KnowledgeTopic[] {
-  return KNOWLEDGE_CATALOG.filter((t) => t.enabledForPreview);
+  return KNOWLEDGE_CATALOG.filter((t) => t.enabledForPreview && !LUCY_EXCLUDED_TOPIC_KEYS.has(t.key));
 }
 
 /**
@@ -576,10 +616,15 @@ export const APPROVED_REVIEW_WRITE_URL = "https://www.consumeraffairs.com/review
  * how their medication compares to a brand name (semaglutide/Ozempic/Wegovy,
  * tirzepatide/Mounjaro/Zepbound) — see the topic-gated rule in
  * lib/support/safety.ts.
+ *
+ * how_luma_works_after_purchase, not how_luma_works: the latter is written
+ * entirely for a prospect who hasn't signed up yet (select a plan, complete
+ * the questionnaire) — wrong framing for every patient Sarah talks to, who's
+ * already done that. See how_luma_works_after_purchase's own comment above.
  */
 export const SARAH_TOPIC_KEYS = new Set([
   "insurance_payment",
-  "how_luma_works",
+  "how_luma_works_after_purchase",
   "customer_reviews",
   "cancellation_policy",
   "shipping_delivery",
