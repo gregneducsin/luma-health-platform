@@ -4,10 +4,15 @@ Internal tool for tracking customers/leads, purchases, and payroll. Rebuilt clea
 (no Replit dependency) from an earlier prototype; see [ARCHITECTURE.md](./ARCHITECTURE.md)
 for the reasoning behind key decisions.
 
-**Texting/SMS is not implemented yet.** A future phase will add a full
-AI-assisted messaging system with consent tracking, opt-out handling, and
-safety guardrails — not a simple send-a-text integration. See "Forward
-compatibility" in ARCHITECTURE.md for what's already in place to support it.
+AI-guardrailed texting is live: Lucy (sales/lead outreach) and Sarah
+(post-purchase support) draft replies that are safety-checked against an
+approved knowledge catalog before sending, and hand off to staff for
+anything requiring individualized clinical judgment. See
+[STAFF_TEXTING_GUIDE.md](./STAFF_TEXTING_GUIDE.md) for what staff should and
+shouldn't say when picking up one of those handoffs. No SMS provider is
+wired up yet, so inbound messages currently arrive via the bot-preview/test
+tool rather than a real phone number — see "Forward compatibility" in
+ARCHITECTURE.md for what's already in place ahead of that.
 
 ## Stack
 
