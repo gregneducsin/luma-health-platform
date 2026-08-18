@@ -113,25 +113,9 @@ export function createGmailOAuthRouter(): RouterType {
         return;
       }
 
-      // Displaying the raw token here is safe now that this route is
-      // admin-gated (see requireRole above) — it wasn't when this response
-      // was last removed, since the route was reachable by anyone at the
-      // time. Still temporary: paste GOOGLE_REFRESH_TOKEN into Railway,
-      // then strip this back down to a plain success message, same as
-      // last time.
       res
         .status(200)
-        .type("text/plain")
-        .send(
-          [
-            "Google Workspace connected successfully (scope: gmail.send).",
-            "",
-            "Update this Railway variable, then remove this response:",
-            `GOOGLE_REFRESH_TOKEN=${tokens.refresh_token}`,
-            "",
-            "Keep this token private.",
-          ].join("\n"),
-        );
+        .send("Google Workspace connected successfully (scope: gmail.send). You may close this page.");
     } catch (error) {
       next(error);
     }
