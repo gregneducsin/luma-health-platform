@@ -1,4 +1,6 @@
+import { randomUUID } from "node:crypto";
 import nodemailer, { type Transporter } from "nodemailer";
+import { createGmailClient, encodeMessage } from "../services/gmail.service.js";
 
 /**
  * Outbound email provider abstraction — same shape as sms-provider.ts's
@@ -95,6 +97,56 @@ class GoogleWorkspaceEmailProvider implements EmailProvider {
 }
 
 /**
+ * Google Workspace via the Gmail API over HTTPS (port 443), authenticated
+ * as the mailbox connected through the /auth/google OAuth flow
+ * (gmail-oauth.routes.ts) — sends as whichever account granted that
+ * consent, same as the SMTP relay authenticates as `user`. Built to work
+ * around Railway blocking outbound SMTP entirely (confirmed: both 587 and
+ * 465 time out) — HTTPS to Google's API isn't blocked the way raw SMTP is.
+ *
+ * Builds and sends a raw RFC 5322 message ourselves rather than using a
+ * higher-level Gmail "send email" helper, since the API's users.messages.send
+ * only accepts a base64url-encoded raw MIME message — this mirrors what
+ * nodemailer did internally for the SMTP path, just constructed by hand.
+ */
+class GmailApiEmailProvider implements EmailProvider {
+  constructor(private readonly fromEmail: string) {}
+
+  async sendEmail(to: string, subject: string, html: string, opts: EmailSendOptions = {}): Promise<EmailSendResult> {
+    // Gmail API's send response gives Gmail's own internal message id, not
+    // an RFC 5322 Message-ID header value — generating our own up front
+    // means every caller (reply threading, the send-record idempotency
+    // handle) gets the same kind of value the SMTP path's nodemailer
+    // transport handed back, with no extra round-trip to look it up.
+    const domain = this.fromEmail.split("@")[1] ?? "mylumahealth.com";
+    const messageId = `<${randomUUID()}@${domain}>`;
+    const wrapMessageId = (id: string) => (id.startsWith("<") ? id : `<${id}>`);
+    const from = opts.fromName ? `"${opts.fromName}" <${this.fromEmail}>` : this.fromEmail;
+
+    const headers = [
+      `From: ${from}`,
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      `Message-ID: ${messageId}`,
+      opts.replyTo ? `Reply-To: ${opts.replyTo}` : null,
+      opts.inReplyTo ? `In-Reply-To: ${wrapMessageId(opts.inReplyTo)}` : null,
+      opts.references ? `References: ${wrapMessageId(opts.references)}` : null,
+      "MIME-Version: 1.0",
+      'Content-Type: text/html; charset="UTF-8"',
+    ].filter((header): header is string => header !== null);
+
+    const raw = [...headers, "", html].join("\r\n");
+
+    await createGmailClient().users.messages.send({
+      userId: "me",
+      requestBody: { raw: encodeMessage(raw) },
+    });
+
+    return { messageId };
+  }
+}
+
+/**
  * Which persona is sending — lets Lucy and Sarah show different display
  * names (and, if the workspace has separate "send mail as" aliases
  * configured, different addresses via the per-persona *_FROM_EMAIL vars)
@@ -107,40 +159,40 @@ const PERSONA_DEFAULT_NAME: Record<EmailPersona, string> = {
   sarah: "Sarah at Luma Health",
 };
 
-/**
- * Hard kill switch for all outbound email sending — every trigger email and
- * every AI-drafted reply goes through getEmailProvider, so flipping this to
- * true here (a code change + deploy, not a Railway env var) guarantees
- * nothing sends regardless of what EMAIL_PROVIDER/credentials are set to.
- * Deliberately not env-driven: this is meant to require a deploy to
- * change, not be toggleable by accident. Flip back to false to resume.
- * Inbound IMAP reading is unaffected — this only gates the send path.
- */
-const OUTBOUND_EMAIL_SENDING_PAUSED = true;
+function personaFromName(persona: EmailPersona): string {
+  const personaEnvKey = persona === "lucy" ? "GOOGLE_WORKSPACE_LUCY_FROM_NAME" : "GOOGLE_WORKSPACE_SARAH_FROM_NAME";
+  return process.env[personaEnvKey] ?? PERSONA_DEFAULT_NAME[persona];
+}
 
 export function getEmailProvider(persona: EmailPersona): { provider: EmailProvider; fromName: string } {
-  if (OUTBOUND_EMAIL_SENDING_PAUSED) {
-    throw new EmailProviderNotConfiguredError();
-  }
-
   const providerName = process.env.EMAIL_PROVIDER;
   if (!providerName) {
     throw new EmailProviderNotConfiguredError();
   }
-  if (providerName !== "google_workspace") {
-    throw new EmailProviderNotConfiguredError();
+
+  if (providerName === "gmail_api") {
+    // The mailbox connected via /auth/google (gmail-oauth.routes.ts) —
+    // reuses GOOGLE_WORKSPACE_SMTP_USER as the known address rather than
+    // requiring a separate var, since it's the same mailbox either way.
+    const fromEmail = process.env.GOOGLE_GMAIL_FROM_EMAIL ?? process.env.GOOGLE_WORKSPACE_SMTP_USER;
+    const missing = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI", "GOOGLE_REFRESH_TOKEN"].filter((key) => !process.env[key]);
+    if (!fromEmail || missing.length > 0) {
+      const missingList = [...(fromEmail ? [] : ["GOOGLE_GMAIL_FROM_EMAIL or GOOGLE_WORKSPACE_SMTP_USER"]), ...missing];
+      throw new Error(`EMAIL_PROVIDER is 'gmail_api' but ${missingList.join(", ")} is not set.`);
+    }
+    return { provider: new GmailApiEmailProvider(fromEmail), fromName: personaFromName(persona) };
   }
 
-  const user = process.env.GOOGLE_WORKSPACE_SMTP_USER;
-  const appPassword = process.env.GOOGLE_WORKSPACE_SMTP_APP_PASSWORD;
-  if (!user || !appPassword) {
-    throw new Error("EMAIL_PROVIDER is 'google_workspace' but GOOGLE_WORKSPACE_SMTP_USER/GOOGLE_WORKSPACE_SMTP_APP_PASSWORD is not set.");
+  if (providerName === "google_workspace") {
+    const user = process.env.GOOGLE_WORKSPACE_SMTP_USER;
+    const appPassword = process.env.GOOGLE_WORKSPACE_SMTP_APP_PASSWORD;
+    if (!user || !appPassword) {
+      throw new Error("EMAIL_PROVIDER is 'google_workspace' but GOOGLE_WORKSPACE_SMTP_USER/GOOGLE_WORKSPACE_SMTP_APP_PASSWORD is not set.");
+    }
+    const fromEmail = process.env.GOOGLE_WORKSPACE_FROM_EMAIL ?? user;
+    const port = process.env.GOOGLE_WORKSPACE_SMTP_PORT ? Number(process.env.GOOGLE_WORKSPACE_SMTP_PORT) : 587;
+    return { provider: new GoogleWorkspaceEmailProvider(user, appPassword, fromEmail, port), fromName: personaFromName(persona) };
   }
-  const fromEmail = process.env.GOOGLE_WORKSPACE_FROM_EMAIL ?? user;
-  const port = process.env.GOOGLE_WORKSPACE_SMTP_PORT ? Number(process.env.GOOGLE_WORKSPACE_SMTP_PORT) : 587;
 
-  const personaEnvKey = persona === "lucy" ? "GOOGLE_WORKSPACE_LUCY_FROM_NAME" : "GOOGLE_WORKSPACE_SARAH_FROM_NAME";
-  const fromName = process.env[personaEnvKey] ?? PERSONA_DEFAULT_NAME[persona];
-
-  return { provider: new GoogleWorkspaceEmailProvider(user, appPassword, fromEmail, port), fromName };
+  throw new EmailProviderNotConfiguredError();
 }

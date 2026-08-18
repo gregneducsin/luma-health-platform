@@ -1,6 +1,12 @@
-import { google } from "googleapis";
+import { google, type gmail_v1 } from "googleapis";
 
-function createGmailClient() {
+/**
+ * Shared by GmailApiEmailProvider (lib/email-provider.ts, the real send
+ * path) and sendGmailTestMessage below (the standalone connection-test
+ * endpoint) — one place that knows how to build an authenticated Gmail API
+ * client from the OAuth env vars set via the /auth/google connect flow.
+ */
+export function createGmailClient(): gmail_v1.Gmail {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   const redirectUri = process.env.GOOGLE_REDIRECT_URI;
@@ -33,7 +39,7 @@ function createGmailClient() {
   });
 }
 
-function encodeMessage(message: string): string {
+export function encodeMessage(message: string): string {
   return Buffer.from(message)
     .toString("base64")
     .replace(/\+/g, "-")
