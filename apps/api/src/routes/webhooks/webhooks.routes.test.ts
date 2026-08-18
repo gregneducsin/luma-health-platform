@@ -201,7 +201,7 @@ describe("Webhooks", () => {
 
       expect(sendMessageMock).toHaveBeenCalledWith("+15557770000", expect.stringContaining("what state you're in"));
 
-      const { db, customersTable } = await import("@luma/db");
+      const { db, customersTable, metaLeadEmailTriggersTable } = await import("@luma/db");
       const { eq } = await import("drizzle-orm");
       const [customer] = await db.select().from(customersTable).where(eq(customersTable.email, "meta-lead-webhook@example.com"));
       const { getOrCreateConversation, listMessages } = await import("../../services/conversations.service.js");
@@ -209,6 +209,11 @@ describe("Webhooks", () => {
       expect(conversation.leadSource).toBe("meta_form");
       const messages = await listMessages(conversation.id);
       expect(messages.length).toBe(1);
+
+      // The same 4-step email nurture sequence the abandoned-cart flow gets,
+      // armed alongside the instant SMS opener above.
+      const emailTriggers = await db.select().from(metaLeadEmailTriggersTable).where(eq(metaLeadEmailTriggersTable.personId, customer!.id));
+      expect(emailTriggers.map((t) => t.step).sort()).toEqual(["educational", "opener", "plan_comparison", "urgency"]);
     });
 
     it("matches leadType case-insensitively and does not fire the opener for other lead types", async () => {

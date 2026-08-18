@@ -20,6 +20,7 @@ import type {
 import { scheduleAbandonedCartOpener } from "./abandoned-cart.service.js";
 import { scheduleAbandonedCartEmailSequence } from "./abandoned-cart-email.service.js";
 import { sendMetaLeadOpener } from "./meta-lead.service.js";
+import { scheduleMetaLeadEmailSequence } from "./meta-lead-email.service.js";
 import { sendOrderReceivedOpener, handlePrescriptionWritten, handleOrderShipped } from "./order-fulfillment.service.js";
 import { setCustomerSmsDnd, setCustomerEmailDnd } from "./dnd.service.js";
 
@@ -184,6 +185,7 @@ export async function handleGhlLeadWebhook(payload: GhlLeadWebhookRequest): Prom
     // scheduled sweep like the abandoned-cart trigger.
     if (isMetaFormFillLead(payload.leadType)) {
       await sendMetaLeadOpener(customerId);
+      await scheduleMetaLeadEmailSequence(customerId);
     }
 
     await markWebhookEventProcessed(recorded.id, customerId);

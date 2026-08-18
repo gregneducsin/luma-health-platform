@@ -158,8 +158,47 @@ export const abandonedCartEmailTriggersTable = pgTable(
   ],
 );
 
+/**
+ * The same 4-step nurture sequence as abandonedCartEmailTriggersTable
+ * (identical templates and cadence — opener 10 min, urgency 24 hr,
+ * educational 7 days, plan_comparison 10 days), armed instead off a Meta
+ * lead-gen form-fill. Its own table rather than reusing
+ * abandonedCartEmailTriggersTable because there's no questionnaire event to
+ * key off for a Meta lead — the unique constraint here is on personId+step
+ * directly, since a Meta lead-gen submission has no repeatable "event" the
+ * way a questionnaire (started/abandoned/submitted) does.
+ */
+export const metaLeadEmailTriggersTable = pgTable(
+  "meta_lead_email_triggers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => customersTable.id, { onDelete: "cascade" }),
+    step: text("step", { enum: ["opener", "urgency", "educational", "plan_comparison"] }).notNull(),
+    dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
+    // "processing" is a transient claim state — see the identical comment on
+    // followUpJobsTable.status (messaging.ts).
+    status: text("status", { enum: ["pending", "processing", "sent", "cancelled", "failed"] }).notNull().default("pending"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    messageId: text("message_id"),
+    cancelledReason: text("cancelled_reason"),
+    failureReason: text("failure_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex("meta_lead_email_triggers_person_step_key").on(t.personId, t.step),
+    index("meta_lead_email_triggers_status_due_at_idx").on(t.status, t.dueAt),
+  ],
+);
+
 export type EmailConversation = typeof emailConversationsTable.$inferSelect;
 export type EmailConversationMessage = typeof emailConversationMessagesTable.$inferSelect;
 export type SupportEmailConversation = typeof supportEmailConversationsTable.$inferSelect;
 export type SupportEmailConversationMessage = typeof supportEmailConversationMessagesTable.$inferSelect;
 export type AbandonedCartEmailTrigger = typeof abandonedCartEmailTriggersTable.$inferSelect;
+export type MetaLeadEmailTrigger = typeof metaLeadEmailTriggersTable.$inferSelect;
