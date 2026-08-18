@@ -35,6 +35,40 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # The api service also serves a few non-/api routes directly against
+    # this same public domain — not dashboard pages, so they don't belong
+    # under /api, but real destinations a customer's or admin's browser
+    # navigates to directly (a text/email trigger link, an unsubscribe
+    # link, the Gmail OAuth connect flow). Without these, any of the three
+    # falls through to the SPA fallback below and 404s, since none of them
+    # is a route the React app's client-side router knows about.
+    location /go/ {
+        set $upstream_api http://${API_UPSTREAM};
+        proxy_pass $upstream_api;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /unsubscribe/ {
+        set $upstream_api http://${API_UPSTREAM};
+        proxy_pass $upstream_api;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /auth/google {
+        set $upstream_api http://${API_UPSTREAM};
+        proxy_pass $upstream_api;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     location / {
         try_files $uri $uri/ /index.html;
     }
