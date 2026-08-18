@@ -1,4 +1,5 @@
 import { createGmailOAuthRouter } from "./routes/gmail-oauth.routes.js";
+import { createGmailRouter } from "./routes/gmail.routes.js";
 import express, { type Express, type Request, type Response } from "express";
 import cookieParser from "cookie-parser";
 import { security } from "./middleware/security.js";
@@ -31,6 +32,7 @@ import { createBaskPaymentFailedWebhookRouter } from "./routes/webhooks/bask-pay
 import { createBaskPrescriptionWrittenWebhookRouter } from "./routes/webhooks/bask-prescription-written.routes.js";
 import { createBaskOrderShippedWebhookRouter } from "./routes/webhooks/bask-order-shipped.routes.js";
 import { createIbluSendMessageWebhookRouter } from "./routes/webhooks/iblusend-message.routes.js";
+
 
 export function createApp(): Express {
   const app = express();
@@ -90,6 +92,7 @@ export function createApp(): Express {
   app.use("/api/app/support-conversations", createSupportConversationsRouter());
   app.use("/api/app/needs-attention", createNeedsAttentionRouter());
   app.use("/api/app/reporting", createReportingRouter());
+  app.use("/api/app/gmail", createGmailRouter());
   app.use("/api/app/payroll/employees", createEmployeesRouter());
   app.use("/api/app/payroll/weeks", createPayrollWeeksRouter());
   app.use("/api/app/payroll/marketing-spend", createMarketingSpendRouter());
