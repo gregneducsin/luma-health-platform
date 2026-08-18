@@ -107,7 +107,22 @@ const PERSONA_DEFAULT_NAME: Record<EmailPersona, string> = {
   sarah: "Sarah at Luma Health",
 };
 
+/**
+ * Hard kill switch for all outbound email sending — every trigger email and
+ * every AI-drafted reply goes through getEmailProvider, so flipping this to
+ * true here (a code change + deploy, not a Railway env var) guarantees
+ * nothing sends regardless of what EMAIL_PROVIDER/credentials are set to.
+ * Deliberately not env-driven: this is meant to require a deploy to
+ * change, not be toggleable by accident. Flip back to false to resume.
+ * Inbound IMAP reading is unaffected — this only gates the send path.
+ */
+const OUTBOUND_EMAIL_SENDING_PAUSED = true;
+
 export function getEmailProvider(persona: EmailPersona): { provider: EmailProvider; fromName: string } {
+  if (OUTBOUND_EMAIL_SENDING_PAUSED) {
+    throw new EmailProviderNotConfiguredError();
+  }
+
   const providerName = process.env.EMAIL_PROVIDER;
   if (!providerName) {
     throw new EmailProviderNotConfiguredError();

@@ -24,37 +24,20 @@ afterEach(() => {
   }
 });
 
+// Outbound sending is currently hard-paused in code (OUTBOUND_EMAIL_SENDING_PAUSED
+// in email-provider.ts) — every call throws EmailProviderNotConfiguredError
+// regardless of configuration, so the provider-selection/persona-name tests below
+// are temporarily unreachable and have been replaced by a single test asserting
+// the pause. Restore the fuller test matrix (provider validation, credential
+// checks, persona name defaults/overrides) when the pause is lifted.
 describe("getEmailProvider", () => {
-  it("throws EmailProviderNotConfiguredError when EMAIL_PROVIDER is unset", () => {
+  it("throws EmailProviderNotConfiguredError for every persona/config while outbound sending is paused", () => {
     expect(() => getEmailProvider("lucy")).toThrow(EmailProviderNotConfiguredError);
-  });
 
-  it("throws EmailProviderNotConfiguredError for an unknown provider name", () => {
-    process.env.EMAIL_PROVIDER = "sendgrid";
-    expect(() => getEmailProvider("lucy")).toThrow(EmailProviderNotConfiguredError);
-  });
-
-  it("throws a clear error when the mailbox credentials are missing", () => {
-    process.env.EMAIL_PROVIDER = "google_workspace";
-    expect(() => getEmailProvider("lucy")).toThrow(/GOOGLE_WORKSPACE_SMTP_USER/);
-  });
-
-  it("defaults to persona-specific display names", () => {
     process.env.EMAIL_PROVIDER = "google_workspace";
     process.env.GOOGLE_WORKSPACE_SMTP_USER = "bot@example.com";
     process.env.GOOGLE_WORKSPACE_SMTP_APP_PASSWORD = "app-password";
-
-    expect(getEmailProvider("lucy").fromName).toBe("Lucy at Luma Health");
-    expect(getEmailProvider("sarah").fromName).toBe("Sarah at Luma Health");
-  });
-
-  it("uses a per-persona GOOGLE_WORKSPACE_*_FROM_NAME override when set", () => {
-    process.env.EMAIL_PROVIDER = "google_workspace";
-    process.env.GOOGLE_WORKSPACE_SMTP_USER = "bot@example.com";
-    process.env.GOOGLE_WORKSPACE_SMTP_APP_PASSWORD = "app-password";
-    process.env.GOOGLE_WORKSPACE_LUCY_FROM_NAME = "Luma Sales";
-
-    expect(getEmailProvider("lucy").fromName).toBe("Luma Sales");
-    expect(getEmailProvider("sarah").fromName).toBe("Sarah at Luma Health");
+    expect(() => getEmailProvider("lucy")).toThrow(EmailProviderNotConfiguredError);
+    expect(() => getEmailProvider("sarah")).toThrow(EmailProviderNotConfiguredError);
   });
 });
