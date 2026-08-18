@@ -58,6 +58,14 @@ class GoogleWorkspaceEmailProvider implements EmailProvider {
       secure: false,
       requireTLS: true,
       auth: { user, pass: appPassword },
+      // Without these, a blocked/unreachable network path hangs the whole
+      // send (nodemailer's own default connection timeout is 2 minutes) —
+      // since callers await this inline from a synchronous webhook handler,
+      // that turns a network problem into a hung HTTP request instead of a
+      // fast, logged failure. 10s is generous for reaching Google's relay.
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 15_000,
     });
   }
 
