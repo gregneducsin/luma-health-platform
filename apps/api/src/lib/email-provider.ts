@@ -51,12 +51,19 @@ class GoogleWorkspaceEmailProvider implements EmailProvider {
     private readonly user: string,
     appPassword: string,
     private readonly fromEmail: string,
+    port: number,
   ) {
+    // Port 465 is implicit TLS from the first byte (secure: true); every
+    // other port (587, 25) uses plaintext-then-STARTTLS (secure: false,
+    // requireTLS: true so a relay that can't upgrade fails instead of
+    // silently sending in the clear). Configurable because some hosts block
+    // 587 outbound (the classic anti-spam port block) while allowing 465.
+    const secure = port === 465;
     this.transporter = nodemailer.createTransport({
       host: "smtp-relay.gmail.com",
-      port: 587,
-      secure: false,
-      requireTLS: true,
+      port,
+      secure,
+      requireTLS: secure ? undefined : true,
       auth: { user, pass: appPassword },
       // Without these, a blocked/unreachable network path hangs the whole
       // send (nodemailer's own default connection timeout is 2 minutes) —
@@ -115,9 +122,10 @@ export function getEmailProvider(persona: EmailPersona): { provider: EmailProvid
     throw new Error("EMAIL_PROVIDER is 'google_workspace' but GOOGLE_WORKSPACE_SMTP_USER/GOOGLE_WORKSPACE_SMTP_APP_PASSWORD is not set.");
   }
   const fromEmail = process.env.GOOGLE_WORKSPACE_FROM_EMAIL ?? user;
+  const port = process.env.GOOGLE_WORKSPACE_SMTP_PORT ? Number(process.env.GOOGLE_WORKSPACE_SMTP_PORT) : 587;
 
   const personaEnvKey = persona === "lucy" ? "GOOGLE_WORKSPACE_LUCY_FROM_NAME" : "GOOGLE_WORKSPACE_SARAH_FROM_NAME";
   const fromName = process.env[personaEnvKey] ?? PERSONA_DEFAULT_NAME[persona];
 
-  return { provider: new GoogleWorkspaceEmailProvider(user, appPassword, fromEmail), fromName };
+  return { provider: new GoogleWorkspaceEmailProvider(user, appPassword, fromEmail, port), fromName };
 }
