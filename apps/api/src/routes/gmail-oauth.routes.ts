@@ -94,17 +94,9 @@ export function createGmailOAuthRouter(): RouterType {
         return;
       }
 
-      // Temporary testing response. Remove after saving the token.
-      res.type("text/plain").send(
-        [
-          "Google Workspace connected successfully.",
-          "",
-          "Create this Railway variable:",
-          `GOOGLE_REFRESH_TOKEN=${tokens.refresh_token}`,
-          "",
-          "Keep this token private.",
-        ].join("\n"),
-      );
+      res
+  .status(200)
+  .send("Google Workspace connected successfully. You may close this page.");
     } catch (error) {
       next(error);
     }
