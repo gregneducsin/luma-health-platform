@@ -1,5 +1,19 @@
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { getEmailProvider, EmailProviderNotConfiguredError } from "./email-provider.js";
+
+const sendMock = vi.fn().mockResolvedValue({ data: { id: "gmail-msg-id" } });
+vi.mock("googleapis", () => ({
+  google: {
+    auth: { OAuth2: class MockOAuth2 { setCredentials() {} } },
+    gmail: () => ({ users: { messages: { send: sendMock } } }),
+  },
+}));
+
+function decodeRawPayload(): string {
+  const raw = sendMock.mock.calls.at(-1)?.[0].requestBody.raw as string;
+  const base64 = raw.replace(/-/g, "+").replace(/_/g, "/");
+  return Buffer.from(base64, "base64").toString("utf8");
+}
 
 const ENV_KEYS = [
   "EMAIL_PROVIDER",
@@ -101,6 +115,40 @@ describe("getEmailProvider", () => {
       process.env.GOOGLE_REFRESH_TOKEN = "refresh-token";
 
       expect(getEmailProvider("sarah").fromName).toBe("Sarah at Luma Health");
+    });
+
+    describe("sendEmail header encoding", () => {
+      function configuredProvider() {
+        process.env.EMAIL_PROVIDER = "gmail_api";
+        process.env.GOOGLE_WORKSPACE_SMTP_USER = "lucym@start.mylumahealth.com";
+        process.env.GOOGLE_CLIENT_ID = "client-id";
+        process.env.GOOGLE_CLIENT_SECRET = "client-secret";
+        process.env.GOOGLE_REDIRECT_URI = "https://example.com/auth/google/callback";
+        process.env.GOOGLE_REFRESH_TOKEN = "refresh-token";
+        return getEmailProvider("lucy").provider;
+      }
+
+      it("RFC 2047-encodes a subject containing non-ASCII characters, instead of placing raw UTF-8 bytes in the header", async () => {
+        sendMock.mockClear();
+        const provider = configuredProvider();
+        await provider.sendEmail("customer@example.com", "Welcome — start now", "<p>hi</p>");
+
+        const decoded = decodeRawPayload();
+        const subjectLine = decoded.split("\r\n").find((line) => line.startsWith("Subject:"));
+        expect(subjectLine).toMatch(/^Subject: =\?UTF-8\?B\?/);
+        // Decoding the encoded-word back out must reproduce the original text exactly.
+        const encodedWord = subjectLine!.replace("Subject: =?UTF-8?B?", "").replace("?=", "");
+        expect(Buffer.from(encodedWord, "base64").toString("utf8")).toBe("Welcome — start now");
+      });
+
+      it("leaves a pure-ASCII subject as a plain, unencoded header", async () => {
+        sendMock.mockClear();
+        const provider = configuredProvider();
+        await provider.sendEmail("customer@example.com", "Welcome to Luma Health", "<p>hi</p>");
+
+        const decoded = decodeRawPayload();
+        expect(decoded).toContain("Subject: Welcome to Luma Health\r\n");
+      });
     });
   });
 });

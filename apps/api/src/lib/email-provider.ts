@@ -109,6 +109,20 @@ class GoogleWorkspaceEmailProvider implements EmailProvider {
  * only accepts a base64url-encoded raw MIME message — this mirrors what
  * nodemailer did internally for the SMTP path, just constructed by hand.
  */
+/**
+ * RFC 2047 encoded-word — email headers are ASCII-only per RFC 5322, so a
+ * raw UTF-8 byte sequence placed directly in one (e.g. an em dash in a
+ * subject line) gets misread as Latin-1 by mail clients, producing
+ * mojibake like "Ã¢Â€Â”". Skips encoding for pure-ASCII values so the
+ * common case stays a plain, readable header — only non-ASCII values pay
+ * for it.
+ */
+function encodeHeaderValue(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  if (/^[\x00-\x7F]*$/.test(value)) return value;
+  return `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=`;
+}
+
 class GmailApiEmailProvider implements EmailProvider {
   constructor(private readonly fromEmail: string) {}
 
@@ -121,12 +135,12 @@ class GmailApiEmailProvider implements EmailProvider {
     const domain = this.fromEmail.split("@")[1] ?? "mylumahealth.com";
     const messageId = `<${randomUUID()}@${domain}>`;
     const wrapMessageId = (id: string) => (id.startsWith("<") ? id : `<${id}>`);
-    const from = opts.fromName ? `"${opts.fromName}" <${this.fromEmail}>` : this.fromEmail;
+    const from = opts.fromName ? `"${encodeHeaderValue(opts.fromName)}" <${this.fromEmail}>` : this.fromEmail;
 
     const headers = [
       `From: ${from}`,
       `To: ${to}`,
-      `Subject: ${subject}`,
+      `Subject: ${encodeHeaderValue(subject)}`,
       `Message-ID: ${messageId}`,
       opts.replyTo ? `Reply-To: ${opts.replyTo}` : null,
       opts.inReplyTo ? `In-Reply-To: ${wrapMessageId(opts.inReplyTo)}` : null,
