@@ -54,7 +54,6 @@ export function createApp(): Express {
     }),
   );
   app.use(cookieParser());
-  app.use("/auth/google", createGmailOAuthRouter());
   // Never cache API responses.
   app.use("/api", (_req: Request, res: Response, next) => {
     res.setHeader("Cache-Control", "no-store");
@@ -76,6 +75,14 @@ export function createApp(): Express {
 
   // Populate req.user from the session cookie before any route that needs it.
   app.use(sessionMiddleware);
+
+  // Mounted after sessionMiddleware (not alongside /go and /unsubscribe
+  // above) because, unlike those two, this route is NOT meant to be public:
+  // it initiates the OAuth flow that connects the app's own outbound Gmail
+  // identity, which only an admin should ever be able to (re)trigger — see
+  // requireRole("admin") inside gmail-oauth.routes.ts, which needs req.user
+  // already populated to do anything.
+  app.use("/auth/google", createGmailOAuthRouter());
 
   // Cookie-authenticated browser routes. Individual mutating routes within
   // this family apply CSRF protection themselves (see auth.routes.ts) —

@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { Router, type Router as RouterType } from "express";
 import { google } from "googleapis";
+import { requireRole } from "../middleware/requireAuth.js";
 
 const DEFAULT_REDIRECT_URI =
   "https://heartfelt-connection-production-d572.up.railway.app/auth/google/callback";
@@ -25,7 +26,13 @@ function createOAuthClient() {
 export function createGmailOAuthRouter(): RouterType {
   const router: RouterType = Router();
 
-  router.get("/", (_req, res, next) => {
+  // Only an admin may (re)connect the app's outbound Gmail identity —
+  // without this, anyone who found this URL could run through Google's
+  // consent screen for their own account. Nothing currently persists the
+  // resulting refresh token automatically (see the callback below), so
+  // today that's inert, but it's the exact route a future auto-persist
+  // step would need to already be locked down, not retrofitted later.
+  router.get("/", requireRole("admin"), (_req, res, next) => {
     try {
       const state = randomBytes(32).toString("hex");
 
@@ -52,7 +59,13 @@ export function createGmailOAuthRouter(): RouterType {
     }
   });
 
-  router.get("/callback", async (req, res, next) => {
+  // Same admin-only gate as above — Google redirects the browser back here
+  // with the auth code, and since this is a same-site top-level navigation
+  // the session cookie still rides along, so req.user is populated same as
+  // any other request. The state param/cookie check below is the OAuth-flow
+  // CSRF protection; this role check is a separate, additional gate on who
+  // may complete the flow at all.
+  router.get("/callback", requireRole("admin"), async (req, res, next) => {
     try {
       const code =
         typeof req.query.code === "string"
