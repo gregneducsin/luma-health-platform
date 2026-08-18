@@ -48,8 +48,14 @@ export function createGmailOAuthRouter(): RouterType {
         access_type: "offline",
         prompt: "consent",
         state,
+        // gmail.send only — the app only ever calls users.messages.send
+        // (see gmail.service.ts). gmail.modify additionally grants
+        // read/delete/label access to the whole mailbox, none of which
+        // this app uses; scoping down means a leaked refresh token or
+        // client secret can only be used to send mail, not read or
+        // destroy any of it.
         scope: [
-          "https://www.googleapis.com/auth/gmail.modify",
+          "https://www.googleapis.com/auth/gmail.send",
         ],
       });
 
@@ -107,9 +113,25 @@ export function createGmailOAuthRouter(): RouterType {
         return;
       }
 
+      // Displaying the raw token here is safe now that this route is
+      // admin-gated (see requireRole above) — it wasn't when this response
+      // was last removed, since the route was reachable by anyone at the
+      // time. Still temporary: paste GOOGLE_REFRESH_TOKEN into Railway,
+      // then strip this back down to a plain success message, same as
+      // last time.
       res
-  .status(200)
-  .send("Google Workspace connected successfully. You may close this page.");
+        .status(200)
+        .type("text/plain")
+        .send(
+          [
+            "Google Workspace connected successfully (scope: gmail.send).",
+            "",
+            "Update this Railway variable, then remove this response:",
+            `GOOGLE_REFRESH_TOKEN=${tokens.refresh_token}`,
+            "",
+            "Keep this token private.",
+          ].join("\n"),
+        );
     } catch (error) {
       next(error);
     }
