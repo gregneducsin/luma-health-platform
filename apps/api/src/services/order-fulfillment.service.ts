@@ -44,25 +44,25 @@ async function getCustomerContact(personId: string): Promise<{ firstName: string
  */
 export async function sendOrderReceivedOpener(personId: string): Promise<void> {
   const customer = await getCustomerContact(personId);
-  if (!customer?.phone) {
-    logger.warn({ personId }, "order-received opener not sent: no phone number on file");
-    return;
-  }
-  if (await isCustomerSmsDnd(personId)) {
-    logger.warn({ personId }, "order-received opener not sent: customer is do-not-disturb");
+  if (!customer) {
+    logger.warn({ personId }, "order-received opener not sent: customer not found");
     return;
   }
 
-  const text = renderOrderReceivedMessage(customer.firstName);
   const conversation = await getOrCreateSupportConversation(personId);
-
-  try {
-    const result = await getSmsProvider().sendMessage(customer.phone, text);
-    await appendSupportMessage(conversation.id, "outbound", text, { providerMessageId: result.providerMessageId });
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    logger.warn({ personId, reason }, "order-received opener send failed");
-    await appendSupportMessage(conversation.id, "outbound", text, {});
+  const dnd = await isCustomerSmsDnd(personId);
+  if (customer.phone && !dnd) {
+    const text = renderOrderReceivedMessage(customer.firstName);
+    try {
+      const result = await getSmsProvider().sendMessage(customer.phone, text);
+      await appendSupportMessage(conversation.id, "outbound", text, { providerMessageId: result.providerMessageId });
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      logger.warn({ personId, reason }, "order-received opener send failed");
+      await appendSupportMessage(conversation.id, "outbound", text, {});
+    }
+  } else {
+    logger.warn({ personId, reason: dnd ? "do_not_disturb" : "no_phone_number" }, "order-received opener SMS not sent");
   }
 
   const emailConversation = await getOrCreateSupportEmailConversation(personId);

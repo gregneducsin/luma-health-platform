@@ -80,19 +80,25 @@ describe("sendOrderReceivedOpener", () => {
     expect(sendEmailMock.mock.calls[0][0]).toBe(email);
   });
 
-  it("does not call the provider when there's no phone on file", async () => {
+  it("does not call the SMS provider when there's no phone on file, but still sends the email", async () => {
     sendMessageMock.mockClear();
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<order-received-no-phone@example.com>" });
     const personId = await seedCustomer({ phone: null });
     await sendOrderReceivedOpener(personId);
     expect(sendMessageMock).not.toHaveBeenCalled();
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
   });
 
-  it("does not call the provider when the customer is do-not-disturb", async () => {
+  it("does not call the SMS provider when the customer is SMS do-not-disturb, but still sends the email", async () => {
     sendMessageMock.mockClear();
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<order-received-sms-dnd@example.com>" });
     const personId = await seedCustomer();
     await setCustomerSmsDnd(personId, true);
     await sendOrderReceivedOpener(personId);
     expect(sendMessageMock).not.toHaveBeenCalled();
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
   });
 });
 
