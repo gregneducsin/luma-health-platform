@@ -1,5 +1,14 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { getEmailProvider, EmailProviderNotConfiguredError } from "./email-provider.js";
+import {
+  renderOrderReceivedEmail,
+  renderPrescriptionWrittenEmail,
+  renderOrderShippedEmail,
+  renderAbandonedCartOpenerEmail,
+  renderAbandonedCartUrgencyEmail,
+  renderAbandonedCartEducationalEmail,
+  renderAbandonedCartPlanComparisonEmail,
+} from "./email/templates.js";
 
 const sendMock = vi.fn().mockResolvedValue({ data: { id: "gmail-msg-id" } });
 vi.mock("googleapis", () => ({
@@ -148,6 +157,35 @@ describe("getEmailProvider", () => {
 
         const decoded = decodeRawPayload();
         expect(decoded).toContain("Subject: Welcome to Luma Health\r\n");
+      });
+
+      it("every real trigger-email subject in the codebase round-trips correctly through the raw MIME send path", async () => {
+        const unsubUrl = "http://localhost:3000/unsubscribe/abc.def";
+        const ctaUrl = "http://localhost:3000/go/abc123";
+        const realSubjects = [
+          renderOrderReceivedEmail("Jamie", unsubUrl).subject,
+          renderPrescriptionWrittenEmail("Jamie", unsubUrl).subject,
+          renderOrderShippedEmail("Jamie", "1Z999AA10123456784", unsubUrl).subject,
+          renderAbandonedCartOpenerEmail("Jamie", ctaUrl, unsubUrl).subject,
+          renderAbandonedCartUrgencyEmail("Jamie", ctaUrl, unsubUrl).subject,
+          renderAbandonedCartEducationalEmail("Jamie", ctaUrl, unsubUrl).subject,
+          renderAbandonedCartPlanComparisonEmail("Jamie", ctaUrl, unsubUrl).subject,
+        ];
+
+        const provider = configuredProvider();
+        for (const subject of realSubjects) {
+          sendMock.mockClear();
+          await provider.sendEmail("customer@example.com", subject, "<p>hi</p>");
+          const decoded = decodeRawPayload();
+          const subjectLine = decoded.split("\r\n").find((line) => line.startsWith("Subject:"))!;
+
+          if (subjectLine.startsWith("Subject: =?UTF-8?B?")) {
+            const encodedWord = subjectLine.replace("Subject: =?UTF-8?B?", "").replace("?=", "");
+            expect(Buffer.from(encodedWord, "base64").toString("utf8")).toBe(subject);
+          } else {
+            expect(subjectLine).toBe(`Subject: ${subject}`);
+          }
+        }
       });
     });
   });
