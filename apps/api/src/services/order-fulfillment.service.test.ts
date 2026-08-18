@@ -112,6 +112,20 @@ describe("handlePrescriptionWritten", () => {
     expect(messages[0].body).toContain("prescription");
   });
 
+  it("also sends a prescription-written email alongside the text", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_prescription_email_sibling" });
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<prescription-written@example.com>" });
+
+    const personId = await seedCustomer();
+    const email = await getCustomerEmail(personId);
+    await handlePrescriptionWritten(personId);
+
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    expect(sendEmailMock.mock.calls[0][0]).toBe(email);
+  });
+
   it("still updates state when there's no phone on file, but sends nothing", async () => {
     sendMessageMock.mockClear();
     const personId = await seedCustomer({ phone: null });

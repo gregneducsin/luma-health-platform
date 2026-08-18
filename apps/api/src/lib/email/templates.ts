@@ -52,17 +52,300 @@ export function wrapEmailHtml(bodyHtml: string, unsubscribeUrl: string): string 
 
 export function renderOrderReceivedEmail(firstName: string, unsubscribeUrl: string): RenderedEmail {
   const name = firstName.trim() || "there";
-  const body =
-    `<p>Hello ${name}, this is Sarah on the doctor support side. It looks like we received your order and the doctor is reviewing it now.</p>` +
-    `<p>If they have any further questions they will reach out in the patient portal, <a href="https://go.mylumahealth.com/login">https://go.mylumahealth.com/login</a></p>` +
-    `<p>We will update you once the prescription is written and sent to the pharmacy.</p>`;
-  return { subject: "We received your order", html: wrapEmailHtml(body, unsubscribeUrl) };
+  const html = `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Welcome to Luma Health — Your Journey Starts Now</title>
+<!--[if mso]>
+<noscript>
+<xml>
+<o:OfficeDocumentSettings>
+<o:PixelsPerInch>96</o:PixelsPerInch>
+</o:OfficeDocumentSettings>
+</xml>
+</noscript>
+<![endif]-->
+<style>
+  body, table, td { font-family: 'Georgia', 'Times New Roman', serif; }
+  body { margin: 0; padding: 0; background-color: #f5f1ea; }
+  .email-wrapper { width: 100%; background-color: #f5f1ea; padding: 40px 0; }
+  .email-container { max-width: 600px; margin: 0 auto; background-color: #fffdf9; border: 1px solid #e8dfd0; }
+  .header { background-color: #2b2420; padding: 36px 40px; text-align: center; }
+  .logo-text { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 30px; letter-spacing: 3px; color: #d4af6a; margin: 0; font-weight: 500; }
+  .header-sub { font-family: Arial, sans-serif; font-size: 11px; letter-spacing: 2px; color: #cbbfa8; text-transform: uppercase; margin-top: 6px; }
+  .body-content { padding: 44px 40px 20px 40px; }
+  .greeting { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 26px; color: #2b2420; margin: 0 0 22px 0; font-weight: 500; }
+  .paragraph { font-family: Arial, Helvetica, sans-serif; font-size: 15px; line-height: 26px; color: #4a4038; margin: 0 0 20px 0; }
+  .steps-box { background-color: #f5f1ea; border: 1px solid #e8dfd0; border-radius: 4px; padding: 26px 28px; margin: 0 0 26px 0; }
+  .step-row { font-family: Arial, sans-serif; font-size: 14px; line-height: 22px; color: #4a4038; margin: 0 0 16px 0; }
+  .step-row:last-child { margin-bottom: 0; }
+  .step-number { display: inline-block; width: 22px; height: 22px; background-color: #b8935a; color: #fffdf9; border-radius: 50%; text-align: center; line-height: 22px; font-weight: bold; font-size: 12px; margin-right: 8px; }
+  .step-title { color: #2b2420; font-weight: bold; }
+  .cta-wrapper { text-align: center; margin: 32px 0; }
+  .cta-button { display: inline-block; background-color: #b8935a; color: #fffdf9; font-family: Arial, sans-serif; font-size: 15px; font-weight: bold; letter-spacing: 1px; text-decoration: none; padding: 16px 38px; border-radius: 3px; text-transform: uppercase; }
+  .divider { border: none; border-top: 1px solid #e8dfd0; margin: 30px 0; }
+  .footer { padding: 28px 40px 40px 40px; text-align: center; }
+  .footer-text { font-family: Arial, sans-serif; font-size: 12px; line-height: 20px; color: #948a7c; margin: 4px 0; }
+  .footer-phone { color: #b8935a; text-decoration: none; font-weight: bold; }
+  a { color: #b8935a; }
+</style>
+</head>
+<body>
+<div class="email-wrapper">
+  <table class="email-container" role="presentation" cellpadding="0" cellspacing="0" width="100%">
+    <tr>
+      <td class="header">
+        <p class="logo-text">LUMA HEALTH</p>
+        <p class="header-sub">Your Journey to Wellness</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="body-content">
+        <p class="greeting">Welcome, ${name}.</p>
+
+        <p class="paragraph">Thank you for choosing Luma Health. You've just taken the first step toward a healthier, more confident version of yourself — and we're honored to be part of that journey with you.</p>
+
+        <p class="paragraph">Your visit has been received, and our licensed medical team is already reviewing your information to build a treatment plan around your goals.</p>
+
+        <div class="steps-box">
+          <p class="step-row"><span class="step-number">1</span><span class="step-title">Clinical Review</span><br>Our medical team reviews your visit and confirms your personalized treatment plan.</p>
+          <p class="step-row"><span class="step-number">2</span><span class="step-title">Approval &amp; Prescription</span><br>Once approved, your prescription is sent directly to our licensed pharmacy partner.</p>
+          <p class="step-row"><span class="step-number">3</span><span class="step-title">Shipping</span><br>Your medication is prepared and shipped discreetly straight to your door.</p>
+          <p class="step-row"><span class="step-number">4</span><span class="step-title">Ongoing Support</span><br>Your care team stays with you for questions, adjustments, and support along the way.</p>
+        </div>
+
+        <p class="paragraph">You can track your visit, message your care team, and manage refills anytime through your patient portal.</p>
+
+        <div class="cta-wrapper">
+          <a href="https://go.mylumahealth.com/login" class="cta-button">Go To Patient Login</a>
+        </div>
+
+        <p class="paragraph">If you have any questions along the way, we're just a call or message away at <a href="tel:6592177086" class="footer-phone">659-217-7086</a>.</p>
+
+        <p class="paragraph" style="margin-bottom:0;">Here's to your journey — we're glad you're on it.<br><!--[if mso]>&nbsp;<![endif]--><br>Warmly,<br>The Luma Health Team</p>
+      </td>
+    </tr>
+    <tr>
+      <td><hr class="divider" style="margin-left:40px; margin-right:40px;"></td>
+    </tr>
+    <tr>
+      <td class="footer">
+        <p class="footer-text">Luma Health &middot; 2500 Quantum Lakes Drive, Boynton Beach, FL 33426</p>
+        <p class="footer-text"><a href="tel:6592177086" class="footer-phone">659-217-7086</a></p>
+        <p class="footer-text"><a href="${unsubscribeUrl}" class="footer-phone">Unsubscribe</a> from future emails.</p>
+      </td>
+    </tr>
+  </table>
+</div>
+</body>
+</html>`;
+  return { subject: "Welcome to Luma Health — Your Journey Starts Now", html };
+}
+
+export function renderPrescriptionWrittenEmail(firstName: string, unsubscribeUrl: string): RenderedEmail {
+  const name = firstName.trim() || "there";
+  const html = `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your Luma Health prescription has been approved</title>
+<!--[if mso]>
+<noscript>
+<xml>
+<o:OfficeDocumentSettings>
+<o:PixelsPerInch>96</o:PixelsPerInch>
+</o:OfficeDocumentSettings>
+</xml>
+</noscript>
+<![endif]-->
+<style>
+  body, table, td { font-family: 'Georgia', 'Times New Roman', serif; }
+  body { margin: 0; padding: 0; background-color: #f5f1ea; }
+  .email-wrapper { width: 100%; background-color: #f5f1ea; padding: 40px 0; }
+  .email-container { max-width: 600px; margin: 0 auto; background-color: #fffdf9; border: 1px solid #e8dfd0; }
+  .header { background-color: #2b2420; padding: 36px 40px; text-align: center; }
+  .logo-text { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 30px; letter-spacing: 3px; color: #d4af6a; margin: 0; font-weight: 500; }
+  .header-sub { font-family: Arial, sans-serif; font-size: 11px; letter-spacing: 2px; color: #cbbfa8; text-transform: uppercase; margin-top: 6px; }
+  .body-content { padding: 44px 40px 20px 40px; }
+  .greeting { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 26px; color: #2b2420; margin: 0 0 22px 0; font-weight: 500; }
+  .paragraph { font-family: Arial, Helvetica, sans-serif; font-size: 15px; line-height: 26px; color: #4a4038; margin: 0 0 20px 0; }
+  .status-box { background-color: #2b2420; border-radius: 4px; padding: 26px 24px; margin: 0 0 26px 0; text-align: center; }
+  .status-label { font-family: Arial, sans-serif; font-size: 11px; letter-spacing: 2px; color: #cbbfa8; text-transform: uppercase; margin: 0 0 8px 0; }
+  .status-value { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 26px; color: #d4af6a; margin: 0; font-weight: 500; }
+  .steps-box { background-color: #f5f1ea; border: 1px solid #e8dfd0; border-radius: 4px; padding: 26px 28px; margin: 0 0 26px 0; }
+  .step-row { font-family: Arial, sans-serif; font-size: 14px; line-height: 22px; color: #4a4038; margin: 0 0 16px 0; }
+  .step-row:last-child { margin-bottom: 0; }
+  .step-number { display: inline-block; width: 22px; height: 22px; background-color: #b8935a; color: #fffdf9; border-radius: 50%; text-align: center; line-height: 22px; font-weight: bold; font-size: 12px; margin-right: 8px; }
+  .step-title { color: #2b2420; font-weight: bold; }
+  .cta-wrapper { text-align: center; margin: 32px 0; }
+  .cta-button { display: inline-block; background-color: #b8935a; color: #fffdf9; font-family: Arial, sans-serif; font-size: 15px; font-weight: bold; letter-spacing: 1px; text-decoration: none; padding: 16px 38px; border-radius: 3px; text-transform: uppercase; }
+  .divider { border: none; border-top: 1px solid #e8dfd0; margin: 30px 0; }
+  .footer { padding: 28px 40px 40px 40px; text-align: center; }
+  .footer-text { font-family: Arial, sans-serif; font-size: 12px; line-height: 20px; color: #948a7c; margin: 4px 0; }
+  .footer-phone { color: #b8935a; text-decoration: none; font-weight: bold; }
+  a { color: #b8935a; }
+</style>
+</head>
+<body>
+<div class="email-wrapper">
+  <table class="email-container" role="presentation" cellpadding="0" cellspacing="0" width="100%">
+    <tr>
+      <td class="header">
+        <p class="logo-text">LUMA HEALTH</p>
+        <p class="header-sub">Your Journey to Wellness</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="body-content">
+        <p class="greeting">Dear ${name},</p>
+
+        <p class="paragraph">Great news — your prescription has been approved by our licensed medical team.</p>
+
+        <div class="status-box">
+          <p class="status-label">Prescription Status</p>
+          <p class="status-value">Approved</p>
+        </div>
+
+        <p class="paragraph">Your treatment plan is now being sent to our pharmacy partner to be prepared specifically for you.</p>
+
+        <div class="steps-box">
+          <p class="step-row"><span class="step-number">1</span><span class="step-title">Prescription Approved</span><br>Your care team has confirmed your personalized treatment plan. <em>You are here.</em></p>
+          <p class="step-row"><span class="step-number">2</span><span class="step-title">Pharmacy Preparation</span><br>Your medication is compounded and prepared by our licensed pharmacy partner.</p>
+          <p class="step-row"><span class="step-number">3</span><span class="step-title">Shipping</span><br>Your order ships discreetly straight to your door, with tracking sent by email.</p>
+          <p class="step-row"><span class="step-number">4</span><span class="step-title">Ongoing Support</span><br>Your care team stays with you for questions, adjustments, and support along the way.</p>
+        </div>
+
+        <div class="cta-wrapper">
+          <a href="https://go.mylumahealth.com/login" class="cta-button">View My Patient Portal</a>
+        </div>
+
+        <p class="paragraph">We'll let you know as soon as your order ships. In the meantime, if you have any questions about your treatment plan, we're here to help.</p>
+
+        <p class="paragraph">Questions? Call or text us at <a href="tel:6592177086" class="footer-phone">659-217-7086</a>.</p>
+
+        <p class="paragraph" style="margin-bottom:0;">Here's to your journey — we're glad you're on it.<br><!--[if mso]>&nbsp;<![endif]--><br>Warmly,<br>The Luma Health Team</p>
+      </td>
+    </tr>
+    <tr>
+      <td><hr class="divider" style="margin-left:40px; margin-right:40px;"></td>
+    </tr>
+    <tr>
+      <td class="footer">
+        <p class="footer-text">Luma Health &middot; 2500 Quantum Lakes Drive, Boynton Beach, FL 33426</p>
+        <p class="footer-text"><a href="tel:6592177086" class="footer-phone">659-217-7086</a></p>
+        <p class="footer-text"><a href="${unsubscribeUrl}" class="footer-phone">Unsubscribe</a> from future emails.</p>
+      </td>
+    </tr>
+  </table>
+</div>
+</body>
+</html>`;
+  return { subject: "Your Luma Health prescription has been approved", html };
 }
 
 export function renderOrderShippedEmail(firstName: string, trackingNumber: string, unsubscribeUrl: string): RenderedEmail {
   const name = firstName.trim() || "there";
-  const body = `<p>Hi ${name}, your order has shipped. Your tracking number is <strong>${trackingNumber}</strong>.</p>`;
-  return { subject: "Your order has shipped", html: wrapEmailHtml(body, unsubscribeUrl) };
+  const html = `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your Luma Health order has shipped</title>
+<!--[if mso]>
+<noscript>
+<xml>
+<o:OfficeDocumentSettings>
+<o:PixelsPerInch>96</o:PixelsPerInch>
+</o:OfficeDocumentSettings>
+</xml>
+</noscript>
+<![endif]-->
+<style>
+  body, table, td { font-family: 'Georgia', 'Times New Roman', serif; }
+  body { margin: 0; padding: 0; background-color: #f5f1ea; }
+  .email-wrapper { width: 100%; background-color: #f5f1ea; padding: 40px 0; }
+  .email-container { max-width: 600px; margin: 0 auto; background-color: #fffdf9; border: 1px solid #e8dfd0; }
+  .header { background-color: #2b2420; padding: 36px 40px; text-align: center; }
+  .logo-text { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 30px; letter-spacing: 3px; color: #d4af6a; margin: 0; font-weight: 500; }
+  .header-sub { font-family: Arial, sans-serif; font-size: 11px; letter-spacing: 2px; color: #cbbfa8; text-transform: uppercase; margin-top: 6px; }
+  .body-content { padding: 44px 40px 20px 40px; }
+  .greeting { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 26px; color: #2b2420; margin: 0 0 22px 0; font-weight: 500; }
+  .paragraph { font-family: Arial, Helvetica, sans-serif; font-size: 15px; line-height: 26px; color: #4a4038; margin: 0 0 20px 0; }
+  .status-box { background-color: #2b2420; border-radius: 4px; padding: 26px 24px; margin: 0 0 26px 0; text-align: center; }
+  .status-label { font-family: Arial, sans-serif; font-size: 11px; letter-spacing: 2px; color: #cbbfa8; text-transform: uppercase; margin: 0 0 8px 0; }
+  .status-value { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 26px; color: #d4af6a; margin: 0; font-weight: 500; }
+  .tracking-box { background-color: #f5f1ea; border: 1px solid #e8dfd0; border-radius: 4px; padding: 20px 24px; margin: 0 0 26px 0; }
+  .tracking-row { font-family: Arial, sans-serif; font-size: 14px; color: #4a4038; margin: 0 0 6px 0; }
+  .tracking-row:last-child { margin-bottom: 0; }
+  .tracking-label { color: #948a7c; text-transform: uppercase; font-size: 11px; letter-spacing: 1px; display: block; margin-bottom: 2px; }
+  .tracking-value { color: #2b2420; font-weight: bold; }
+  .cta-wrapper { text-align: center; margin: 32px 0; }
+  .cta-button { display: inline-block; background-color: #b8935a; color: #fffdf9; font-family: Arial, sans-serif; font-size: 15px; font-weight: bold; letter-spacing: 1px; text-decoration: none; padding: 16px 38px; border-radius: 3px; text-transform: uppercase; }
+  .divider { border: none; border-top: 1px solid #e8dfd0; margin: 30px 0; }
+  .footer { padding: 28px 40px 40px 40px; text-align: center; }
+  .footer-text { font-family: Arial, sans-serif; font-size: 12px; line-height: 20px; color: #948a7c; margin: 4px 0; }
+  .footer-phone { color: #b8935a; text-decoration: none; font-weight: bold; }
+  a { color: #b8935a; }
+</style>
+</head>
+<body>
+<div class="email-wrapper">
+  <table class="email-container" role="presentation" cellpadding="0" cellspacing="0" width="100%">
+    <tr>
+      <td class="header">
+        <p class="logo-text">LUMA HEALTH</p>
+        <p class="header-sub">Your Journey to Wellness</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="body-content">
+        <p class="greeting">Dear ${name},</p>
+
+        <p class="paragraph">Good news — your order is on its way.</p>
+
+        <div class="status-box">
+          <p class="status-label">Order Status</p>
+          <p class="status-value">Shipped</p>
+        </div>
+
+        <p class="paragraph">Your medication was prepared by our licensed pharmacy partner and is now headed straight to your door, packaged discreetly for your privacy.</p>
+
+        <div class="tracking-box">
+          <p class="tracking-row">
+            <span class="tracking-label">Tracking Number</span>
+            <span class="tracking-value">${trackingNumber}</span>
+          </p>
+        </div>
+
+        <div class="cta-wrapper">
+          <a href="https://go.mylumahealth.com/login" class="cta-button">Track My Order</a>
+        </div>
+
+        <p class="paragraph">When your package arrives, be sure to follow the dosing instructions provided by your care team. If you have any questions about getting started or what to expect, we're here to help.</p>
+
+        <p class="paragraph">Questions? Call or text us at <a href="tel:6592177086" class="footer-phone">659-217-7086</a>.</p>
+
+        <p class="paragraph" style="margin-bottom:0;">Here's to your journey — we're glad you're on it.<br><!--[if mso]>&nbsp;<![endif]--><br>Warmly,<br>The Luma Health Team</p>
+      </td>
+    </tr>
+    <tr>
+      <td><hr class="divider" style="margin-left:40px; margin-right:40px;"></td>
+    </tr>
+    <tr>
+      <td class="footer">
+        <p class="footer-text">Luma Health &middot; 2500 Quantum Lakes Drive, Boynton Beach, FL 33426</p>
+        <p class="footer-text"><a href="tel:6592177086" class="footer-phone">659-217-7086</a></p>
+        <p class="footer-text"><a href="${unsubscribeUrl}" class="footer-phone">Unsubscribe</a> from future emails.</p>
+      </td>
+    </tr>
+  </table>
+</div>
+</body>
+</html>`;
+  return { subject: "Your Luma Health order has shipped", html };
 }
 
 export function renderReviewRequestEmail(firstName: string, unsubscribeUrl: string): RenderedEmail {

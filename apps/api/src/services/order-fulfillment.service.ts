@@ -4,7 +4,7 @@ import { getOrCreateSupportConversation, appendSupportMessage, updateSupportConv
 import { getOrCreateSupportEmailConversation, appendSupportEmailMessage } from "./support-email-conversations.service.js";
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { renderOrderReceivedMessage, renderPrescriptionWrittenMessage, renderOrderShippedMessage, renderReviewRequestMessage } from "../lib/support/templates.js";
-import { renderOrderReceivedEmail, renderOrderShippedEmail, renderReviewRequestEmail } from "../lib/email/templates.js";
+import { renderOrderReceivedEmail, renderPrescriptionWrittenEmail, renderOrderShippedEmail, renderReviewRequestEmail } from "../lib/email/templates.js";
 import { sendTriggerEmail } from "../lib/email/send-trigger-email.js";
 import { logger } from "../lib/logger.js";
 import { isCustomerSmsDnd } from "./dnd.service.js";
@@ -83,21 +83,31 @@ export async function handlePrescriptionWritten(personId: string): Promise<void>
   const conversation = await getOrCreateSupportConversation(personId);
   await updateSupportConversationState(conversation.id, { prescriptionWritten: true, prescriptionWrittenAt: new Date() });
 
-  if (!customer?.phone) {
-    logger.warn({ personId }, "prescription-written notice not sent: no phone number on file");
-    return;
+  const dnd = await isCustomerSmsDnd(personId);
+  if (customer?.phone && !dnd) {
+    const text = renderPrescriptionWrittenMessage(customer.firstName);
+    try {
+      const result = await getSmsProvider().sendMessage(customer.phone, text);
+      await appendSupportMessage(conversation.id, "outbound", text, { providerMessageId: result.providerMessageId });
+    } catch (err) {
+      logger.warn({ personId, reason: err instanceof Error ? err.message : String(err) }, "prescription-written notice send failed");
+      await appendSupportMessage(conversation.id, "outbound", text, {});
+    }
+  } else {
+    logger.warn({ personId, reason: dnd ? "do_not_disturb" : "no_phone_number" }, "prescription-written notice not sent");
   }
-  if (await isCustomerSmsDnd(personId)) {
-    logger.warn({ personId }, "prescription-written notice not sent: customer is do-not-disturb");
-    return;
-  }
-  const text = renderPrescriptionWrittenMessage(customer.firstName);
-  try {
-    const result = await getSmsProvider().sendMessage(customer.phone, text);
-    await appendSupportMessage(conversation.id, "outbound", text, { providerMessageId: result.providerMessageId });
-  } catch (err) {
-    logger.warn({ personId, reason: err instanceof Error ? err.message : String(err) }, "prescription-written notice send failed");
-    await appendSupportMessage(conversation.id, "outbound", text, {});
+
+  if (customer) {
+    const emailConversation = await getOrCreateSupportEmailConversation(personId);
+    await sendTriggerEmail({
+      persona: "sarah",
+      personId,
+      conversationId: emailConversation.id,
+      email: customer.email,
+      render: (unsubscribeUrl) => renderPrescriptionWrittenEmail(customer.firstName, unsubscribeUrl),
+      appendMessage: appendSupportEmailMessage,
+      logLabel: "prescription-written",
+    });
   }
 }
 

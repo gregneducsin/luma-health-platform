@@ -3,6 +3,7 @@ import {
   htmlToPlainText,
   wrapEmailHtml,
   renderOrderReceivedEmail,
+  renderPrescriptionWrittenEmail,
   renderOrderShippedEmail,
   renderReviewRequestEmail,
   renderAbandonedCartOpenerEmail,
@@ -34,6 +35,7 @@ describe("wrapEmailHtml", () => {
 describe("fixed trigger-email templates", () => {
   const cases: Array<[string, () => { subject: string; html: string }]> = [
     ["order received", () => renderOrderReceivedEmail("Jamie", UNSUB_URL)],
+    ["prescription written", () => renderPrescriptionWrittenEmail("Jamie", UNSUB_URL)],
     ["order shipped", () => renderOrderShippedEmail("Jamie", "1Z999AA10123456784", UNSUB_URL)],
     ["review request", () => renderReviewRequestEmail("Jamie", UNSUB_URL)],
     ["abandoned cart opener", () => renderAbandonedCartOpenerEmail("Jamie", CTA_URL, UNSUB_URL)],
