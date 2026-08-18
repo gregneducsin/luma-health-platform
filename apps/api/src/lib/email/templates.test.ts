@@ -5,13 +5,10 @@ import {
   renderOrderReceivedEmail,
   renderPrescriptionWrittenEmail,
   renderOrderShippedEmail,
-  renderReviewRequestEmail,
   renderAbandonedCartOpenerEmail,
   renderAbandonedCartUrgencyEmail,
   renderAbandonedCartEducationalEmail,
   renderAbandonedCartPlanComparisonEmail,
-  renderCurrentlyTakingCheckinEmail,
-  renderReengagementCheckinEmail,
   renderConversationReplyEmail,
 } from "./templates.js";
 
@@ -37,13 +34,10 @@ describe("fixed trigger-email templates", () => {
     ["order received", () => renderOrderReceivedEmail("Jamie", UNSUB_URL)],
     ["prescription written", () => renderPrescriptionWrittenEmail("Jamie", UNSUB_URL)],
     ["order shipped", () => renderOrderShippedEmail("Jamie", "1Z999AA10123456784", UNSUB_URL)],
-    ["review request", () => renderReviewRequestEmail("Jamie", UNSUB_URL)],
     ["abandoned cart opener", () => renderAbandonedCartOpenerEmail("Jamie", CTA_URL, UNSUB_URL)],
     ["abandoned cart urgency", () => renderAbandonedCartUrgencyEmail("Jamie", CTA_URL, UNSUB_URL)],
     ["abandoned cart educational", () => renderAbandonedCartEducationalEmail("Jamie", CTA_URL, UNSUB_URL)],
     ["abandoned cart plan comparison", () => renderAbandonedCartPlanComparisonEmail("Jamie", CTA_URL, UNSUB_URL)],
-    ["currently-taking checkin", () => renderCurrentlyTakingCheckinEmail("Jamie", UNSUB_URL)],
-    ["reengagement checkin", () => renderReengagementCheckinEmail("Jamie", UNSUB_URL)],
   ];
 
   for (const [label, render] of cases) {

@@ -4,7 +4,7 @@ import { getOrCreateSupportConversation, appendSupportMessage, updateSupportConv
 import { getOrCreateSupportEmailConversation, appendSupportEmailMessage } from "./support-email-conversations.service.js";
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { renderOrderReceivedMessage, renderPrescriptionWrittenMessage, renderOrderShippedMessage, renderReviewRequestMessage } from "../lib/support/templates.js";
-import { renderOrderReceivedEmail, renderPrescriptionWrittenEmail, renderOrderShippedEmail, renderReviewRequestEmail } from "../lib/email/templates.js";
+import { renderOrderReceivedEmail, renderPrescriptionWrittenEmail, renderOrderShippedEmail } from "../lib/email/templates.js";
 import { sendTriggerEmail } from "../lib/email/send-trigger-email.js";
 import { logger } from "../lib/logger.js";
 import { isCustomerSmsDnd } from "./dnd.service.js";
@@ -228,16 +228,8 @@ export async function sweepReviewRequestTriggers(): Promise<ReviewRequestSweepRe
         .where(eq(reviewRequestTriggersTable.id, trigger.id));
       sentCount++;
 
-      const emailConversation = await getOrCreateSupportEmailConversation(trigger.personId);
-      await sendTriggerEmail({
-        persona: "sarah",
-        personId: trigger.personId,
-        conversationId: emailConversation.id,
-        email: customer.email,
-        render: (unsubscribeUrl) => renderReviewRequestEmail(customer.firstName, unsubscribeUrl),
-        appendMessage: appendSupportEmailMessage,
-        logLabel: "review-request",
-      });
+      // No email leg here — no real template exists yet for the review-
+      // request email (see templates.ts), so this stays SMS-only for now.
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       await appendSupportMessage(conversation.id, "outbound", text, {});

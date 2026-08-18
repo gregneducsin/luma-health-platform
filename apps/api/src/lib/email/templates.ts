@@ -3,13 +3,20 @@
  * "fixed text, not AI-drafted" reasoning as follow-up-templates.ts and
  * support/templates.ts: a proactive outbound notice has no inbound message
  * to react to, so there's nothing for the guardrail loop to validate
- * against. Copy mirrors the SMS wording for the same event so a customer
- * getting both channels sees a consistent voice.
+ * against.
  *
- * Every template is wrapped with wrapEmailHtml, which adds the CAN-SPAM
- * required footer (physical address + one-click unsubscribe link) — every
- * automated send carries it, transactional or not, so there's no
- * per-template special-casing to get wrong.
+ * Every template — whether a full branded HTML document (order received/
+ * shipped, prescription written, the abandoned-cart drip sequence) or the
+ * plain wrapEmailHtml-wrapped fallback (renderConversationReplyEmail, for
+ * AI-drafted replies) — carries the CAN-SPAM required footer (physical
+ * address + one-click unsubscribe link), so there's no per-template
+ * special-casing to get wrong.
+ *
+ * Some trigger events (review request, both lead-checkin variants) have no
+ * real design yet and are deliberately NOT sent by email at all — see the
+ * "no email leg" comments at their SMS call sites in order-fulfillment
+ * .service.ts / lead-checkin.service.ts. Add the render function here and
+ * wire it in there once real copy exists; don't ship placeholder copy.
  */
 
 const PHYSICAL_ADDRESS_FALLBACK = "Luma Health";
@@ -346,12 +353,6 @@ export function renderOrderShippedEmail(firstName: string, trackingNumber: strin
 </body>
 </html>`;
   return { subject: "Your Luma Health order has shipped", html };
-}
-
-export function renderReviewRequestEmail(firstName: string, unsubscribeUrl: string): RenderedEmail {
-  const name = firstName.trim() || "there";
-  const body = `<p>Hi ${name}, this is Sarah with Luma Health. Now that you've had a chance to receive your medication, how has your experience with us been so far?</p>`;
-  return { subject: "How has your experience been?", html: wrapEmailHtml(body, unsubscribeUrl) };
 }
 
 /**
@@ -768,18 +769,6 @@ export function renderAbandonedCartPlanComparisonEmail(firstName: string, ctaUrl
 </body>
 </html>`;
   return { subject: "Which Luma Health plan is right for you?", html };
-}
-
-export function renderCurrentlyTakingCheckinEmail(firstName: string, unsubscribeUrl: string): RenderedEmail {
-  const name = firstName.trim() || "there";
-  const body = `<p>Hi ${name}, this is Lucy with Luma Health. Quick question — are you currently taking semaglutide or tirzepatide?</p>`;
-  return { subject: "Quick question for you", html: wrapEmailHtml(body, unsubscribeUrl) };
-}
-
-export function renderReengagementCheckinEmail(firstName: string, unsubscribeUrl: string): RenderedEmail {
-  const name = firstName.trim() || "there";
-  const body = `<p>Hi ${name}, this is Lucy with Luma Health. Still thinking it over? What's the biggest thing holding you back from getting started?</p>`;
-  return { subject: "Still thinking it over?", html: wrapEmailHtml(body, unsubscribeUrl) };
 }
 
 /** Plain-reply wrapper for AI-drafted turn replies (Lucy/Sarah email dispatch) — same wrapper, no fixed copy since the text itself is the guardrail-validated draft. */
