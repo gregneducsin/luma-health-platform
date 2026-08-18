@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: "/questionnaires", label: "Questionnaires" },
   { href: "/conversations", label: "Conversations" },
   { href: "/support", label: "Support" },
+  { href: "/reporting", label: "Reporting" },
   { href: "/marketing-cpa", label: "Marketing CPA" },
   { href: "/payroll/employees", label: "Employees" },
   { href: "/payroll/weeks", label: "Payroll" },

@@ -13,6 +13,7 @@ import { QuestionnairesPage } from "./pages/QuestionnairesPage";
 import { ConversationsPage } from "./pages/ConversationsPage";
 import { SupportPage } from "./pages/SupportPage";
 import { NeedsAttentionPage } from "./pages/NeedsAttentionPage";
+import { ReportingPage } from "./pages/ReportingPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
 export default function App() {
@@ -90,6 +91,12 @@ export default function App() {
       <Route path="/needs-attention">
         <ProtectedRoute>
           <NeedsAttentionPage />
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/reporting">
+        <ProtectedRoute>
+          <ReportingPage />
         </ProtectedRoute>
       </Route>
 

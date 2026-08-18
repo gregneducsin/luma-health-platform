@@ -17,6 +17,7 @@ import { createConversationsRouter } from "./routes/conversations.routes.js";
 import { createSarahTestRouter } from "./routes/sarah-test.routes.js";
 import { createSupportConversationsRouter } from "./routes/support-conversations.routes.js";
 import { createNeedsAttentionRouter } from "./routes/needs-attention.routes.js";
+import { createReportingRouter } from "./routes/reporting.routes.js";
 import { createEmployeesRouter } from "./routes/payroll/employees.routes.js";
 import { createPayrollWeeksRouter } from "./routes/payroll/weeks.routes.js";
 import { createMarketingSpendRouter } from "./routes/payroll/marketing-spend.routes.js";
@@ -87,6 +88,7 @@ export function createApp(): Express {
   app.use("/api/app/sarah-test", createSarahTestRouter());
   app.use("/api/app/support-conversations", createSupportConversationsRouter());
   app.use("/api/app/needs-attention", createNeedsAttentionRouter());
+  app.use("/api/app/reporting", createReportingRouter());
   app.use("/api/app/payroll/employees", createEmployeesRouter());
   app.use("/api/app/payroll/weeks", createPayrollWeeksRouter());
   app.use("/api/app/payroll/marketing-spend", createMarketingSpendRouter());
