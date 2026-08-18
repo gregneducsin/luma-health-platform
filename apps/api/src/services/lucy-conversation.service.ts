@@ -123,11 +123,26 @@ export async function runLucyTurn(personId: string, body: BotPreviewRequestBody)
   const result = post.result;
   let link: string | null = null;
   let finalReply = result.reply;
+  let linkMintFailed = false;
 
   if (result.action === "send_form") {
-    const minted = await createIntakeLink(personId, result.promoOffered ? "first_month_20" : "none");
-    link = minted.url;
-    finalReply = result.reply ? `${result.reply} ${link}` : link;
+    try {
+      const minted = await createIntakeLink(personId, result.promoOffered ? "first_month_20" : "none");
+      link = minted.url;
+      finalReply = result.reply ? `${result.reply} ${link}` : link;
+    } catch (err) {
+      // Same fail-soft posture as every other trigger/send path in this
+      // codebase — a config or DB problem minting the link must not silence
+      // the whole turn (the customer texted in ready to sign up; going
+      // completely quiet here is worse than every other failure mode this
+      // pipeline already guards against). The customer still gets Claude's
+      // approved reply text, just without the link, and requiresStaff below
+      // flags the conversation for a human to follow up with it manually —
+      // same mechanism the caller already uses for needsAttention.
+      logger.warn({ personId, reason: err instanceof Error ? err.message : String(err) }, "send_form: failed to mint intake link");
+      finalReply = result.reply ?? "Someone from our team will follow up with your signup link shortly.";
+      linkMintFailed = true;
+    }
   }
 
   return {
@@ -140,7 +155,7 @@ export async function runLucyTurn(personId: string, body: BotPreviewRequestBody)
     linkProvided: link !== null ? true : result.linkProvided,
     promoOffered: result.promoOffered,
     inboundSentiment: result.inboundSentiment,
-    requiresStaff: result.requiresStaff,
+    requiresStaff: result.requiresStaff || linkMintFailed,
     knowledgeTopicsUsed: result.knowledgeTopicsUsed,
     validatedSlotUpdates: post.validatedSlotUpdates,
     source: "model",

@@ -162,6 +162,30 @@ describe("runLucyTurn", () => {
     }
   });
 
+  it("fails soft when minting the intake link throws (e.g. INTAKE_LINK_BASE_URL misconfigured) — still replies, without a link, and flags staff attention", async () => {
+    callClaudeInteractiveMock.mockClear();
+    callClaudeInteractiveMock.mockResolvedValueOnce(
+      modelResult({ action: "send_form", reply: "Perfect, sending you the signup link now.", nextQuestion: null, knowledgeTopicsUsed: [] }),
+    );
+    const personId = await seedCustomer();
+
+    const saved = process.env.INTAKE_LINK_BASE_URL;
+    delete process.env.INTAKE_LINK_BASE_URL;
+    try {
+      const result = await runLucyTurn(personId, baseBody());
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.action).toBe("send_form");
+        expect(result.link).toBeNull();
+        expect(result.reply).toBe("Perfect, sending you the signup link now.");
+        expect(result.requiresStaff).toBe(true);
+      }
+    } finally {
+      process.env.INTAKE_LINK_BASE_URL = saved;
+    }
+  });
+
   it("passes through the objection stage the model reports", async () => {
     callClaudeInteractiveMock.mockClear();
     callClaudeInteractiveMock.mockResolvedValueOnce(modelResult({ objectionStage: 1 }));
