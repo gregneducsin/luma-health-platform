@@ -5,6 +5,7 @@ import { sweepFollowUpJobs } from "./services/follow-up-jobs.service.js";
 import { sweepAbandonedCartTriggers } from "./services/abandoned-cart.service.js";
 import { sweepReviewRequestTriggers } from "./services/order-fulfillment.service.js";
 import { sweepLeadCheckinTriggers } from "./services/lead-checkin.service.js";
+import { sweepInboundEmail } from "./services/email-inbound.service.js";
 
 // Migrations are applied as a discrete step before this process starts (see
 // packages/db/src/migrate.ts's docstring, the Dockerfile entrypoint, and the
@@ -56,3 +57,21 @@ setInterval(() => {
     logger.error({ err }, "lead check-in sweep failed");
   });
 }, LEAD_CHECKIN_SWEEP_INTERVAL_MS);
+
+// Inbound-email IMAP poll — same in-process interval pattern as the sweeps
+// above, just polling a mailbox instead of due DB rows (see
+// email-inbound.service.ts's sweepInboundEmail docstring). Gated on
+// GOOGLE_WORKSPACE_SMTP_USER being set (unlike the SMS sweeps, which always
+// run and just no-op per item when unconfigured): an unconfigured mailbox
+// can't do anything useful, so starting the poll would only produce a
+// connection-refused log line every minute.
+const EMAIL_INBOUND_SWEEP_INTERVAL_MS = 60 * 1000;
+if (process.env.GOOGLE_WORKSPACE_SMTP_USER) {
+  setInterval(() => {
+    sweepInboundEmail().catch((err) => {
+      logger.error({ err }, "inbound email sweep failed");
+    });
+  }, EMAIL_INBOUND_SWEEP_INTERVAL_MS);
+} else {
+  logger.info("GOOGLE_WORKSPACE_SMTP_USER not set — inbound email polling disabled");
+}

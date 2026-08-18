@@ -1,8 +1,11 @@
 import { and, eq, lt, lte, or, sql } from "drizzle-orm";
 import { db, customersTable, reviewRequestTriggersTable } from "@luma/db";
 import { getOrCreateSupportConversation, appendSupportMessage, updateSupportConversationState } from "./support-conversations.service.js";
+import { getOrCreateSupportEmailConversation, appendSupportEmailMessage } from "./support-email-conversations.service.js";
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { renderOrderReceivedMessage, renderPrescriptionWrittenMessage, renderOrderShippedMessage, renderReviewRequestMessage } from "../lib/support/templates.js";
+import { renderOrderReceivedEmail, renderOrderShippedEmail, renderReviewRequestEmail } from "../lib/email/templates.js";
+import { sendTriggerEmail } from "../lib/email/send-trigger-email.js";
 import { logger } from "../lib/logger.js";
 import { isCustomerDnd } from "./dnd.service.js";
 
@@ -26,8 +29,11 @@ const REVIEW_REQUEST_DELAY_MS = 5 * 24 * 60 * 60 * 1000;
 const MAX_SEND_ATTEMPTS = 3;
 const RETRY_COOLDOWN_MS = 30 * 60 * 1000;
 
-async function getCustomerContact(personId: string): Promise<{ firstName: string; phone: string | null } | undefined> {
-  const [row] = await db.select({ firstName: customersTable.firstName, phone: customersTable.phone }).from(customersTable).where(eq(customersTable.id, personId));
+async function getCustomerContact(personId: string): Promise<{ firstName: string; phone: string | null; email: string } | undefined> {
+  const [row] = await db
+    .select({ firstName: customersTable.firstName, phone: customersTable.phone, email: customersTable.email })
+    .from(customersTable)
+    .where(eq(customersTable.id, personId));
   return row;
 }
 
@@ -58,6 +64,17 @@ export async function sendOrderReceivedOpener(personId: string): Promise<void> {
     logger.warn({ personId, reason }, "order-received opener send failed");
     await appendSupportMessage(conversation.id, "outbound", text, {});
   }
+
+  const emailConversation = await getOrCreateSupportEmailConversation(personId);
+  await sendTriggerEmail({
+    persona: "sarah",
+    personId,
+    conversationId: emailConversation.id,
+    email: customer.email,
+    render: (unsubscribeUrl) => renderOrderReceivedEmail(customer.firstName, unsubscribeUrl),
+    appendMessage: appendSupportEmailMessage,
+    logLabel: "order-received",
+  });
 }
 
 /** Fired synchronously from the prescription-written webhook handler. */
@@ -105,6 +122,19 @@ export async function handleOrderShipped(personId: string, trackingNumber: strin
     }
   } else {
     logger.warn({ personId, reason: dnd ? "do_not_disturb" : "no_phone_number" }, "order-shipped notice not sent");
+  }
+
+  if (customer) {
+    const emailConversation = await getOrCreateSupportEmailConversation(personId);
+    await sendTriggerEmail({
+      persona: "sarah",
+      personId,
+      conversationId: emailConversation.id,
+      email: customer.email,
+      render: (unsubscribeUrl) => renderOrderShippedEmail(customer.firstName, trackingNumber, unsubscribeUrl),
+      appendMessage: appendSupportEmailMessage,
+      logLabel: "order-shipped",
+    });
   }
 
   await db
@@ -187,6 +217,17 @@ export async function sweepReviewRequestTriggers(): Promise<ReviewRequestSweepRe
         .set({ status: "sent", sentAt: sql`now()`, providerMessageId: result.providerMessageId, attemptCount: nextAttemptCount })
         .where(eq(reviewRequestTriggersTable.id, trigger.id));
       sentCount++;
+
+      const emailConversation = await getOrCreateSupportEmailConversation(trigger.personId);
+      await sendTriggerEmail({
+        persona: "sarah",
+        personId: trigger.personId,
+        conversationId: emailConversation.id,
+        email: customer.email,
+        render: (unsubscribeUrl) => renderReviewRequestEmail(customer.firstName, unsubscribeUrl),
+        appendMessage: appendSupportEmailMessage,
+        logLabel: "review-request",
+      });
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       await appendSupportMessage(conversation.id, "outbound", text, {});

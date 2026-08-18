@@ -1,8 +1,11 @@
 import { and, eq, lt, lte, or, sql } from "drizzle-orm";
 import { db, customersTable, purchasesTable, leadCheckinTriggersTable } from "@luma/db";
 import { getOrCreateConversation, appendMessage } from "./conversations.service.js";
+import { getOrCreateEmailConversation, appendEmailMessage } from "./email-conversations.service.js";
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { renderCurrentlyTakingCheckin, renderReengagementCheckin } from "../lib/messaging/follow-up-templates.js";
+import { renderCurrentlyTakingCheckinEmail, renderReengagementCheckinEmail } from "../lib/email/templates.js";
+import { sendTriggerEmail } from "../lib/email/send-trigger-email.js";
 import { logger } from "../lib/logger.js";
 import { isCustomerDnd } from "./dnd.service.js";
 
@@ -83,9 +86,30 @@ export async function sweepLeadCheckinTriggers(): Promise<LeadCheckinSweepResult
       continue;
     }
 
-    const [customer] = await db.select({ firstName: customersTable.firstName, phone: customersTable.phone }).from(customersTable).where(eq(customersTable.id, trigger.personId));
+    const [customer] = await db
+      .select({ firstName: customersTable.firstName, phone: customersTable.phone, email: customersTable.email })
+      .from(customersTable)
+      .where(eq(customersTable.id, trigger.personId));
     const conversation = await getOrCreateConversation(trigger.personId);
     const nextAttemptCount = trigger.attemptCount + 1;
+
+    if (customer) {
+      // Email fires independently of the SMS attempt below — its own
+      // conversation thread tracks its own currentlyTaking slot, since the
+      // two channels are fully separate threads (see email schema notes).
+      const emailConversation = await getOrCreateEmailConversation(trigger.personId);
+      const emailVariant = emailConversation.currentlyTaking === null ? "currently_taking" : "reengagement";
+      const renderEmail = emailVariant === "currently_taking" ? renderCurrentlyTakingCheckinEmail : renderReengagementCheckinEmail;
+      await sendTriggerEmail({
+        persona: "lucy",
+        personId: trigger.personId,
+        conversationId: emailConversation.id,
+        email: customer.email,
+        render: (unsubscribeUrl) => renderEmail(customer.firstName, unsubscribeUrl),
+        appendMessage: appendEmailMessage,
+        logLabel: "lead check-in",
+      });
+    }
 
     if (!customer?.phone) {
       await db

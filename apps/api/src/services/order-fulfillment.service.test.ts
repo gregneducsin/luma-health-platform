@@ -1,12 +1,26 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeAll } from "vitest";
 import { eq } from "drizzle-orm";
 import { db, customersTable, reviewRequestTriggersTable } from "@luma/db";
 import { setCustomerDnd } from "./dnd.service.js";
+
+beforeAll(() => {
+  process.env.EMAIL_PROVIDER = "google_workspace";
+  process.env.GOOGLE_WORKSPACE_SMTP_USER = "bot@example.com";
+  process.env.GOOGLE_WORKSPACE_SMTP_APP_PASSWORD = "app-password";
+  process.env.EMAIL_UNSUBSCRIBE_SECRET = "test-secret";
+  process.env.INTAKE_LINK_BASE_URL = "http://localhost:3000";
+});
 
 const sendMessageMock = vi.fn();
 vi.mock("../lib/sms-provider.js", async () => {
   const actual = await vi.importActual<typeof import("../lib/sms-provider.js")>("../lib/sms-provider.js");
   return { ...actual, getSmsProvider: () => ({ sendMessage: sendMessageMock }) };
+});
+
+const sendEmailMock = vi.fn();
+vi.mock("../lib/email-provider.js", async () => {
+  const actual = await vi.importActual<typeof import("../lib/email-provider.js")>("../lib/email-provider.js");
+  return { ...actual, getEmailProvider: (persona: "lucy" | "sarah") => ({ provider: { sendEmail: sendEmailMock }, fromName: `${persona} at Luma Health` }) };
 });
 
 const { sendOrderReceivedOpener, handlePrescriptionWritten, handleOrderShipped, sweepReviewRequestTriggers } = await import(
@@ -32,6 +46,11 @@ async function backdateTrigger(personId: string) {
   await db.update(reviewRequestTriggersTable).set({ dueAt: new Date(Date.now() - 60_000) }).where(eq(reviewRequestTriggersTable.personId, personId));
 }
 
+async function getCustomerEmail(personId: string): Promise<string> {
+  const [row] = await db.select({ email: customersTable.email }).from(customersTable).where(eq(customersTable.id, personId));
+  return row.email;
+}
+
 describe("sendOrderReceivedOpener", () => {
   it("sends the order-received message and logs it", async () => {
     sendMessageMock.mockClear();
@@ -45,6 +64,20 @@ describe("sendOrderReceivedOpener", () => {
     const messages = await listSupportMessages(conversation.id);
     expect(messages.length).toBe(1);
     expect(messages[0].providerMessageId).toBe("msg_opener");
+  });
+
+  it("also sends an order-received email alongside the text", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_opener_email_sibling" });
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<order-received@example.com>" });
+
+    const personId = await seedCustomer();
+    const email = await getCustomerEmail(personId);
+    await sendOrderReceivedOpener(personId);
+
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    expect(sendEmailMock.mock.calls[0][0]).toBe(email);
   });
 
   it("does not call the provider when there's no phone on file", async () => {

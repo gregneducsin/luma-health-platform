@@ -20,6 +20,7 @@ import { createEmployeesRouter } from "./routes/payroll/employees.routes.js";
 import { createPayrollWeeksRouter } from "./routes/payroll/weeks.routes.js";
 import { createMarketingSpendRouter } from "./routes/payroll/marketing-spend.routes.js";
 import { createIntakeLinksRouter } from "./routes/intake-links.routes.js";
+import { createEmailUnsubscribeRouter } from "./routes/email-unsubscribe.routes.js";
 import { createGhlLeadWebhookRouter } from "./routes/webhooks/ghl-lead.routes.js";
 import { createBaskOrderWebhookRouter } from "./routes/webhooks/bask-order.routes.js";
 import { createBaskQuestionnaireWebhookRouter } from "./routes/webhooks/bask-questionnaire.routes.js";
@@ -63,6 +64,10 @@ export function createApp(): Express {
   // cookie, no CSRF token, no webhook secret: it's a customer's browser
   // following a link, not a call from our dashboard or from Bask/GHL.
   app.use("/go", createIntakeLinksRouter());
+
+  // Same public, unauthenticated reasoning as /go above — the destination
+  // of the one-click unsubscribe link every automated email carries.
+  app.use("/unsubscribe", createEmailUnsubscribeRouter());
 
   // Populate req.user from the session cookie before any route that needs it.
   app.use(sessionMiddleware);

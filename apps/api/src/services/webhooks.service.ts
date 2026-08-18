@@ -31,7 +31,7 @@ import { setCustomerDnd } from "./dnd.service.js";
  * misattributing one person's order/prescription/tracking data to another.
  * lower()-equality has no wildcard semantics at all.
  */
-function caseInsensitiveEmailEq(email: string) {
+export function caseInsensitiveEmailEq(email: string) {
   return sql`lower(${customersTable.email}) = lower(${email})`;
 }
 

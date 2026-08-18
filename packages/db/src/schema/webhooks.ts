@@ -19,6 +19,7 @@ export const webhookEventsTable = pgTable(
         "bask_prescription_written",
         "bask_order_shipped",
         "iblusend_message",
+        "email_inbound",
       ],
     }).notNull(),
     externalEventId: text("external_event_id").notNull(),

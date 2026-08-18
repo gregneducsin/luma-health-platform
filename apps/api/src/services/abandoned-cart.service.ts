@@ -1,9 +1,12 @@
 import { and, eq, lte, sql } from "drizzle-orm";
 import { db, abandonedCartTriggersTable, customersTable, purchasesTable, questionnaireEventsTable } from "@luma/db";
 import { getOrCreateConversation, appendMessage, updateConversationState } from "./conversations.service.js";
+import { getOrCreateEmailConversation, appendEmailMessage, updateEmailConversationState } from "./email-conversations.service.js";
 import { scheduleLeadCheckin } from "./lead-checkin.service.js";
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { renderAbandonedCartOpener } from "../lib/messaging/follow-up-templates.js";
+import { renderAbandonedCartOpenerEmail } from "../lib/email/templates.js";
+import { sendTriggerEmail } from "../lib/email/send-trigger-email.js";
 import { logger } from "../lib/logger.js";
 import { isCustomerDnd } from "./dnd.service.js";
 
@@ -102,18 +105,41 @@ async function isStillEligible(personId: string, questionnaireEventId: string): 
 type SendResult = { ok: true; providerMessageId: string } | { ok: false; reason: string };
 
 async function sendOpener(personId: string): Promise<SendResult> {
-  const [customer] = await db.select({ firstName: customersTable.firstName, phone: customersTable.phone }).from(customersTable).where(eq(customersTable.id, personId));
-  if (!customer?.phone) {
-    return { ok: false, reason: "NO_PHONE_NUMBER" };
+  const [customer] = await db
+    .select({ firstName: customersTable.firstName, phone: customersTable.phone, email: customersTable.email })
+    .from(customersTable)
+    .where(eq(customersTable.id, personId));
+  if (!customer) {
+    return { ok: false, reason: "CUSTOMER_NOT_FOUND" };
   }
 
-  const text = renderAbandonedCartOpener(customer.firstName);
-  const conversation = await getOrCreateConversation(personId);
   // Arms the 6-day check-in the moment we're about to send this lead's very
   // first message — regardless of whether the send itself succeeds, same as
   // every other trigger-arming call in this codebase. No-op if a check-in
   // was already armed for this person (e.g. by the Meta-lead opener).
   await scheduleLeadCheckin(personId);
+
+  // Email fires independently of the SMS attempt below — a missing phone
+  // number shouldn't also suppress the one channel that always has an
+  // address to send to.
+  const emailConversation = await getOrCreateEmailConversation(personId);
+  await sendTriggerEmail({
+    persona: "lucy",
+    personId,
+    conversationId: emailConversation.id,
+    email: customer.email,
+    render: (unsubscribeUrl) => renderAbandonedCartOpenerEmail(customer.firstName, unsubscribeUrl),
+    appendMessage: appendEmailMessage,
+    logLabel: "abandoned-cart opener",
+  });
+  await updateEmailConversationState(emailConversation.id, { promoOffered: true });
+
+  if (!customer.phone) {
+    return { ok: false, reason: "NO_PHONE_NUMBER" };
+  }
+
+  const text = renderAbandonedCartOpener(customer.firstName);
+  const conversation = await getOrCreateConversation(personId);
 
   try {
     const result = await getSmsProvider().sendMessage(customer.phone, text);

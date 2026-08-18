@@ -99,6 +99,13 @@
       "when": 1786996171383,
       "tag": "0013_material_vanisher",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1787017265199,
+      "tag": "0014_bright_paladin",
+      "breakpoints": true
     }
   ]
 }

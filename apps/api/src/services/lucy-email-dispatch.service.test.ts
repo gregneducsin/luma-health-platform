@@ -1,0 +1,144 @@
+import { describe, expect, it, vi, beforeAll } from "vitest";
+import { db, customersTable } from "@luma/db";
+import type { LucyTurnResult } from "./lucy-conversation.service.js";
+import { isCustomerDnd, setCustomerDnd } from "./dnd.service.js";
+
+beforeAll(() => {
+  process.env.EMAIL_PROVIDER = "google_workspace";
+  process.env.GOOGLE_WORKSPACE_SMTP_USER = "bot@example.com";
+  process.env.GOOGLE_WORKSPACE_SMTP_APP_PASSWORD = "app-password";
+  process.env.EMAIL_UNSUBSCRIBE_SECRET = "test-secret";
+  process.env.INTAKE_LINK_BASE_URL = "http://localhost:3000";
+});
+
+const runLucyTurnMock = vi.fn();
+vi.mock("./lucy-conversation.service.js", async () => {
+  const actual = await vi.importActual<typeof import("./lucy-conversation.service.js")>("./lucy-conversation.service.js");
+  return { ...actual, runLucyTurn: (...args: unknown[]) => runLucyTurnMock(...args) };
+});
+
+const sendEmailMock = vi.fn();
+vi.mock("../lib/email-provider.js", async () => {
+  const actual = await vi.importActual<typeof import("../lib/email-provider.js")>("../lib/email-provider.js");
+  return { ...actual, getEmailProvider: () => ({ provider: { sendEmail: sendEmailMock }, fromName: "Lucy at Luma Health" }) };
+});
+
+const { processInboundEmail } = await import("./lucy-email-dispatch.service.js");
+const { getOrCreateEmailConversation, listEmailMessages } = await import("./email-conversations.service.js");
+
+async function seedCustomer(): Promise<string> {
+  const [row] = await db
+    .insert(customersTable)
+    .values({ firstName: "Email", lastName: "Test", email: `email-dispatch-${crypto.randomUUID()}@example.com`, leadReceivedDate: "2026-08-15" })
+    .returning({ id: customersTable.id });
+  return row.id;
+}
+
+function okResult(overrides: Partial<Extract<LucyTurnResult, { ok: true }>> = {}): LucyTurnResult {
+  return {
+    ok: true,
+    action: "reply",
+    reply: "Semaglutide starts at $120 for the 1-month plan.",
+    nextQuestion: "Which plan are you considering?",
+    link: null,
+    objectionStage: 0,
+    linkProvided: false,
+    promoOffered: false,
+    inboundSentiment: "neutral",
+    requiresStaff: false,
+    knowledgeTopicsUsed: ["semaglutide_pricing"],
+    validatedSlotUpdates: {},
+    source: "model",
+    preCheckCode: null,
+    ...overrides,
+  };
+}
+
+describe("processInboundEmail", () => {
+  it("persists the inbound email, sends a combined reply+nextQuestion email threaded to it, and logs it", async () => {
+    runLucyTurnMock.mockClear();
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<reply-1@example.com>" });
+    runLucyTurnMock.mockResolvedValueOnce(okResult());
+
+    const personId = await seedCustomer();
+    const result = await processInboundEmail(personId, "Question about pricing", "How much is semaglutide?", "<inbound-1@example.com>");
+
+    expect(result.ok).toBe(true);
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    const [, subject, html, opts] = sendEmailMock.mock.calls[0];
+    expect(subject).toBe("Re: Question about pricing");
+    expect(html).toContain("Semaglutide starts at $120");
+    expect(html).toContain("Which plan are you considering?");
+    expect(opts.inReplyTo).toBe("<inbound-1@example.com>");
+
+    const conversation = await getOrCreateEmailConversation(personId);
+    const messages = await listEmailMessages(conversation.id);
+    expect(messages.map((m) => m.direction)).toEqual(["inbound", "outbound"]);
+    expect(messages[1].messageId).toBe("<reply-1@example.com>");
+    expect(messages[1].inReplyTo).toBe("<inbound-1@example.com>");
+  });
+
+  it("does not double 'Re:' when the inbound subject already has one", async () => {
+    runLucyTurnMock.mockClear();
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<reply-2@example.com>" });
+    runLucyTurnMock.mockResolvedValueOnce(okResult());
+
+    const personId = await seedCustomer();
+    await processInboundEmail(personId, "Re: Question about pricing", "Tell me more", null);
+
+    const [, subject] = sendEmailMock.mock.calls[0];
+    expect(subject).toBe("Re: Question about pricing");
+  });
+
+  it("sends the OPT_OUT confirmation reply, then marks the customer DND — the confirmation itself is not blocked", async () => {
+    runLucyTurnMock.mockClear();
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<optout-1@example.com>" });
+    runLucyTurnMock.mockResolvedValueOnce(
+      okResult({
+        action: "pause",
+        reply: "You've been unsubscribed and won't receive further messages. Reply HELP for help.",
+        nextQuestion: null,
+        source: "pre_check_block",
+        preCheckCode: "OPT_OUT",
+      }),
+    );
+
+    const personId = await seedCustomer();
+    expect(await isCustomerDnd(personId)).toBe(false);
+
+    await processInboundEmail(personId, "unsubscribe me", "STOP", null);
+
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    expect(await isCustomerDnd(personId)).toBe(true);
+  });
+
+  it("does not send anything to a customer who is already do-not-disturb", async () => {
+    runLucyTurnMock.mockClear();
+    sendEmailMock.mockClear();
+    runLucyTurnMock.mockResolvedValueOnce(okResult());
+
+    const personId = await seedCustomer();
+    await setCustomerDnd(personId, true);
+
+    await processInboundEmail(personId, "still interested", "is this still $120?", null);
+
+    expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
+  it("does not send anything, but still persists the inbound message and flags for staff, when the guardrail rejects the turn", async () => {
+    runLucyTurnMock.mockClear();
+    sendEmailMock.mockClear();
+    runLucyTurnMock.mockResolvedValueOnce({ ok: false, code: "UNSUPPORTED_PRICING_CLAIM" });
+
+    const personId = await seedCustomer();
+    const result = await processInboundEmail(personId, "discount?", "give me a discount", null);
+
+    expect(result.ok).toBe(false);
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    const conversation = await getOrCreateEmailConversation(personId);
+    expect(conversation.needsAttention).toBe(true);
+  });
+});
