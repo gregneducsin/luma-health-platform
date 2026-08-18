@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeAll } from "vitest";
 import { eq } from "drizzle-orm";
 import { db, customersTable, reviewRequestTriggersTable } from "@luma/db";
-import { setCustomerDnd } from "./dnd.service.js";
+import { setCustomerSmsDnd } from "./dnd.service.js";
 
 beforeAll(() => {
   process.env.EMAIL_PROVIDER = "google_workspace";
@@ -90,7 +90,7 @@ describe("sendOrderReceivedOpener", () => {
   it("does not call the provider when the customer is do-not-disturb", async () => {
     sendMessageMock.mockClear();
     const personId = await seedCustomer();
-    await setCustomerDnd(personId, true);
+    await setCustomerSmsDnd(personId, true);
     await sendOrderReceivedOpener(personId);
     expect(sendMessageMock).not.toHaveBeenCalled();
   });
@@ -184,7 +184,7 @@ describe("sweepReviewRequestTriggers", () => {
     const personId = await seedCustomer();
     await handleOrderShipped(personId, "TRACK-DND");
     await backdateTrigger(personId);
-    await setCustomerDnd(personId, true);
+    await setCustomerSmsDnd(personId, true);
 
     sendMessageMock.mockClear();
     const result = await sweepReviewRequestTriggers();

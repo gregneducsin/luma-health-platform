@@ -15,7 +15,7 @@ import { renderConversationReplyEmail } from "../lib/email/templates.js";
 import { buildUnsubscribeUrl } from "../lib/email/unsubscribe.js";
 import { logger } from "../lib/logger.js";
 import { withPersonLock } from "../lib/db-lock.js";
-import { isCustomerDnd, setCustomerDnd } from "./dnd.service.js";
+import { isCustomerEmailDnd, setCustomerEmailDnd } from "./dnd.service.js";
 
 async function getCustomerContact(personId: string): Promise<{ firstName: string; email: string } | undefined> {
   const [row] = await db.select({ firstName: customersTable.firstName, email: customersTable.email }).from(customersTable).where(eq(customersTable.id, personId));
@@ -42,7 +42,7 @@ async function sendAndLog(
   bodyText: string,
   inReplyTo: string | null,
 ): Promise<void> {
-  if (await isCustomerDnd(personId)) {
+  if (await isCustomerEmailDnd(personId)) {
     logger.warn({ personId, conversationId }, "outbound Lucy email not sent: customer is do-not-disturb");
     return;
   }
@@ -100,7 +100,7 @@ async function processInboundEmailLocked(personId: string, subject: string, body
 
   // Set DND only after this turn's reply has gone out — see sendAndLog's docstring.
   if (result.preCheckCode === "OPT_OUT") {
-    await setCustomerDnd(personId, true);
+    await setCustomerEmailDnd(personId, true);
   }
 
   const slotPatch: EmailConversationStatePatch = {};

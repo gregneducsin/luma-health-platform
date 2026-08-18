@@ -502,7 +502,7 @@ describe("Purchases", () => {
     expect(audits[0].changedBy).toBe("admin4@example.com");
   });
 
-  it("clears a customer's do-not-disturb flag when a purchase is recorded", async () => {
+  it("clears a customer's do-not-disturb flag on both channels when a purchase is recorded", async () => {
     await seedUser("admin-dnd@example.com", "admin");
     const { agent, csrf } = await loginAgent(app, "admin-dnd@example.com");
 
@@ -512,9 +512,11 @@ describe("Purchases", () => {
       .send({ firstName: "Opted", lastName: "Out", email: "opted-out@example.com", leadReceivedDate: "2026-01-01" });
     const customerId = customerRes.body.customer.id;
 
-    const { setCustomerDnd, isCustomerDnd } = await import("../services/dnd.service.js");
-    await setCustomerDnd(customerId, true);
-    expect(await isCustomerDnd(customerId)).toBe(true);
+    const { setCustomerSmsDnd, isCustomerSmsDnd, setCustomerEmailDnd, isCustomerEmailDnd } = await import("../services/dnd.service.js");
+    await setCustomerSmsDnd(customerId, true);
+    await setCustomerEmailDnd(customerId, true);
+    expect(await isCustomerSmsDnd(customerId)).toBe(true);
+    expect(await isCustomerEmailDnd(customerId)).toBe(true);
 
     const purchaseRes = await agent
       .post(`/api/app/customers/${customerId}/purchases`)
@@ -522,7 +524,8 @@ describe("Purchases", () => {
       .send({ purchaseDate: "2026-01-10", orderNumber: "ORD-DND", productName: "Gadget", amountPaid: "75.00" });
     expect(purchaseRes.status).toBe(201);
 
-    expect(await isCustomerDnd(customerId)).toBe(false);
+    expect(await isCustomerSmsDnd(customerId)).toBe(false);
+    expect(await isCustomerEmailDnd(customerId)).toBe(false);
   });
 
   it("returns 404 for an unknown purchase id", async () => {

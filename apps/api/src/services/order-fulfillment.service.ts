@@ -7,7 +7,7 @@ import { renderOrderReceivedMessage, renderPrescriptionWrittenMessage, renderOrd
 import { renderOrderReceivedEmail, renderOrderShippedEmail, renderReviewRequestEmail } from "../lib/email/templates.js";
 import { sendTriggerEmail } from "../lib/email/send-trigger-email.js";
 import { logger } from "../lib/logger.js";
-import { isCustomerDnd } from "./dnd.service.js";
+import { isCustomerSmsDnd } from "./dnd.service.js";
 
 /**
  * ASSUMPTION pending owner confirmation: there's no explicit "delivered"
@@ -48,7 +48,7 @@ export async function sendOrderReceivedOpener(personId: string): Promise<void> {
     logger.warn({ personId }, "order-received opener not sent: no phone number on file");
     return;
   }
-  if (await isCustomerDnd(personId)) {
+  if (await isCustomerSmsDnd(personId)) {
     logger.warn({ personId }, "order-received opener not sent: customer is do-not-disturb");
     return;
   }
@@ -87,7 +87,7 @@ export async function handlePrescriptionWritten(personId: string): Promise<void>
     logger.warn({ personId }, "prescription-written notice not sent: no phone number on file");
     return;
   }
-  if (await isCustomerDnd(personId)) {
+  if (await isCustomerSmsDnd(personId)) {
     logger.warn({ personId }, "prescription-written notice not sent: customer is do-not-disturb");
     return;
   }
@@ -110,7 +110,7 @@ export async function handleOrderShipped(personId: string, trackingNumber: strin
   const conversation = await getOrCreateSupportConversation(personId);
   await updateSupportConversationState(conversation.id, { orderShipped: true, orderShippedAt: new Date(), trackingNumber });
 
-  const dnd = await isCustomerDnd(personId);
+  const dnd = await isCustomerSmsDnd(personId);
   if (customer?.phone && !dnd) {
     const text = renderOrderShippedMessage(customer.firstName, trackingNumber);
     try {
@@ -181,7 +181,7 @@ export async function sweepReviewRequestTriggers(): Promise<ReviewRequestSweepRe
   let cancelledCount = 0;
 
   for (const trigger of claimed) {
-    if (await isCustomerDnd(trigger.personId)) {
+    if (await isCustomerSmsDnd(trigger.personId)) {
       await db
         .update(reviewRequestTriggersTable)
         .set({ status: "cancelled", cancelledReason: "opted_out" })

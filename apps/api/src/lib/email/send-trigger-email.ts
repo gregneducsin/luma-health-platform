@@ -1,7 +1,7 @@
 import { getEmailProvider, type EmailPersona } from "../email-provider.js";
 import { htmlToPlainText, type RenderedEmail } from "./templates.js";
 import { buildUnsubscribeUrl } from "./unsubscribe.js";
-import { isCustomerDnd } from "../../services/dnd.service.js";
+import { isCustomerEmailDnd } from "../../services/dnd.service.js";
 import { logger } from "../logger.js";
 
 type AppendEmailMessageFn = (
@@ -34,7 +34,7 @@ export async function sendTriggerEmail(params: {
 }): Promise<void> {
   const { persona, personId, conversationId, email, render, appendMessage, logLabel } = params;
 
-  if (await isCustomerDnd(personId)) {
+  if (await isCustomerEmailDnd(personId)) {
     logger.warn({ personId, conversationId }, `${logLabel} email not sent: customer is do-not-disturb`);
     return;
   }

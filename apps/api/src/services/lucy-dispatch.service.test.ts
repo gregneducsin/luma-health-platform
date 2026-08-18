@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { db, customersTable, conversationsTable } from "@luma/db";
 import type { LucyTurnResult } from "./lucy-conversation.service.js";
-import { isCustomerDnd, setCustomerDnd } from "./dnd.service.js";
+import { isCustomerSmsDnd, setCustomerSmsDnd, setCustomerEmailDnd } from "./dnd.service.js";
 
 const runLucyTurnMock = vi.fn();
 vi.mock("./lucy-conversation.service.js", async () => {
@@ -248,13 +248,13 @@ describe("processInboundMessage", () => {
     );
 
     const personId = await seedCustomer();
-    expect(await isCustomerDnd(personId)).toBe(false);
+    expect(await isCustomerSmsDnd(personId)).toBe(false);
 
     await processInboundMessage(personId, "STOP");
 
     expect(sendMessageMock).toHaveBeenCalledTimes(1);
     expect(sendMessageMock).toHaveBeenCalledWith("+15551230000", "You've been unsubscribed and won't receive further messages. Reply HELP for help.");
-    expect(await isCustomerDnd(personId)).toBe(true);
+    expect(await isCustomerSmsDnd(personId)).toBe(true);
   });
 
   it("does not send anything to a customer who is already do-not-disturb", async () => {
@@ -263,10 +263,24 @@ describe("processInboundMessage", () => {
     runLucyTurnMock.mockResolvedValueOnce(okResult());
 
     const personId = await seedCustomer();
-    await setCustomerDnd(personId, true);
+    await setCustomerSmsDnd(personId, true);
 
     await processInboundMessage(personId, "how much is tirzepatide?");
 
     expect(sendMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("still sends SMS when the customer is only email do-not-disturb — the two channels are independent", async () => {
+    runLucyTurnMock.mockClear();
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_email_dnd_only" });
+    runLucyTurnMock.mockResolvedValueOnce(okResult({ nextQuestion: null }));
+
+    const personId = await seedCustomer();
+    await setCustomerEmailDnd(personId, true);
+
+    await processInboundMessage(personId, "how much is tirzepatide?");
+
+    expect(sendMessageMock).toHaveBeenCalledTimes(1);
   });
 });

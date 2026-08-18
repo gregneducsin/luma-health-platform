@@ -28,11 +28,20 @@ export const customersTable = pgTable(
     leadReceivedDate: date("lead_received_date", { mode: "string" }).notNull(),
     leadCreatedAt: timestamp("lead_created_at", { withTimezone: true }),
     leadType: text("lead_type").notNull().default("Other / Unknown"),
-    // Do-not-disturb: set when the customer texts STOP/UNSUBSCRIBE, cleared
-    // automatically the moment they make a purchase. Every outbound send
-    // path (dnd.service.ts's isCustomerDnd) must check this before sending.
+    // Do-not-disturb, SMS/iMessage channel: set when the customer texts
+    // STOP/UNSUBSCRIBE, cleared automatically the moment they make a
+    // purchase. Every SMS send path (dnd.service.ts's isCustomerSmsDnd)
+    // must check this before sending. Deliberately independent of
+    // emailDnd below — opting out of one channel must not silently opt
+    // the customer out of the other.
     dnd: boolean("dnd").notNull().default(false),
     dndAt: timestamp("dnd_at", { withTimezone: true }),
+    // Do-not-disturb, email channel: set when the customer opts out of
+    // email (STOP-equivalent language in a reply, or the one-click
+    // unsubscribe link every automated email carries), cleared
+    // automatically on purchase. See isCustomerEmailDnd.
+    emailDnd: boolean("email_dnd").notNull().default(false),
+    emailDndAt: timestamp("email_dnd_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()

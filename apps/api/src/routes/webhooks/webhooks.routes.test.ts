@@ -346,7 +346,7 @@ describe("Webhooks", () => {
       expect(messages.length).toBe(1);
     });
 
-    it("clears a previously opted-out customer's DND flag, so the order-received opener isn't itself blocked", async () => {
+    it("clears a previously opted-out customer's DND flag on both channels, so the order-received opener isn't itself blocked", async () => {
       sendMessageMock.mockClear();
       sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_sarah_opener_dnd" });
 
@@ -357,9 +357,11 @@ describe("Webhooks", () => {
         .returning();
       await db.insert(externalIdentitiesTable).values({ personId: customer!.id, system: "bask", externalId: "bask-person-winback" });
 
-      const { setCustomerDnd, isCustomerDnd } = await import("../../services/dnd.service.js");
-      await setCustomerDnd(customer!.id, true);
-      expect(await isCustomerDnd(customer!.id)).toBe(true);
+      const { setCustomerSmsDnd, isCustomerSmsDnd, setCustomerEmailDnd, isCustomerEmailDnd } = await import("../../services/dnd.service.js");
+      await setCustomerSmsDnd(customer!.id, true);
+      await setCustomerEmailDnd(customer!.id, true);
+      expect(await isCustomerSmsDnd(customer!.id)).toBe(true);
+      expect(await isCustomerEmailDnd(customer!.id)).toBe(true);
 
       const res = await request(app)
         .post("/api/webhooks/bask-order")
@@ -375,7 +377,8 @@ describe("Webhooks", () => {
         });
       expect(res.status).toBe(200);
 
-      expect(await isCustomerDnd(customer!.id)).toBe(false);
+      expect(await isCustomerSmsDnd(customer!.id)).toBe(false);
+      expect(await isCustomerEmailDnd(customer!.id)).toBe(false);
       expect(sendMessageMock).toHaveBeenCalledWith("+15551110098", expect.stringContaining("this is Sarah"));
     });
   });

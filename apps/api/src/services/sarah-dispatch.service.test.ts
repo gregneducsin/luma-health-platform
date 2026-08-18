@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { db, customersTable, supportConversationsTable } from "@luma/db";
 import type { SarahTurnResult } from "./sarah-conversation.service.js";
-import { isCustomerDnd, setCustomerDnd } from "./dnd.service.js";
+import { isCustomerSmsDnd, setCustomerSmsDnd } from "./dnd.service.js";
 
 const runSarahTurnMock = vi.fn();
 vi.mock("./sarah-conversation.service.js", async () => {
@@ -236,13 +236,13 @@ describe("processInboundSupportMessage", () => {
     );
 
     const personId = await seedCustomer();
-    expect(await isCustomerDnd(personId)).toBe(false);
+    expect(await isCustomerSmsDnd(personId)).toBe(false);
 
     await processInboundSupportMessage(personId, "STOP");
 
     expect(sendMessageMock).toHaveBeenCalledTimes(1);
     expect(sendMessageMock).toHaveBeenCalledWith("+15551230001", "You've been unsubscribed and won't receive further messages. Reply HELP for help.");
-    expect(await isCustomerDnd(personId)).toBe(true);
+    expect(await isCustomerSmsDnd(personId)).toBe(true);
   });
 
   it("does not send anything to a customer who is already do-not-disturb", async () => {
@@ -251,7 +251,7 @@ describe("processInboundSupportMessage", () => {
     runSarahTurnMock.mockResolvedValueOnce(okResult());
 
     const personId = await seedCustomer();
-    await setCustomerDnd(personId, true);
+    await setCustomerSmsDnd(personId, true);
 
     await processInboundSupportMessage(personId, "any update on my order?");
 

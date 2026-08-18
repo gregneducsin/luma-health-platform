@@ -7,7 +7,7 @@ import { renderCurrentlyTakingCheckin, renderReengagementCheckin } from "../lib/
 import { renderCurrentlyTakingCheckinEmail, renderReengagementCheckinEmail } from "../lib/email/templates.js";
 import { sendTriggerEmail } from "../lib/email/send-trigger-email.js";
 import { logger } from "../lib/logger.js";
-import { isCustomerDnd } from "./dnd.service.js";
+import { isCustomerSmsDnd } from "./dnd.service.js";
 
 const CHECKIN_DELAY_MS = 6 * 24 * 60 * 60 * 1000;
 
@@ -80,7 +80,7 @@ export async function sweepLeadCheckinTriggers(): Promise<LeadCheckinSweepResult
       continue;
     }
 
-    if (await isCustomerDnd(trigger.personId)) {
+    if (await isCustomerSmsDnd(trigger.personId)) {
       await db.update(leadCheckinTriggersTable).set({ status: "cancelled", cancelledReason: "opted_out" }).where(eq(leadCheckinTriggersTable.id, trigger.id));
       cancelledCount++;
       continue;

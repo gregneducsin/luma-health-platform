@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { db, customersTable, purchasesTable, leadCheckinTriggersTable } from "@luma/db";
-import { setCustomerDnd } from "./dnd.service.js";
+import { setCustomerSmsDnd } from "./dnd.service.js";
 
 const sendMessageMock = vi.fn();
 vi.mock("../lib/sms-provider.js", async () => {
@@ -135,7 +135,7 @@ describe("sweepLeadCheckinTriggers", () => {
     const personId = await seedCustomer();
     await scheduleLeadCheckin(personId);
     await backdateTrigger(personId);
-    await setCustomerDnd(personId, true);
+    await setCustomerSmsDnd(personId, true);
 
     const result = await sweepLeadCheckinTriggers();
     expect(result.cancelledCount).toBe(1);

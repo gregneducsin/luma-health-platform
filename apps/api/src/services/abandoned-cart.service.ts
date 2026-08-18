@@ -8,7 +8,7 @@ import { renderAbandonedCartOpener } from "../lib/messaging/follow-up-templates.
 import { renderAbandonedCartOpenerEmail } from "../lib/email/templates.js";
 import { sendTriggerEmail } from "../lib/email/send-trigger-email.js";
 import { logger } from "../lib/logger.js";
-import { isCustomerDnd } from "./dnd.service.js";
+import { isCustomerSmsDnd } from "./dnd.service.js";
 
 const OPENER_DELAY_MS = 10 * 60 * 1000;
 
@@ -94,7 +94,7 @@ async function isStillEligible(personId: string, questionnaireEventId: string): 
   const [purchased] = await db.select({ id: purchasesTable.id }).from(purchasesTable).where(and(eq(purchasesTable.customerId, personId), eq(purchasesTable.status, "completed"))).limit(1);
   if (purchased) return { ok: false, reason: "already_purchased" };
 
-  if (await isCustomerDnd(personId)) return { ok: false, reason: "opted_out" };
+  if (await isCustomerSmsDnd(personId)) return { ok: false, reason: "opted_out" };
 
   const [event] = await db.select({ status: questionnaireEventsTable.status }).from(questionnaireEventsTable).where(eq(questionnaireEventsTable.id, questionnaireEventId));
   if (!event || event.status !== "abandoned") return { ok: false, reason: "no_longer_abandoned" };

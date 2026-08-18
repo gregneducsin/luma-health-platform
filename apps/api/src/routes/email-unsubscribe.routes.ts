@@ -1,6 +1,6 @@
 import { Router, type Router as RouterType } from "express";
 import { verifyUnsubscribeToken } from "../lib/email/unsubscribe.js";
-import { setCustomerDnd } from "../services/dnd.service.js";
+import { setCustomerEmailDnd } from "../services/dnd.service.js";
 
 /**
  * Public, unauthenticated one-click unsubscribe — the destination of the
@@ -18,7 +18,7 @@ export function createEmailUnsubscribeRouter(): RouterType {
         res.status(400).send("<html><body>This unsubscribe link is invalid.</body></html>");
         return;
       }
-      await setCustomerDnd(personId, true);
+      await setCustomerEmailDnd(personId, true);
       res.status(200).send("<html><body>You've been unsubscribed and won't receive further messages from Luma Health.</body></html>");
     } catch (err) {
       next(err);

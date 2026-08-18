@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeAll } from "vitest";
 import { db, customersTable } from "@luma/db";
 import type { LucyTurnResult } from "./lucy-conversation.service.js";
-import { isCustomerDnd, setCustomerDnd } from "./dnd.service.js";
+import { isCustomerEmailDnd, setCustomerEmailDnd, setCustomerSmsDnd } from "./dnd.service.js";
 
 beforeAll(() => {
   process.env.EMAIL_PROVIDER = "google_workspace";
@@ -107,12 +107,12 @@ describe("processInboundEmail", () => {
     );
 
     const personId = await seedCustomer();
-    expect(await isCustomerDnd(personId)).toBe(false);
+    expect(await isCustomerEmailDnd(personId)).toBe(false);
 
     await processInboundEmail(personId, "unsubscribe me", "STOP", null);
 
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
-    expect(await isCustomerDnd(personId)).toBe(true);
+    expect(await isCustomerEmailDnd(personId)).toBe(true);
   });
 
   it("does not send anything to a customer who is already do-not-disturb", async () => {
@@ -121,7 +121,7 @@ describe("processInboundEmail", () => {
     runLucyTurnMock.mockResolvedValueOnce(okResult());
 
     const personId = await seedCustomer();
-    await setCustomerDnd(personId, true);
+    await setCustomerEmailDnd(personId, true);
 
     await processInboundEmail(personId, "still interested", "is this still $120?", null);
 
@@ -140,5 +140,19 @@ describe("processInboundEmail", () => {
     expect(sendEmailMock).not.toHaveBeenCalled();
     const conversation = await getOrCreateEmailConversation(personId);
     expect(conversation.needsAttention).toBe(true);
+  });
+
+  it("still sends email when the customer is only SMS do-not-disturb — the two channels are independent", async () => {
+    runLucyTurnMock.mockClear();
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<sms-dnd-only@example.com>" });
+    runLucyTurnMock.mockResolvedValueOnce(okResult());
+
+    const personId = await seedCustomer();
+    await setCustomerSmsDnd(personId, true);
+
+    await processInboundEmail(personId, "still interested?", "is this still $120?", null);
+
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
   });
 });

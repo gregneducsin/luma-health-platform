@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeAll } from "vitest";
 import { db, customersTable } from "@luma/db";
-import { setCustomerDnd } from "../../services/dnd.service.js";
+import { setCustomerEmailDnd } from "../../services/dnd.service.js";
 
 beforeAll(() => {
   process.env.EMAIL_PROVIDER = "google_workspace";
@@ -54,7 +54,7 @@ describe("sendTriggerEmail", () => {
     const render = vi.fn();
 
     const personId = await seedCustomer();
-    await setCustomerDnd(personId, true);
+    await setCustomerEmailDnd(personId, true);
 
     await sendTriggerEmail({
       persona: "lucy",

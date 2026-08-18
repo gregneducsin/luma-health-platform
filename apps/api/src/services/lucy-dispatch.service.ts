@@ -13,7 +13,7 @@ import {
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { logger } from "../lib/logger.js";
 import { withPersonLock } from "../lib/db-lock.js";
-import { isCustomerDnd, setCustomerDnd } from "./dnd.service.js";
+import { isCustomerSmsDnd, setCustomerSmsDnd } from "./dnd.service.js";
 
 async function getCustomerContact(personId: string): Promise<{ firstName: string; phone: string | null } | undefined> {
   const [row] = await db.select({ firstName: customersTable.firstName, phone: customersTable.phone }).from(customersTable).where(eq(customersTable.id, personId));
@@ -33,7 +33,7 @@ async function getCustomerContact(personId: string): Promise<{ firstName: string
  * ever blocks a *later* turn's sends, never the opt-out confirmation itself.
  */
 async function sendAndLog(personId: string, conversationId: string, phone: string | null, text: string): Promise<void> {
-  if (await isCustomerDnd(personId)) {
+  if (await isCustomerSmsDnd(personId)) {
     logger.warn({ personId, conversationId }, "outbound Lucy message not sent: customer is do-not-disturb");
     return;
   }
@@ -100,7 +100,7 @@ async function processInboundMessageLocked(personId: string, inboundBody: string
   // Set DND only after this turn's texts have gone out, so the OPT_OUT
   // confirmation reply above isn't itself blocked by the flag it's about to set.
   if (result.preCheckCode === "OPT_OUT") {
-    await setCustomerDnd(personId, true);
+    await setCustomerSmsDnd(personId, true);
   }
 
   const slotPatch: ConversationStatePatch = {};

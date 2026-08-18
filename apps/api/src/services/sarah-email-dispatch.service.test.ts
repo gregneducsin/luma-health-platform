@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeAll } from "vitest";
 import { db, customersTable } from "@luma/db";
 import type { SarahTurnResult } from "./sarah-conversation.service.js";
-import { isCustomerDnd, setCustomerDnd } from "./dnd.service.js";
+import { isCustomerEmailDnd, setCustomerEmailDnd } from "./dnd.service.js";
 
 beforeAll(() => {
   process.env.EMAIL_PROVIDER = "google_workspace";
@@ -88,12 +88,12 @@ describe("processInboundSupportEmail", () => {
     );
 
     const personId = await seedCustomer();
-    expect(await isCustomerDnd(personId)).toBe(false);
+    expect(await isCustomerEmailDnd(personId)).toBe(false);
 
     await processInboundSupportEmail(personId, "unsubscribe", "STOP", null);
 
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
-    expect(await isCustomerDnd(personId)).toBe(true);
+    expect(await isCustomerEmailDnd(personId)).toBe(true);
   });
 
   it("does not send anything to a customer who is already do-not-disturb", async () => {
@@ -102,7 +102,7 @@ describe("processInboundSupportEmail", () => {
     runSarahTurnMock.mockResolvedValueOnce(okResult());
 
     const personId = await seedCustomer();
-    await setCustomerDnd(personId, true);
+    await setCustomerEmailDnd(personId, true);
 
     await processInboundSupportEmail(personId, "any update?", "any update on my order?", null);
 

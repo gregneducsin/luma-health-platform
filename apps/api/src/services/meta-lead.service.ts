@@ -5,7 +5,7 @@ import { scheduleLeadCheckin } from "./lead-checkin.service.js";
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { renderMetaLeadOpener } from "../lib/messaging/follow-up-templates.js";
 import { logger } from "../lib/logger.js";
-import { isCustomerDnd } from "./dnd.service.js";
+import { isCustomerSmsDnd } from "./dnd.service.js";
 
 /**
  * Sends the opener for a Meta lead-gen form-fill lead immediately, on the
@@ -21,7 +21,7 @@ export async function sendMetaLeadOpener(personId: string): Promise<void> {
     logger.warn({ personId }, "meta-lead opener not sent: no phone number on file");
     return;
   }
-  if (await isCustomerDnd(personId)) {
+  if (await isCustomerSmsDnd(personId)) {
     logger.warn({ personId }, "meta-lead opener not sent: customer is do-not-disturb");
     return;
   }
