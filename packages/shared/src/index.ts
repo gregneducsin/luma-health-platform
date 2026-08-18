@@ -13,5 +13,6 @@ export * from "./schemas/lucy-conversation.js";
 export * from "./schemas/conversations.js";
 export * from "./schemas/sarah-conversation.js";
 export * from "./schemas/support-conversations.js";
+export * from "./schemas/needs-attention.js";
 export * from "./crypto.js";
 export * from "./calc/payroll.js";

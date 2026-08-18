@@ -12,6 +12,7 @@ import { MarketingCpaPage } from "./pages/MarketingCpaPage";
 import { QuestionnairesPage } from "./pages/QuestionnairesPage";
 import { ConversationsPage } from "./pages/ConversationsPage";
 import { SupportPage } from "./pages/SupportPage";
+import { NeedsAttentionPage } from "./pages/NeedsAttentionPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
 export default function App() {
@@ -83,6 +84,12 @@ export default function App() {
       <Route path="/support">
         <ProtectedRoute>
           <SupportPage />
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/needs-attention">
+        <ProtectedRoute>
+          <NeedsAttentionPage />
         </ProtectedRoute>
       </Route>
 
