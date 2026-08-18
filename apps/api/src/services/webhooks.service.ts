@@ -18,6 +18,7 @@ import type {
   BaskOrderShippedWebhookRequest,
 } from "@luma/shared";
 import { scheduleAbandonedCartOpener } from "./abandoned-cart.service.js";
+import { scheduleAbandonedCartEmailSequence } from "./abandoned-cart-email.service.js";
 import { sendMetaLeadOpener } from "./meta-lead.service.js";
 import { sendOrderReceivedOpener, handlePrescriptionWritten, handleOrderShipped } from "./order-fulfillment.service.js";
 import { setCustomerSmsDnd, setCustomerEmailDnd } from "./dnd.service.js";
@@ -355,11 +356,14 @@ export async function handleBaskQuestionnaireWebhook(payload: BaskQuestionnaireW
       })
       .returning({ id: questionnaireEventsTable.id });
 
-    // Arms the first Lucy outreach 10 minutes from now. Idempotent per
-    // questionnaire event, so a duplicate "abandoned" delivery for the same
-    // questionnaire can't double-schedule.
+    // Arms the first Lucy SMS outreach 10 minutes from now, plus the
+    // independent 4-step email nurture sequence (opener/urgency/educational/
+    // plan_comparison — see abandoned-cart-email.service.ts). Both are
+    // idempotent per questionnaire event, so a duplicate "abandoned"
+    // delivery for the same questionnaire can't double-schedule either.
     if (payload.status === "abandoned") {
       await scheduleAbandonedCartOpener(customerId, event.id);
+      await scheduleAbandonedCartEmailSequence(customerId, event.id);
     }
 
     await markWebhookEventProcessed(recorded.id, customerId);

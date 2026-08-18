@@ -71,12 +71,420 @@ export function renderReviewRequestEmail(firstName: string, unsubscribeUrl: stri
   return { subject: "How has your experience been?", html: wrapEmailHtml(body, unsubscribeUrl) };
 }
 
-export function renderAbandonedCartOpenerEmail(firstName: string, unsubscribeUrl: string): RenderedEmail {
+/**
+ * `ctaUrl` must be a freshly-minted per-lead intake link (createIntakeLink
+ * with promo "first_month_20"), not the bare Bask questionnaire URL —
+ * clicking it is what arms the 2-hour follow-up job (see
+ * intake-links.service.ts's handleIntakeLinkClick), same as the link Lucy's
+ * SMS conversation mints on action=send_form. A static, unminted link here
+ * would silently skip that automation for every email-driven signup.
+ */
+export function renderAbandonedCartOpenerEmail(firstName: string, ctaUrl: string, unsubscribeUrl: string): RenderedEmail {
   const name = firstName.trim() || "there";
-  const body =
-    `<p>Hi ${name}, this is Lucy with Luma Health. I noticed you started your online visit but didn't get a chance to finish it.</p>` +
-    `<p>Complete your enrollment now and get $20 off your first month. Want me to send the link to get started?</p>`;
-  return { subject: "You didn't finish your enrollment — $20 off if you do", html: wrapEmailHtml(body, unsubscribeUrl) };
+  const html = `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your Luma Health visit is waiting — don't lose your spot</title>
+<!--[if mso]>
+<noscript>
+<xml>
+<o:OfficeDocumentSettings>
+<o:PixelsPerInch>96</o:PixelsPerInch>
+</o:OfficeDocumentSettings>
+</xml>
+</noscript>
+<![endif]-->
+<style>
+  body, table, td { font-family: 'Georgia', 'Times New Roman', serif; }
+  body { margin: 0; padding: 0; background-color: #f5f1ea; }
+  .email-wrapper { width: 100%; background-color: #f5f1ea; padding: 40px 0; }
+  .email-container { max-width: 600px; margin: 0 auto; background-color: #fffdf9; border: 1px solid #e8dfd0; }
+  .header { background-color: #2b2420; padding: 36px 40px; text-align: center; }
+  .logo-text { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 30px; letter-spacing: 3px; color: #d4af6a; margin: 0; font-weight: 500; }
+  .header-sub { font-family: Arial, sans-serif; font-size: 11px; letter-spacing: 2px; color: #cbbfa8; text-transform: uppercase; margin-top: 6px; }
+  .body-content { padding: 44px 40px 20px 40px; }
+  .greeting { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 26px; color: #2b2420; margin: 0 0 22px 0; font-weight: 500; }
+  .paragraph { font-family: Arial, Helvetica, sans-serif; font-size: 15px; line-height: 26px; color: #4a4038; margin: 0 0 20px 0; }
+  .price-box { background-color: #f5f1ea; border: 1px solid #e8dfd0; border-radius: 4px; padding: 20px 24px; margin: 0 0 24px 0; }
+  .price-row { font-family: Arial, sans-serif; font-size: 15px; color: #2b2420; margin: 0 0 8px 0; }
+  .price-row:last-child { margin-bottom: 0; }
+  .price-value { color: #b8935a; font-weight: bold; }
+  .cta-wrapper { text-align: center; margin: 32px 0; }
+  .cta-button { display: inline-block; background-color: #b8935a; color: #fffdf9; font-family: Arial, sans-serif; font-size: 15px; font-weight: bold; letter-spacing: 1px; text-decoration: none; padding: 16px 38px; border-radius: 3px; text-transform: uppercase; }
+  .divider { border: none; border-top: 1px solid #e8dfd0; margin: 30px 0; }
+  .footer { padding: 28px 40px 40px 40px; text-align: center; }
+  .footer-text { font-family: Arial, sans-serif; font-size: 12px; line-height: 20px; color: #948a7c; margin: 4px 0; }
+  .footer-phone { color: #b8935a; text-decoration: none; font-weight: bold; }
+  a { color: #b8935a; }
+</style>
+</head>
+<body>
+<div class="email-wrapper">
+  <table class="email-container" role="presentation" cellpadding="0" cellspacing="0" width="100%">
+    <tr>
+      <td class="header">
+        <p class="logo-text">LUMA HEALTH</p>
+        <p class="header-sub">Your Journey to Wellness</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="body-content">
+        <p class="greeting">Dear ${name},</p>
+
+        <p class="paragraph">Your Luma Health visit is still open — but it won't stay saved forever.</p>
+
+        <p class="paragraph">You started the process to access physician-guided treatment with real support from our licensed medical team. Don't let a few unanswered questions stand between you and your goals.</p>
+
+        <div class="price-box">
+          <p class="price-row">Compounded Semaglutide — <span class="price-value">$90/mo</span></p>
+          <p class="price-row">Compounded Tirzepatide — <span class="price-value">$165/mo</span></p>
+        </div>
+
+        <p class="paragraph"><strong>Finish now and get $20 off your first month</strong> — our way of helping you take that next step.</p>
+
+        <div class="cta-wrapper">
+          <a href="${ctaUrl}" class="cta-button">Finish My Visit Now</a>
+        </div>
+
+        <p class="paragraph">It takes just a few minutes, and our clinical team is ready to review your visit as soon as it's submitted.</p>
+
+        <p class="paragraph">Questions? Call or text us at <a href="tel:6592177086" class="footer-phone">659-217-7086</a> — we're here to help you finish strong.</p>
+
+        <p class="paragraph" style="margin-bottom:0;">The Luma Health Team</p>
+      </td>
+    </tr>
+    <tr>
+      <td><hr class="divider" style="margin-left:40px; margin-right:40px;"></td>
+    </tr>
+    <tr>
+      <td class="footer">
+        <p class="footer-text">Luma Health &middot; 2500 Quantum Lakes Drive, Boynton Beach, FL 33426</p>
+        <p class="footer-text"><a href="tel:6592177086" class="footer-phone">659-217-7086</a></p>
+        <p class="footer-text"><a href="${unsubscribeUrl}" class="footer-phone">Unsubscribe</a> from future emails.</p>
+      </td>
+    </tr>
+  </table>
+</div>
+</body>
+</html>`;
+  return { subject: "Your Luma Health visit is waiting — don't lose your spot", html };
+}
+
+/** Abandoned-cart drip step 2 ("urgency") — fires 24 hours after abandonment. Same ctaUrl-minting requirement as renderAbandonedCartOpenerEmail. */
+export function renderAbandonedCartUrgencyEmail(firstName: string, ctaUrl: string, unsubscribeUrl: string): RenderedEmail {
+  const name = firstName.trim() || "there";
+  const html = `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your $20 off expires soon — finish your Luma Health visit</title>
+<!--[if mso]>
+<noscript>
+<xml>
+<o:OfficeDocumentSettings>
+<o:PixelsPerInch>96</o:PixelsPerInch>
+</o:OfficeDocumentSettings>
+</xml>
+</noscript>
+<![endif]-->
+<style>
+  body, table, td { font-family: 'Georgia', 'Times New Roman', serif; }
+  body { margin: 0; padding: 0; background-color: #f5f1ea; }
+  .email-wrapper { width: 100%; background-color: #f5f1ea; padding: 40px 0; }
+  .email-container { max-width: 600px; margin: 0 auto; background-color: #fffdf9; border: 1px solid #e8dfd0; }
+  .header { background-color: #2b2420; padding: 36px 40px; text-align: center; }
+  .logo-text { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 30px; letter-spacing: 3px; color: #d4af6a; margin: 0; font-weight: 500; }
+  .header-sub { font-family: Arial, sans-serif; font-size: 11px; letter-spacing: 2px; color: #cbbfa8; text-transform: uppercase; margin-top: 6px; }
+  .body-content { padding: 44px 40px 20px 40px; }
+  .greeting { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 26px; color: #2b2420; margin: 0 0 22px 0; font-weight: 500; }
+  .paragraph { font-family: Arial, Helvetica, sans-serif; font-size: 15px; line-height: 26px; color: #4a4038; margin: 0 0 20px 0; }
+  .expiry-box { background-color: #2b2420; border-radius: 4px; padding: 22px 24px; margin: 0 0 24px 0; text-align: center; }
+  .expiry-label { font-family: Arial, sans-serif; font-size: 11px; letter-spacing: 2px; color: #cbbfa8; text-transform: uppercase; margin: 0 0 8px 0; }
+  .expiry-value { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 24px; color: #d4af6a; margin: 0; font-weight: 500; }
+  .price-box { background-color: #f5f1ea; border: 1px solid #e8dfd0; border-radius: 4px; padding: 20px 24px; margin: 0 0 24px 0; }
+  .price-row { font-family: Arial, sans-serif; font-size: 15px; color: #2b2420; margin: 0 0 8px 0; }
+  .price-row:last-child { margin-bottom: 0; }
+  .price-value { color: #b8935a; font-weight: bold; }
+  .cta-wrapper { text-align: center; margin: 32px 0; }
+  .cta-button { display: inline-block; background-color: #b8935a; color: #fffdf9; font-family: Arial, sans-serif; font-size: 15px; font-weight: bold; letter-spacing: 1px; text-decoration: none; padding: 16px 38px; border-radius: 3px; text-transform: uppercase; }
+  .divider { border: none; border-top: 1px solid #e8dfd0; margin: 30px 0; }
+  .footer { padding: 28px 40px 40px 40px; text-align: center; }
+  .footer-text { font-family: Arial, sans-serif; font-size: 12px; line-height: 20px; color: #948a7c; margin: 4px 0; }
+  .footer-phone { color: #b8935a; text-decoration: none; font-weight: bold; }
+  a { color: #b8935a; }
+</style>
+</head>
+<body>
+<div class="email-wrapper">
+  <table class="email-container" role="presentation" cellpadding="0" cellspacing="0" width="100%">
+    <tr>
+      <td class="header">
+        <p class="logo-text">LUMA HEALTH</p>
+        <p class="header-sub">Your Journey to Wellness</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="body-content">
+        <p class="greeting">Dear ${name},</p>
+
+        <p class="paragraph">Quick reminder — your $20 off first month offer is about to expire, and your Luma Health visit is still sitting unfinished.</p>
+
+        <div class="expiry-box">
+          <p class="expiry-label">Offer Expires</p>
+          <p class="expiry-value">Tonight at Midnight</p>
+        </div>
+
+        <p class="paragraph">Once it's gone, it's gone — but you can still lock in your discount and get started on physician-guided treatment in just a few minutes.</p>
+
+        <div class="price-box">
+          <p class="price-row">Compounded Semaglutide — <span class="price-value">$90/mo</span></p>
+          <p class="price-row">Compounded Tirzepatide — <span class="price-value">$165/mo</span></p>
+        </div>
+
+        <div class="cta-wrapper">
+          <a href="${ctaUrl}" class="cta-button">Claim My $20 Off</a>
+        </div>
+
+        <p class="paragraph">It only takes a few minutes to complete, and our clinical team will review your visit as soon as it's submitted.</p>
+
+        <p class="paragraph">Questions? Call or text us at <a href="tel:6592177086" class="footer-phone">659-217-7086</a> — we're happy to help you finish strong.</p>
+
+        <p class="paragraph" style="margin-bottom:0;">The Luma Health Team</p>
+      </td>
+    </tr>
+    <tr>
+      <td><hr class="divider" style="margin-left:40px; margin-right:40px;"></td>
+    </tr>
+    <tr>
+      <td class="footer">
+        <p class="footer-text">Luma Health &middot; 2500 Quantum Lakes Drive, Boynton Beach, FL 33426</p>
+        <p class="footer-text"><a href="tel:6592177086" class="footer-phone">659-217-7086</a></p>
+        <p class="footer-text"><a href="${unsubscribeUrl}" class="footer-phone">Unsubscribe</a> from future emails.</p>
+      </td>
+    </tr>
+  </table>
+</div>
+</body>
+</html>`;
+  return { subject: "Your $20 off expires soon — finish your Luma Health visit", html };
+}
+
+/** Abandoned-cart drip step 3 ("educational") — fires 7 days after abandonment. Same ctaUrl-minting requirement as renderAbandonedCartOpenerEmail. */
+export function renderAbandonedCartEducationalEmail(firstName: string, ctaUrl: string, unsubscribeUrl: string): RenderedEmail {
+  const name = firstName.trim() || "there";
+  const html = `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>If you've tried everything, this is different</title>
+<!--[if mso]>
+<noscript>
+<xml>
+<o:OfficeDocumentSettings>
+<o:PixelsPerInch>96</o:PixelsPerInch>
+</o:OfficeDocumentSettings>
+</xml>
+</noscript>
+<![endif]-->
+<style>
+  body, table, td { font-family: 'Georgia', 'Times New Roman', serif; }
+  body { margin: 0; padding: 0; background-color: #f5f1ea; }
+  .email-wrapper { width: 100%; background-color: #f5f1ea; padding: 40px 0; }
+  .email-container { max-width: 600px; margin: 0 auto; background-color: #fffdf9; border: 1px solid #e8dfd0; }
+  .header { background-color: #2b2420; padding: 36px 40px; text-align: center; }
+  .logo-text { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 30px; letter-spacing: 3px; color: #d4af6a; margin: 0; font-weight: 500; }
+  .header-sub { font-family: Arial, sans-serif; font-size: 11px; letter-spacing: 2px; color: #cbbfa8; text-transform: uppercase; margin-top: 6px; }
+  .body-content { padding: 44px 40px 20px 40px; }
+  .greeting { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 26px; color: #2b2420; margin: 0 0 22px 0; font-weight: 500; }
+  .paragraph { font-family: Arial, Helvetica, sans-serif; font-size: 15px; line-height: 26px; color: #4a4038; margin: 0 0 20px 0; }
+  .quote-box { background-color: #f5f1ea; border-left: 3px solid #b8935a; padding: 18px 22px; margin: 0 0 24px 0; }
+  .quote-text { font-family: 'Cormorant Garamond', Georgia, serif; font-style: italic; font-size: 17px; line-height: 25px; color: #2b2420; margin: 0; }
+  .price-box { background-color: #f5f1ea; border: 1px solid #e8dfd0; border-radius: 4px; padding: 20px 24px; margin: 0 0 24px 0; }
+  .price-row { font-family: Arial, sans-serif; font-size: 15px; color: #2b2420; margin: 0 0 8px 0; }
+  .price-row:last-child { margin-bottom: 0; }
+  .price-value { color: #b8935a; font-weight: bold; }
+  .cta-wrapper { text-align: center; margin: 32px 0; }
+  .cta-button { display: inline-block; background-color: #b8935a; color: #fffdf9; font-family: Arial, sans-serif; font-size: 15px; font-weight: bold; letter-spacing: 1px; text-decoration: none; padding: 16px 38px; border-radius: 3px; text-transform: uppercase; }
+  .divider { border: none; border-top: 1px solid #e8dfd0; margin: 30px 0; }
+  .footer { padding: 28px 40px 40px 40px; text-align: center; }
+  .footer-text { font-family: Arial, sans-serif; font-size: 12px; line-height: 20px; color: #948a7c; margin: 4px 0; }
+  .footer-phone { color: #b8935a; text-decoration: none; font-weight: bold; }
+  a { color: #b8935a; }
+</style>
+</head>
+<body>
+<div class="email-wrapper">
+  <table class="email-container" role="presentation" cellpadding="0" cellspacing="0" width="100%">
+    <tr>
+      <td class="header">
+        <p class="logo-text">LUMA HEALTH</p>
+        <p class="header-sub">Your Journey to Wellness</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="body-content">
+        <p class="greeting">Dear ${name},</p>
+
+        <p class="paragraph">You've probably heard it before: "just eat less, move more." If it were that simple, you wouldn't still be looking for answers.</p>
+
+        <p class="paragraph">Willpower was never the problem. For a lot of people, appetite and metabolism are working against them — no amount of discipline changes that on its own. Diets that ignore this tend to work for a while, then stop. That's not a personal failure. It's biology.</p>
+
+        <div class="quote-box">
+          <p class="quote-text">"I'd lose 10 pounds and gain back 15. I stopped trusting that anything would actually work for me."</p>
+        </div>
+
+        <p class="paragraph">GLP-1 treatment approaches things differently. Instead of relying on willpower alone, it works with your body's own hormones to help regulate appetite — so the changes you make to your eating actually stick, instead of feeling like a constant fight.</p>
+
+        <p class="paragraph">You don't have to have it all figured out before you start. You just have to be ready to try something that works differently than what you've tried before.</p>
+
+        <div class="price-box">
+          <p class="price-row">Compounded Semaglutide — <span class="price-value">$90/mo</span></p>
+          <p class="price-row">Compounded Tirzepatide — <span class="price-value">$165/mo</span></p>
+        </div>
+
+        <div class="cta-wrapper">
+          <a href="${ctaUrl}" class="cta-button">See If I Qualify</a>
+        </div>
+
+        <p class="paragraph">A licensed provider reviews your health assessment before anything is prescribed, so you'll know exactly what to expect. No judgment, no lectures — just a plan built around what actually works.</p>
+
+        <p class="paragraph">Questions? Call or text us at <a href="tel:6592177086" class="footer-phone">659-217-7086</a> — our team is here to help.</p>
+
+        <p class="paragraph" style="margin-bottom:0;">The Luma Health Team</p>
+      </td>
+    </tr>
+    <tr>
+      <td><hr class="divider" style="margin-left:40px; margin-right:40px;"></td>
+    </tr>
+    <tr>
+      <td class="footer">
+        <p class="footer-text">Luma Health &middot; 2500 Quantum Lakes Drive, Boynton Beach, FL 33426</p>
+        <p class="footer-text"><a href="tel:6592177086" class="footer-phone">659-217-7086</a></p>
+        <p class="footer-text"><a href="${unsubscribeUrl}" class="footer-phone">Unsubscribe</a> from future emails.</p>
+      </td>
+    </tr>
+  </table>
+</div>
+</body>
+</html>`;
+  return { subject: "If you've tried everything, this is different", html };
+}
+
+/** Abandoned-cart drip step 4 ("plan_comparison", final step) — fires 10 days after abandonment. Same ctaUrl-minting requirement as renderAbandonedCartOpenerEmail. */
+export function renderAbandonedCartPlanComparisonEmail(firstName: string, ctaUrl: string, unsubscribeUrl: string): RenderedEmail {
+  const name = firstName.trim() || "there";
+  const html = `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Which Luma Health plan is right for you?</title>
+<!--[if mso]>
+<noscript>
+<xml>
+<o:OfficeDocumentSettings>
+<o:PixelsPerInch>96</o:PixelsPerInch>
+</o:OfficeDocumentSettings>
+</xml>
+</noscript>
+<![endif]-->
+<style>
+  body, table, td { font-family: 'Georgia', 'Times New Roman', serif; }
+  body { margin: 0; padding: 0; background-color: #f5f1ea; }
+  .email-wrapper { width: 100%; background-color: #f5f1ea; padding: 40px 0; }
+  .email-container { max-width: 600px; margin: 0 auto; background-color: #fffdf9; border: 1px solid #e8dfd0; }
+  .header { background-color: #2b2420; padding: 36px 40px; text-align: center; }
+  .logo-text { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 30px; letter-spacing: 3px; color: #d4af6a; margin: 0; font-weight: 500; }
+  .header-sub { font-family: Arial, sans-serif; font-size: 11px; letter-spacing: 2px; color: #cbbfa8; text-transform: uppercase; margin-top: 6px; }
+  .body-content { padding: 44px 40px 20px 40px; }
+  .greeting { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 26px; color: #2b2420; margin: 0 0 22px 0; font-weight: 500; }
+  .paragraph { font-family: Arial, Helvetica, sans-serif; font-size: 15px; line-height: 26px; color: #4a4038; margin: 0 0 20px 0; }
+  .section-heading { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 20px; color: #2b2420; margin: 30px 0 14px 0; font-weight: 500; }
+  .plan-card { background-color: #f5f1ea; border: 1px solid #e8dfd0; border-radius: 4px; padding: 20px 24px; margin: 0 0 16px 0; }
+  .plan-name { font-family: Arial, sans-serif; font-size: 16px; color: #2b2420; font-weight: bold; margin: 0 0 6px 0; }
+  .plan-price { font-family: Arial, sans-serif; font-size: 15px; color: #b8935a; font-weight: bold; margin: 0 0 8px 0; }
+  .plan-desc { font-family: Arial, sans-serif; font-size: 14px; line-height: 22px; color: #4a4038; margin: 0; }
+  .cta-wrapper { text-align: center; margin: 32px 0; }
+  .cta-button { display: inline-block; background-color: #b8935a; color: #fffdf9; font-family: Arial, sans-serif; font-size: 15px; font-weight: bold; letter-spacing: 1px; text-decoration: none; padding: 16px 38px; border-radius: 3px; text-transform: uppercase; }
+  .divider { border: none; border-top: 1px solid #e8dfd0; margin: 30px 0; }
+  .footer { padding: 28px 40px 40px 40px; text-align: center; }
+  .footer-text { font-family: Arial, sans-serif; font-size: 12px; line-height: 20px; color: #948a7c; margin: 4px 0; }
+  .footer-phone { color: #b8935a; text-decoration: none; font-weight: bold; }
+  a { color: #b8935a; }
+</style>
+</head>
+<body>
+  <div class="email-wrapper">
+    <table class="email-container" role="presentation" cellpadding="0" cellspacing="0" width="100%">
+      <tr>
+        <td class="header">
+          <p class="logo-text">LUMA HEALTH</p>
+          <p class="header-sub">Your Journey to Wellness</p>
+        </td>
+      </tr>
+      <tr>
+        <td class="body-content">
+          <p class="greeting">Dear ${name},</p>
+
+          <p class="paragraph">If you're still deciding which Luma Health plan fits your goals, here's a closer look at
+            what we offer — so you can choose with confidence.</p>
+
+          <p class="paragraph">All of our treatment plans connect you with a licensed provider online, who reviews your
+            health history and determines whether a prescription is appropriate. If approved, your medication ships
+            directly from a state-licensed pharmacy — no office visits required.</p>
+
+          <p class="section-heading">Our GLP-1 Plans</p>
+
+          <div class="plan-card">
+            <p class="plan-name">Compounded Semaglutide</p>
+            <p class="plan-price">$90/mo</p>
+            <p class="plan-desc">The same active ingredient found in Ozempic&reg; and Wegovy&reg;. A weekly injection
+              that helps regulate appetite and support steady, sustainable weight loss alongside nutrition and lifestyle
+              changes.</p>
+          </div>
+
+          <div class="plan-card">
+            <p class="plan-name">Compounded Tirzepatide</p>
+            <p class="plan-price">$165/mo</p>
+            <p class="plan-desc">The same active ingredient found in Mounjaro&reg; and Zepbound&reg;. A dual-action
+              weekly injection that many members choose for its potential to support greater weight loss results.</p>
+          </div>
+
+          <p class="paragraph">Every plan includes dose adjustments as needed, ongoing access to your care team, and
+            ships discreetly right to your door. Compounded medications are not FDA-approved and have not been evaluated
+            for safety or effectiveness — your provider will help you determine what's appropriate for you.</p>
+
+          <div class="cta-wrapper">
+            <a href="${ctaUrl}" class="cta-button">See If I Qualify</a>
+          </div>
+
+          <p class="paragraph">Not sure which plan is right for you? Our team is happy to walk you through it — call or
+            text us at <a href="tel:6592177086" class="footer-phone">659-217-7086</a>.</p>
+
+          <p class="paragraph" style="margin-bottom:0;">The Luma Health Team</p>
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <hr class="divider" style="margin-left:40px; margin-right:40px;">
+        </td>
+      </tr>
+      <tr>
+        <td class="footer">
+          <p class="footer-text">Luma Health &middot; 2500 Quantum Lakes Drive, Boynton Beach, FL 33426</p>
+          <p class="footer-text"><a href="tel:6592177086" class="footer-phone">659-217-7086</a></p>
+          <p class="footer-text"><a href="${unsubscribeUrl}" class="footer-phone">Unsubscribe</a> from future emails.</p>
+        </td>
+      </tr>
+    </table>
+  </div>
+</body>
+</html>`;
+  return { subject: "Which Luma Health plan is right for you?", html };
 }
 
 export function renderCurrentlyTakingCheckinEmail(firstName: string, unsubscribeUrl: string): RenderedEmail {

@@ -1,12 +1,9 @@
 import { and, eq, lte, sql } from "drizzle-orm";
 import { db, abandonedCartTriggersTable, customersTable, purchasesTable, questionnaireEventsTable } from "@luma/db";
 import { getOrCreateConversation, appendMessage, updateConversationState } from "./conversations.service.js";
-import { getOrCreateEmailConversation, appendEmailMessage, updateEmailConversationState } from "./email-conversations.service.js";
 import { scheduleLeadCheckin } from "./lead-checkin.service.js";
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { renderAbandonedCartOpener } from "../lib/messaging/follow-up-templates.js";
-import { renderAbandonedCartOpenerEmail } from "../lib/email/templates.js";
-import { sendTriggerEmail } from "../lib/email/send-trigger-email.js";
 import { logger } from "../lib/logger.js";
 import { isCustomerSmsDnd } from "./dnd.service.js";
 
@@ -106,7 +103,7 @@ type SendResult = { ok: true; providerMessageId: string } | { ok: false; reason:
 
 async function sendOpener(personId: string): Promise<SendResult> {
   const [customer] = await db
-    .select({ firstName: customersTable.firstName, phone: customersTable.phone, email: customersTable.email })
+    .select({ firstName: customersTable.firstName, phone: customersTable.phone })
     .from(customersTable)
     .where(eq(customersTable.id, personId));
   if (!customer) {
@@ -119,20 +116,9 @@ async function sendOpener(personId: string): Promise<SendResult> {
   // was already armed for this person (e.g. by the Meta-lead opener).
   await scheduleLeadCheckin(personId);
 
-  // Email fires independently of the SMS attempt below — a missing phone
-  // number shouldn't also suppress the one channel that always has an
-  // address to send to.
-  const emailConversation = await getOrCreateEmailConversation(personId);
-  await sendTriggerEmail({
-    persona: "lucy",
-    personId,
-    conversationId: emailConversation.id,
-    email: customer.email,
-    render: (unsubscribeUrl) => renderAbandonedCartOpenerEmail(customer.firstName, unsubscribeUrl),
-    appendMessage: appendEmailMessage,
-    logLabel: "abandoned-cart opener",
-  });
-  await updateEmailConversationState(emailConversation.id, { promoOffered: true });
+  // The email side of this opener is a separate 4-step drip sequence with
+  // its own schedule (abandoned-cart-email.service.ts), armed alongside
+  // this SMS trigger in webhooks.service.ts, not sent from here.
 
   if (!customer.phone) {
     return { ok: false, reason: "NO_PHONE_NUMBER" };

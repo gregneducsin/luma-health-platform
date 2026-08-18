@@ -3,6 +3,7 @@ import { logger } from "./lib/logger.js";
 import { createApp } from "./app.js";
 import { sweepFollowUpJobs } from "./services/follow-up-jobs.service.js";
 import { sweepAbandonedCartTriggers } from "./services/abandoned-cart.service.js";
+import { sweepAbandonedCartEmailTriggers } from "./services/abandoned-cart-email.service.js";
 import { sweepReviewRequestTriggers } from "./services/order-fulfillment.service.js";
 import { sweepLeadCheckinTriggers } from "./services/lead-checkin.service.js";
 import { sweepInboundEmail } from "./services/email-inbound.service.js";
@@ -38,6 +39,17 @@ setInterval(() => {
     logger.error({ err }, "abandoned-cart opener sweep failed");
   });
 }, ABANDONED_CART_SWEEP_INTERVAL_MS);
+
+// Same tight tick as the SMS abandoned-cart sweep above — the email
+// sequence's finest-grained step (the opener) has the identical 10-minute
+// delay, even though its later steps (urgency/educational/plan_comparison)
+// are due days out.
+const ABANDONED_CART_EMAIL_SWEEP_INTERVAL_MS = 2 * 60 * 1000;
+setInterval(() => {
+  sweepAbandonedCartEmailTriggers().catch((err) => {
+    logger.error({ err }, "abandoned-cart email sweep failed");
+  });
+}, ABANDONED_CART_EMAIL_SWEEP_INTERVAL_MS);
 
 // Review-request check-ins are due days out (see order-fulfillment.service.ts's
 // REVIEW_REQUEST_DELAY_MS), so a coarser tick than the abandoned-cart sweep

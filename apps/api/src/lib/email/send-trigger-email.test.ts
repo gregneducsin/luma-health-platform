@@ -33,7 +33,7 @@ describe("sendTriggerEmail", () => {
     const appendMessage = vi.fn().mockResolvedValue(undefined);
 
     const personId = await seedCustomer();
-    await sendTriggerEmail({
+    const result = await sendTriggerEmail({
       persona: "lucy",
       personId,
       conversationId: "conv-1",
@@ -43,6 +43,7 @@ describe("sendTriggerEmail", () => {
       logLabel: "test-trigger",
     });
 
+    expect(result).toEqual({ status: "sent", messageId: "<trigger-1@example.com>" });
     expect(sendEmailMock).toHaveBeenCalledWith("customer@example.com", "Hello", expect.stringContaining("Hi there"), { fromName: "Lucy at Luma Health" });
     expect(appendMessage).toHaveBeenCalledWith("conv-1", "outbound", "Hello", expect.stringContaining("Hi there"), { messageId: "<trigger-1@example.com>" });
   });
@@ -56,7 +57,7 @@ describe("sendTriggerEmail", () => {
     const personId = await seedCustomer();
     await setCustomerEmailDnd(personId, true);
 
-    await sendTriggerEmail({
+    const result = await sendTriggerEmail({
       persona: "lucy",
       personId,
       conversationId: "conv-2",
@@ -66,6 +67,7 @@ describe("sendTriggerEmail", () => {
       logLabel: "test-trigger",
     });
 
+    expect(result).toEqual({ status: "dnd" });
     expect(render).not.toHaveBeenCalled();
     expect(sendEmailMock).not.toHaveBeenCalled();
     expect(appendMessage).not.toHaveBeenCalled();
@@ -88,7 +90,7 @@ describe("sendTriggerEmail", () => {
         appendMessage,
         logLabel: "test-trigger",
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ status: "render_failed" });
 
     expect(sendEmailMock).not.toHaveBeenCalled();
     expect(appendMessage).not.toHaveBeenCalled();
@@ -102,7 +104,7 @@ describe("sendTriggerEmail", () => {
     const appendMessage = vi.fn().mockResolvedValue(undefined);
 
     const personId = await seedCustomer();
-    await sendTriggerEmail({
+    const result = await sendTriggerEmail({
       persona: "lucy",
       personId,
       conversationId: "conv-4",
@@ -112,6 +114,7 @@ describe("sendTriggerEmail", () => {
       logLabel: "test-trigger",
     });
 
+    expect(result).toEqual({ status: "send_failed" });
     expect(appendMessage).toHaveBeenCalledWith("conv-4", "outbound", "Hello", expect.any(String), { messageId: null });
   });
 });

@@ -12,15 +12,27 @@ type AppendEmailMessageFn = (
   opts?: { sentiment?: "positive" | "neutral" | "negative" | null; messageId?: string | null; inReplyTo?: string | null },
 ) => Promise<unknown>;
 
+export type SendTriggerEmailResult =
+  | { readonly status: "sent"; readonly messageId: string }
+  | { readonly status: "dnd" }
+  | { readonly status: "render_failed" }
+  | { readonly status: "send_failed" };
+
 /**
  * Shared fail-soft send+log for the fixed, pre-approved trigger emails
- * (order received/shipped, review request, abandoned-cart opener, lead
- * check-in) — same DND-gated, log-and-continue-on-failure shape as every
- * SMS trigger send in this codebase, and as lucy-email-dispatch.service.ts
- * /sarah-email-dispatch.service.ts's own sendAndLog for AI-drafted replies.
- * `appendMessage` is either appendEmailMessage or appendSupportEmailMessage
- * — both share this exact signature, so one helper covers both channels'
- * fixed-template sends instead of duplicating this logic five times.
+ * (order received/shipped, review request, abandoned-cart drip sequence,
+ * lead check-in) — same DND-gated, log-and-continue-on-failure shape as
+ * every SMS trigger send in this codebase, and as
+ * lucy-email-dispatch.service.ts/sarah-email-dispatch.service.ts's own
+ * sendAndLog for AI-drafted replies. `appendMessage` is either
+ * appendEmailMessage or appendSupportEmailMessage — both share this exact
+ * signature, so one helper covers both channels' fixed-template sends
+ * instead of duplicating this logic across every call site.
+ *
+ * Returns a result rather than void so callers that need to know the
+ * outcome (e.g. the abandoned-cart drip sweep, which records per-step
+ * sent/cancelled/failed status on its own trigger row) can react — callers
+ * that don't care can simply await and ignore it, same as before.
  */
 export async function sendTriggerEmail(params: {
   persona: EmailPersona;
@@ -31,12 +43,12 @@ export async function sendTriggerEmail(params: {
   render: (unsubscribeUrl: string) => RenderedEmail;
   appendMessage: AppendEmailMessageFn;
   logLabel: string;
-}): Promise<void> {
+}): Promise<SendTriggerEmailResult> {
   const { persona, personId, conversationId, email, render, appendMessage, logLabel } = params;
 
   if (await isCustomerEmailDnd(personId)) {
     logger.warn({ personId, conversationId }, `${logLabel} email not sent: customer is do-not-disturb`);
-    return;
+    return { status: "dnd" };
   }
 
   let rendered: RenderedEmail;
@@ -44,7 +56,7 @@ export async function sendTriggerEmail(params: {
     rendered = render(buildUnsubscribeUrl(personId));
   } catch (err) {
     logger.warn({ personId, conversationId, reason: err instanceof Error ? err.message : String(err) }, `${logLabel} email not sent: failed to render`);
-    return;
+    return { status: "render_failed" };
   }
 
   const plainBody = htmlToPlainText(rendered.html);
@@ -57,4 +69,5 @@ export async function sendTriggerEmail(params: {
     logger.warn({ personId, conversationId, reason: err instanceof Error ? err.message : String(err) }, `${logLabel} email send failed`);
   }
   await appendMessage(conversationId, "outbound", rendered.subject, plainBody, { messageId });
+  return messageId ? { status: "sent", messageId } : { status: "send_failed" };
 }

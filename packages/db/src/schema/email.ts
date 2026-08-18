@@ -1,5 +1,6 @@
 import { pgTable, text, uuid, timestamp, boolean, integer, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { customersTable } from "./customers";
+import { questionnaireEventsTable } from "./webhooks";
 
 /**
  * Email twin of conversationsTable (messaging.ts) — one Lucy email thread per
@@ -114,7 +115,51 @@ export const supportEmailConversationMessagesTable = pgTable(
   (t) => [index("support_email_conversation_messages_conversation_id_idx").on(t.conversationId, t.createdAt)],
 );
 
+/**
+ * The 4-step abandoned-cart email nurture sequence — a distinct schedule
+ * from the SMS abandoned-cart opener (abandonedCartTriggersTable), all
+ * timed off the same abandonment event but on its own cadence: opener
+ * (10 min), urgency (24 hr), educational (7 days), plan_comparison
+ * (10 days). One row per step per abandonment event (unique on
+ * questionnaireEventId+step), so a duplicate `abandoned` webhook delivery
+ * can't double-schedule any step, and each step is independently
+ * claimable/cancellable — a later step can still be cancelled (e.g. the
+ * lead purchased) even after an earlier step already sent.
+ */
+export const abandonedCartEmailTriggersTable = pgTable(
+  "abandoned_cart_email_triggers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => customersTable.id, { onDelete: "cascade" }),
+    questionnaireEventId: uuid("questionnaire_event_id")
+      .notNull()
+      .references(() => questionnaireEventsTable.id, { onDelete: "cascade" }),
+    step: text("step", { enum: ["opener", "urgency", "educational", "plan_comparison"] }).notNull(),
+    dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
+    // "processing" is a transient claim state — see the identical comment on
+    // followUpJobsTable.status (messaging.ts).
+    status: text("status", { enum: ["pending", "processing", "sent", "cancelled", "failed"] }).notNull().default("pending"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    messageId: text("message_id"),
+    cancelledReason: text("cancelled_reason"),
+    failureReason: text("failure_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex("abandoned_cart_email_triggers_event_step_key").on(t.questionnaireEventId, t.step),
+    index("abandoned_cart_email_triggers_status_due_at_idx").on(t.status, t.dueAt),
+    index("abandoned_cart_email_triggers_person_id_idx").on(t.personId),
+  ],
+);
+
 export type EmailConversation = typeof emailConversationsTable.$inferSelect;
 export type EmailConversationMessage = typeof emailConversationMessagesTable.$inferSelect;
 export type SupportEmailConversation = typeof supportEmailConversationsTable.$inferSelect;
 export type SupportEmailConversationMessage = typeof supportEmailConversationMessagesTable.$inferSelect;
+export type AbandonedCartEmailTrigger = typeof abandonedCartEmailTriggersTable.$inferSelect;
