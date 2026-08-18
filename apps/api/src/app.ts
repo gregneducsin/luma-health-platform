@@ -1,3 +1,4 @@
+import { createGmailOAuthRouter } from "./routes/gmail-oauth.routes.js";
 import express, { type Express, type Request, type Response } from "express";
 import cookieParser from "cookie-parser";
 import { security } from "./middleware/security.js";
@@ -51,7 +52,7 @@ export function createApp(): Express {
     }),
   );
   app.use(cookieParser());
-
+  app.use("/auth/google", createGmailOAuthRouter());
   // Never cache API responses.
   app.use("/api", (_req: Request, res: Response, next) => {
     res.setHeader("Cache-Control", "no-store");

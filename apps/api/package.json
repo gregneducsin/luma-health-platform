@@ -20,6 +20,7 @@
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
     "express-rate-limit": "^8.6.1",
+    "googleapis": "^175.0.0",
     "helmet": "^8.1.0",
     "imapflow": "^1.7.1",
     "mailparser": "^3.9.15",
