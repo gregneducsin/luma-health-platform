@@ -24,6 +24,19 @@ describe("Lucy/Sarah topic-list separation", () => {
     expect(lucyKeys.has("how_luma_works_after_purchase")).toBe(false);
   });
 
+  it("existing_customer_current_rate is Sarah-only — Lucy talks pricing with prospects who haven't committed yet", () => {
+    const sarahKeys = new Set(getSarahEnabledTopics().map((t) => t.key));
+    const lucyKeys = new Set(getPreviewEnabledTopics().map((t) => t.key));
+    expect(sarahKeys.has("existing_customer_current_rate")).toBe(true);
+    expect(lucyKeys.has("existing_customer_current_rate")).toBe(false);
+  });
+
+  it("existing_customer_current_rate's approved text carries no dollar figure — reassurance only, never a new pricing claim", () => {
+    const topic = getTopicByKey("existing_customer_current_rate");
+    expect(topic).toBeDefined();
+    expect(topic!.approvedText).not.toMatch(/\$\d/);
+  });
+
   it("how_luma_works_after_purchase does not repeat the pre-purchase enrollment framing", () => {
     const topic = getTopicByKey("how_luma_works_after_purchase");
     expect(topic).toBeDefined();

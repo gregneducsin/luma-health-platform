@@ -243,6 +243,27 @@ export const KNOWLEDGE_CATALOG: readonly KnowledgeTopic[] = [
     enabledForPreview: true,
   },
 
+  // ── Existing-customer current rate ────────────────────────────────────────
+  // Source: owner-confirmed. Deliberately narrow: reassures an existing
+  // customer they're already on their plan's current rate, without quoting
+  // any dollar figure or promising a rate that could later be false (a
+  // "lowest ever" claim would become inaccurate the moment a bigger
+  // promotion runs). Sarah-only — Lucy talks pricing with prospects who
+  // haven't committed yet, this is specifically the "am I missing a better
+  // deal" reassurance for someone who already has.
+  {
+    key: "existing_customer_current_rate",
+    approvedText:
+      "You're already enrolled at the current rate for your plan, so there's nothing additional to apply on top of what you're on now. " +
+      "If a new promotion becomes available that applies to your plan, our team will reach out to you directly.",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-18",
+    prohibitedClaims: ["lowest_rate_ever_guarantee", "future_price_lock_guarantee", "specific_discount_amount"],
+    enabledForPreview: true,
+  },
+
   // ── How the program works / enrollment ────────────────────────────────────
   // Source: lucy-knowledge-v1 §MEDICAL QUESTIONNAIRE AND ENROLLMENT
   {
@@ -577,8 +598,13 @@ export const KNOWLEDGE_CATALOG: readonly KnowledgeTopic[] = [
  * how_luma_works_after_purchase: written entirely from "after your order
  * comes in..." — premature and wrong for a prospect who hasn't ordered yet.
  * Lucy has her own pre-purchase version, how_luma_works.
+ *
+ * existing_customer_current_rate is excluded for the same reason as portal_help:
+ * it reassures an existing customer about the rate they're *already enrolled at*,
+ * which doesn't apply to a prospect who hasn't purchased yet. Lucy's pricing
+ * conversations with prospects are handled by her own pre-purchase pricing topics.
  */
-const LUCY_EXCLUDED_TOPIC_KEYS = new Set(["portal_help", "how_luma_works_after_purchase"]);
+const LUCY_EXCLUDED_TOPIC_KEYS = new Set(["portal_help", "how_luma_works_after_purchase", "existing_customer_current_rate"]);
 
 /** All topics available for the development bot-test preview. */
 export function getPreviewEnabledTopics(): readonly KnowledgeTopic[] {
@@ -610,12 +636,14 @@ export const APPROVED_REVIEW_WRITE_URL = "https://www.consumeraffairs.com/review
  * whole domain is post-purchase customer service with zero individualized
  * clinical content; anything clinical routes to staff.
  *
- * compounded_medication is the one narrow exception: it's general product
- * information (compounded vs. brand-name, same active ingredient), not
- * individualized clinical guidance, so Sarah may use it when a patient asks
- * how their medication compares to a brand name (semaglutide/Ozempic/Wegovy,
- * tirzepatide/Mounjaro/Zepbound) — see the topic-gated rule in
- * lib/support/safety.ts.
+ * compounded_medication and existing_customer_current_rate are the two
+ * narrow exceptions: general product/account information rather than
+ * individualized clinical or new-sale pricing guidance. compounded_medication
+ * covers "how does my medication compare to a brand name" (semaglutide/
+ * Ozempic/Wegovy, tirzepatide/Mounjaro/Zepbound) — see the topic-gated rule
+ * in lib/support/safety.ts. existing_customer_current_rate covers "am I
+ * missing a better deal" from someone who's already enrolled, without
+ * quoting any dollar figure or promising a rate that could later be false.
  *
  * how_luma_works_after_purchase, not how_luma_works: the latter is written
  * entirely for a prospect who hasn't signed up yet (select a plan, complete
@@ -632,6 +660,7 @@ export const SARAH_TOPIC_KEYS = new Set([
   "auto_refill",
   "portal_help",
   "compounded_medication",
+  "existing_customer_current_rate",
 ]);
 
 /** Topics available to Sarah's conversation loop. */
