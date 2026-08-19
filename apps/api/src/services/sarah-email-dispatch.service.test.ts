@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeAll } from "vitest";
+import { eq } from "drizzle-orm";
 import { db, customersTable } from "@luma/db";
 import type { SarahTurnResult } from "./sarah-conversation.service.js";
 import { isCustomerEmailDnd, setCustomerEmailDnd } from "./dnd.service.js";
@@ -23,8 +24,10 @@ vi.mock("../lib/email-provider.js", async () => {
   return { ...actual, getEmailProvider: () => ({ provider: { sendEmail: sendEmailMock }, fromName: "Sarah at Luma Health" }) };
 });
 
-const { processInboundSupportEmail } = await import("./sarah-email-dispatch.service.js");
-const { getOrCreateSupportEmailConversation, listSupportEmailMessages } = await import("./support-email-conversations.service.js");
+const { processInboundSupportEmail, sendEmailStaffReply } = await import("./sarah-email-dispatch.service.js");
+const { getOrCreateSupportEmailConversation, listSupportEmailMessages, appendSupportEmailMessage, updateSupportEmailConversationState } = await import(
+  "./support-email-conversations.service.js"
+);
 
 async function seedCustomer(): Promise<string> {
   const [row] = await db
@@ -140,5 +143,59 @@ describe("processInboundSupportEmail", () => {
     expect(sendEmailMock).not.toHaveBeenCalled();
     const conversation = await getOrCreateSupportEmailConversation(personId);
     expect(conversation.needsAttention).toBe(true);
+  });
+});
+
+describe("sendEmailStaffReply", () => {
+  it("threads off the most recent message, greets/signs off the body, sends, logs, and clears needsAttention", async () => {
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<staff-support-reply-1@example.com>" });
+
+    const personId = await seedCustomer();
+    const conversation = await getOrCreateSupportEmailConversation(personId);
+    await appendSupportEmailMessage(conversation.id, "inbound", "Order status", "Has it shipped?", { messageId: "<inbound-1@example.com>" });
+    await updateSupportEmailConversationState(conversation.id, { needsAttention: true });
+
+    const [customerRow] = await db.select({ email: customersTable.email }).from(customersTable).where(eq(customersTable.id, personId));
+    const result = await sendEmailStaffReply(conversation.id, "It shipped this morning.");
+
+    expect(result).toEqual({ sent: true });
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    const [to, subject, html, opts] = sendEmailMock.mock.calls[0];
+    expect(to).toBe(customerRow.email);
+    expect(subject).toBe("Re: Order status");
+    expect(html).toContain("It shipped this morning.");
+    expect(html).toContain("Hi Support,");
+    expect(html).toContain("— Sarah at Luma Health");
+    expect(opts.inReplyTo).toBe("<inbound-1@example.com>");
+
+    const messages = await listSupportEmailMessages(conversation.id);
+    expect(messages.at(-1)).toMatchObject({ direction: "outbound", subject: "Re: Order status", messageId: "<staff-support-reply-1@example.com>" });
+
+    const updated = await getOrCreateSupportEmailConversation(personId);
+    expect(updated.needsAttention).toBe(false);
+  });
+
+  it("returns not_found for an unknown conversation id", async () => {
+    const result = await sendEmailStaffReply("00000000-0000-0000-0000-000000000000", "hi");
+    expect(result).toEqual({ sent: false, reason: "not_found" });
+  });
+
+  it("logs the message with sent:false when the send fails, and does not clear needsAttention", async () => {
+    sendEmailMock.mockClear();
+    sendEmailMock.mockRejectedValueOnce(new Error("boom"));
+
+    const personId = await seedCustomer();
+    const conversation = await getOrCreateSupportEmailConversation(personId);
+    await updateSupportEmailConversationState(conversation.id, { needsAttention: true });
+
+    const result = await sendEmailStaffReply(conversation.id, "Following up.");
+
+    expect(result).toEqual({ sent: false, reason: "send_failed" });
+    const messages = await listSupportEmailMessages(conversation.id);
+    expect(messages.at(-1)).toMatchObject({ direction: "outbound", body: expect.stringContaining("Following up.") });
+
+    const updated = await getOrCreateSupportEmailConversation(personId);
+    expect(updated.needsAttention).toBe(true);
   });
 });

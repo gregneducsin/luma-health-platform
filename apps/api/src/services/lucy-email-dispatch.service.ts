@@ -3,6 +3,7 @@ import { db, customersTable } from "@luma/db";
 import { runLucyTurn, type LucyTurnResult } from "./lucy-conversation.service.js";
 import {
   getOrCreateEmailConversation,
+  getEmailConversationDetail,
   listEmailMessages,
   appendEmailMessage,
   setEmailMessageSentiment,
@@ -131,4 +132,49 @@ async function processInboundEmailLocked(personId: string, subject: string, body
   });
 
   return result;
+}
+
+export type EmailStaffReplyResult = { readonly sent: true } | { readonly sent: false; readonly reason: "not_found" | "send_failed" };
+
+/**
+ * A human-authored reply to an email conversation — email twin of
+ * conversations.service.ts's sendStaffReply (SMS): logs the message
+ * regardless of send outcome, only clears needsAttention on an actual
+ * successful send. Threads off the most recent message in the thread
+ * (inbound or outbound, whichever is last) and gets the same
+ * greeting/sign-off wrap sendAndLog gives an AI-drafted reply, so a staff
+ * reply reads identically to a bot one in the customer's inbox.
+ */
+export async function sendEmailStaffReply(conversationId: string, body: string): Promise<EmailStaffReplyResult> {
+  const detail = await getEmailConversationDetail(conversationId);
+  if (!detail) return { sent: false, reason: "not_found" };
+
+  const { customer, messages } = detail;
+  const lastMessage = messages.at(-1);
+  const subject = lastMessage ? replySubject(lastMessage.subject) : "Message from Luma Health";
+  const signedBody = withGreetingAndSignOff(customer.firstName, body);
+
+  let messageId: string | null = null;
+  let sendFailed = false;
+  try {
+    const { provider, fromName } = getEmailProvider("lucy");
+    const unsubscribeUrl = buildUnsubscribeUrl(detail.conversation.personId);
+    const html = renderConversationReplyEmail(signedBody, unsubscribeUrl);
+    const result = await provider.sendEmail(customer.email, subject, html, {
+      fromName,
+      inReplyTo: lastMessage?.messageId ?? undefined,
+      references: lastMessage?.messageId ?? undefined,
+      unsubscribeUrl,
+    });
+    messageId = result.messageId;
+  } catch (err) {
+    sendFailed = true;
+    logger.warn({ conversationId, reason: err instanceof Error ? err.message : String(err) }, "staff email reply send failed");
+  }
+
+  await appendEmailMessage(conversationId, "outbound", subject, signedBody, { messageId, inReplyTo: lastMessage?.messageId ?? null });
+  if (sendFailed) return { sent: false, reason: "send_failed" };
+
+  await updateEmailConversationState(conversationId, { needsAttention: false });
+  return { sent: true };
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeAll } from "vitest";
+import { eq } from "drizzle-orm";
 import { db, customersTable } from "@luma/db";
 import type { LucyTurnResult } from "./lucy-conversation.service.js";
 import { isCustomerEmailDnd, setCustomerEmailDnd, setCustomerSmsDnd } from "./dnd.service.js";
@@ -23,8 +24,8 @@ vi.mock("../lib/email-provider.js", async () => {
   return { ...actual, getEmailProvider: () => ({ provider: { sendEmail: sendEmailMock }, fromName: "Lucy at Luma Health" }) };
 });
 
-const { processInboundEmail } = await import("./lucy-email-dispatch.service.js");
-const { getOrCreateEmailConversation, listEmailMessages } = await import("./email-conversations.service.js");
+const { processInboundEmail, sendEmailStaffReply } = await import("./lucy-email-dispatch.service.js");
+const { getOrCreateEmailConversation, listEmailMessages, appendEmailMessage, updateEmailConversationState } = await import("./email-conversations.service.js");
 
 async function seedCustomer(): Promise<string> {
   const [row] = await db
@@ -173,5 +174,59 @@ describe("processInboundEmail", () => {
     await processInboundEmail(personId, "still interested?", "is this still $120?", null);
 
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("sendEmailStaffReply", () => {
+  it("threads off the most recent message, greets/signs off the body, sends, logs, and clears needsAttention", async () => {
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<staff-reply-1@example.com>" });
+
+    const personId = await seedCustomer();
+    const conversation = await getOrCreateEmailConversation(personId);
+    await appendEmailMessage(conversation.id, "inbound", "Pricing question", "How much is tirzepatide?", { messageId: "<inbound-1@example.com>" });
+    await updateEmailConversationState(conversation.id, { needsAttention: true });
+
+    const [customerRow] = await db.select({ email: customersTable.email }).from(customersTable).where(eq(customersTable.id, personId));
+    const result = await sendEmailStaffReply(conversation.id, "It's $180/month for the standard plan.");
+
+    expect(result).toEqual({ sent: true });
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    const [to, subject, html, opts] = sendEmailMock.mock.calls[0];
+    expect(to).toBe(customerRow.email);
+    expect(subject).toBe("Re: Pricing question");
+    expect(html).toContain("It's $180/month for the standard plan.");
+    expect(html).toContain("Hi Email,");
+    expect(html).toContain("— Lucy at Luma Health");
+    expect(opts.inReplyTo).toBe("<inbound-1@example.com>");
+
+    const messages = await listEmailMessages(conversation.id);
+    expect(messages.at(-1)).toMatchObject({ direction: "outbound", subject: "Re: Pricing question", messageId: "<staff-reply-1@example.com>" });
+
+    const updated = await getOrCreateEmailConversation(personId);
+    expect(updated.needsAttention).toBe(false);
+  });
+
+  it("returns not_found for an unknown conversation id", async () => {
+    const result = await sendEmailStaffReply("00000000-0000-0000-0000-000000000000", "hi");
+    expect(result).toEqual({ sent: false, reason: "not_found" });
+  });
+
+  it("logs the message with sent:false when the send fails, and does not clear needsAttention", async () => {
+    sendEmailMock.mockClear();
+    sendEmailMock.mockRejectedValueOnce(new Error("boom"));
+
+    const personId = await seedCustomer();
+    const conversation = await getOrCreateEmailConversation(personId);
+    await updateEmailConversationState(conversation.id, { needsAttention: true });
+
+    const result = await sendEmailStaffReply(conversation.id, "Following up.");
+
+    expect(result).toEqual({ sent: false, reason: "send_failed" });
+    const messages = await listEmailMessages(conversation.id);
+    expect(messages.at(-1)).toMatchObject({ direction: "outbound", body: expect.stringContaining("Following up.") });
+
+    const updated = await getOrCreateEmailConversation(personId);
+    expect(updated.needsAttention).toBe(true);
   });
 });

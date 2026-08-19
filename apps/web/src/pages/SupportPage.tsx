@@ -125,8 +125,8 @@ function SupportConversationList({
   );
 }
 
-/** A staff-authored reply — sent through the real SMS provider and logged into the conversation like any other outbound message. */
-function StaffReplyBox({ conversationId }: { conversationId: string }) {
+/** A staff-authored reply — sent through the real SMS or email provider (per channel) and logged into the conversation like any other outbound message. */
+function StaffReplyBox({ conversationId, channel }: { conversationId: string; channel: SupportConversationChannel }) {
   const [text, setText] = useState("");
   const sendReply = useSendStaffReply();
 
@@ -134,7 +134,7 @@ function StaffReplyBox({ conversationId }: { conversationId: string }) {
     const body = text.trim();
     if (!body || sendReply.isPending) return;
     sendReply.mutate(
-      { conversationId, body },
+      { conversationId, body, channel },
       { onSuccess: (data) => { if (data.sent) setText(""); } },
     );
   }
@@ -144,7 +144,7 @@ function StaffReplyBox({ conversationId }: { conversationId: string }) {
       <div className="flex items-center gap-2">
         <Input
           className="flex-1"
-          placeholder="Reply as staff…"
+          placeholder={channel === "email" ? "Reply as staff (email)…" : "Reply as staff…"}
           value={text}
           onChange={(e) => setText(e.target.value)}
           disabled={sendReply.isPending}
@@ -153,6 +153,9 @@ function StaffReplyBox({ conversationId }: { conversationId: string }) {
           {sendReply.isPending ? "Sending…" : "Send reply"}
         </Button>
       </div>
+      {channel === "email" && (
+        <p className="mt-1 text-[11px] text-gray-400">Sent as an email, greeted and signed off the same way an AI-drafted reply would be.</p>
+      )}
       {sendReply.isSuccess && sendReply.data.sent === false && (
         <p className="mt-1 text-xs text-red-600">
           {sendReply.data.reason === "no_phone" && "No phone number on file — nothing was sent."}
@@ -226,11 +229,7 @@ function SupportConversationDetailPanel({ conversationId, channel }: { conversat
                 {clearAttention.isPending ? "Marking…" : "Mark reviewed"}
               </Button>
             </div>
-            {channel === "sms" ? (
-              <StaffReplyBox conversationId={conversation.id} />
-            ) : (
-              <p className="mt-2 text-xs text-gray-500">Reply directly from your email client — no dashboard reply page for email yet.</p>
-            )}
+            <StaffReplyBox conversationId={conversation.id} channel={channel} />
           </div>
         )}
       </div>
@@ -290,7 +289,9 @@ function SupportConversationDetailPanel({ conversationId, channel }: { conversat
         </form>
       ) : (
         <div className="border-t border-gray-200 p-3">
-          <p className="text-xs text-gray-400">This is a read-only view of the email thread — reply from your email client.</p>
+          <p className="text-xs text-gray-400">
+            Reply from the box above when this conversation needs attention, or reply from your own email client anytime.
+          </p>
         </div>
       )}
     </Card>

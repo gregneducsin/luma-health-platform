@@ -2,6 +2,7 @@ import { Router, type Router as RouterType } from "express";
 import { sendSupportConversationReplyRequestSchema } from "@luma/shared";
 import * as supportConversationsService from "../services/support-conversations.service.js";
 import * as supportEmailConversationsService from "../services/support-email-conversations.service.js";
+import { sendEmailStaffReply } from "../services/sarah-email-dispatch.service.js";
 import { requireRole } from "../middleware/requireAuth.js";
 import { requireCsrf } from "../middleware/csrf.js";
 
@@ -75,7 +76,10 @@ export function createSupportConversationsRouter(): RouterType {
         res.status(400).json({ error: "Invalid payload.", details: parsed.error.issues });
         return;
       }
-      const result = await supportConversationsService.sendStaffReply(req.params.id as string, parsed.data.body);
+      const result =
+        channelFromQuery(req) === "email"
+          ? await sendEmailStaffReply(req.params.id as string, parsed.data.body)
+          : await supportConversationsService.sendStaffReply(req.params.id as string, parsed.data.body);
       if (!result.sent && result.reason === "not_found") {
         res.status(404).json({ error: "Conversation not found." });
         return;

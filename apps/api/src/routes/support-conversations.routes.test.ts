@@ -9,6 +9,12 @@ vi.mock("../lib/sms-provider.js", async () => {
   return { ...actual, getSmsProvider: () => ({ sendMessage: sendMessageMock }) };
 });
 
+const sendEmailMock = vi.fn();
+vi.mock("../lib/email-provider.js", async () => {
+  const actual = await vi.importActual<typeof import("../lib/email-provider.js")>("../lib/email-provider.js");
+  return { ...actual, getEmailProvider: () => ({ provider: { sendEmail: sendEmailMock }, fromName: "Sarah at Luma Health" }) };
+});
+
 const { createApp } = await import("../app.js");
 
 const PASSWORD = "CorrectHorseBattery1";
@@ -48,6 +54,8 @@ describe("Support conversations", () => {
   let app: ReturnType<typeof createApp>;
 
   beforeAll(() => {
+    process.env.EMAIL_UNSUBSCRIBE_SECRET = "test-secret";
+    process.env.INTAKE_LINK_BASE_URL = "http://localhost:3000";
     app = createApp();
   });
 
@@ -202,6 +210,39 @@ describe("Support conversations", () => {
       const detailRes = await agent.get(`/api/app/support-conversations/${conversation.id}`);
       expect(detailRes.body.conversation.needsAttention).toBe(false);
       expect(detailRes.body.messages.at(-1)).toMatchObject({ direction: "outbound", body: "Your label has the exact timing instructions." });
+
+      // channel=email staff reply, reusing this test's login (see rate-limiter note above) —
+      // sent through the real email provider, greeted/signed-off, and threaded off the last message.
+      sendEmailMock.mockClear();
+      sendEmailMock.mockResolvedValueOnce({ messageId: "<staff-support-reply-1@example.com>" });
+
+      const { getOrCreateSupportEmailConversation, appendSupportEmailMessage, updateSupportEmailConversationState } = await import(
+        "../services/support-email-conversations.service.js"
+      );
+      const emailConversation = await getOrCreateSupportEmailConversation(personId);
+      const inboundEmail = await appendSupportEmailMessage(emailConversation.id, "inbound", "Order question", "When does it ship?", {
+        messageId: "<inbound-support-q@example.com>",
+      });
+      await updateSupportEmailConversationState(emailConversation.id, { needsAttention: true });
+
+      const emailReplyRes = await agent
+        .post(`/api/app/support-conversations/${emailConversation.id}/reply`)
+        .query({ channel: "email" })
+        .set("x-csrf-token", csrf)
+        .send({ body: "It ships tomorrow morning." });
+
+      expect(emailReplyRes.status).toBe(200);
+      expect(emailReplyRes.body).toEqual({ sent: true });
+      expect(sendEmailMock).toHaveBeenCalledTimes(1);
+      const [, subject, html, opts] = sendEmailMock.mock.calls[0];
+      expect(subject).toBe("Re: Order question");
+      expect(html).toContain("It ships tomorrow morning.");
+      expect(html).toContain("— Sarah at Luma Health");
+      expect(opts.inReplyTo).toBe(inboundEmail.messageId);
+
+      const emailDetailRes = await agent.get(`/api/app/support-conversations/${emailConversation.id}`).query({ channel: "email" });
+      expect(emailDetailRes.body.conversation.needsAttention).toBe(false);
+      expect(emailDetailRes.body.messages.at(-1)).toMatchObject({ direction: "outbound", subject: "Re: Order question" });
     });
 
     it("rejects an empty body with 400", async () => {

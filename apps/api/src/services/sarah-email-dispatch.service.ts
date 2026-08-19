@@ -3,6 +3,7 @@ import { db, customersTable } from "@luma/db";
 import { runSarahTurn, type SarahTurnResult } from "./sarah-conversation.service.js";
 import {
   getOrCreateSupportEmailConversation,
+  getSupportEmailConversationDetail,
   listSupportEmailMessages,
   appendSupportEmailMessage,
   setSupportEmailMessageSentiment,
@@ -113,4 +114,45 @@ async function processInboundSupportEmailLocked(personId: string, subject: strin
   await updateSupportEmailConversationState(conversation.id, statePatch);
 
   return result;
+}
+
+export type EmailStaffReplyResult = { readonly sent: true } | { readonly sent: false; readonly reason: "not_found" | "send_failed" };
+
+/**
+ * A human-authored reply to an email conversation — email twin of
+ * support-conversations.service.ts's sendStaffReply (SMS), same reasoning
+ * as lucy-email-dispatch.service.ts's sendEmailStaffReply.
+ */
+export async function sendEmailStaffReply(conversationId: string, body: string): Promise<EmailStaffReplyResult> {
+  const detail = await getSupportEmailConversationDetail(conversationId);
+  if (!detail) return { sent: false, reason: "not_found" };
+
+  const { customer, messages } = detail;
+  const lastMessage = messages.at(-1);
+  const subject = lastMessage ? replySubject(lastMessage.subject) : "Message from Luma Health";
+  const signedBody = withGreetingAndSignOff(customer.firstName, body);
+
+  let messageId: string | null = null;
+  let sendFailed = false;
+  try {
+    const { provider, fromName } = getEmailProvider("sarah");
+    const unsubscribeUrl = buildUnsubscribeUrl(detail.conversation.personId);
+    const html = renderConversationReplyEmail(signedBody, unsubscribeUrl);
+    const result = await provider.sendEmail(customer.email, subject, html, {
+      fromName,
+      inReplyTo: lastMessage?.messageId ?? undefined,
+      references: lastMessage?.messageId ?? undefined,
+      unsubscribeUrl,
+    });
+    messageId = result.messageId;
+  } catch (err) {
+    sendFailed = true;
+    logger.warn({ conversationId, reason: err instanceof Error ? err.message : String(err) }, "staff email reply send failed");
+  }
+
+  await appendSupportEmailMessage(conversationId, "outbound", subject, signedBody, { messageId, inReplyTo: lastMessage?.messageId ?? null });
+  if (sendFailed) return { sent: false, reason: "send_failed" };
+
+  await updateSupportEmailConversationState(conversationId, { needsAttention: false });
+  return { sent: true };
 }

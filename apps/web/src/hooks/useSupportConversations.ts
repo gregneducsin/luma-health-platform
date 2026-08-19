@@ -52,12 +52,12 @@ export function useClearSupportNeedsAttention() {
   });
 }
 
-/** A staff-authored reply, sent through the real SMS provider and logged into the conversation like any other outbound message. */
+/** A staff-authored reply, sent through the real SMS or email provider (per channel) and logged into the conversation like any other outbound message. */
 export function useSendStaffReply() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ conversationId, body }: { conversationId: string; body: string }) =>
-      api.post<SendSupportConversationReplyResponse>(`/api/app/support-conversations/${conversationId}/reply`, { body }),
+    mutationFn: ({ conversationId, body, channel }: { conversationId: string; body: string; channel: SupportConversationChannel }) =>
+      api.post<SendSupportConversationReplyResponse>(`/api/app/support-conversations/${conversationId}/reply?channel=${channel}`, { body }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["support-conversations"] });
     },
