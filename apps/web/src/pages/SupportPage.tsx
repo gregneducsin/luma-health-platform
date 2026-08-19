@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useSearch } from "wouter";
 import {
   useSupportConversationsList,
   useSupportConversationDetail,
@@ -299,7 +300,10 @@ function SupportConversationDetailPanel({ conversationId, channel }: { conversat
 }
 
 export function SupportPage() {
-  const [channel, setChannel] = useState<SupportConversationChannel>("sms");
+  // Lets NeedsAttentionPage link directly into the right channel tab (e.g. /support?channel=email).
+  const search = useSearch();
+  const initialChannel: SupportConversationChannel = new URLSearchParams(search).get("channel") === "email" ? "email" : "sms";
+  const [channel, setChannel] = useState<SupportConversationChannel>(initialChannel);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   function handleChannelChange(c: SupportConversationChannel) {

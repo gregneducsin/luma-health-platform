@@ -196,9 +196,38 @@ export const metaLeadEmailTriggersTable = pgTable(
   ],
 );
 
+/**
+ * Inbound email from an address that matched no customer record —
+ * previously silently dropped (logged and marked processed, invisible to
+ * staff). Recorded here instead so it shows up somewhere, with a Claude-
+ * drafted classification and suggested reply attached — never auto-sent.
+ * suggestedMatchCustomerId is a candidate guess, never applied
+ * automatically: matching health-context correspondence to the wrong
+ * customer by an unverified fuzzy match is exactly the kind of mistake this
+ * system should never make unattended, so a human confirms it explicitly
+ * before anything acts on it.
+ */
+export const unmatchedInboundEmailsTable = pgTable("unmatched_inbound_emails", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  fromAddress: text("from_address").notNull(),
+  fromName: text("from_name"),
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  messageId: text("message_id"),
+  aiIntent: text("ai_intent"),
+  aiSummary: text("ai_summary"),
+  suggestedMatchCustomerId: uuid("suggested_match_customer_id").references(() => customersTable.id, { onDelete: "set null" }),
+  suggestedMatchConfidence: text("suggested_match_confidence", { enum: ["high", "medium", "low"] }),
+  suggestedReply: text("suggested_reply"),
+  status: text("status", { enum: ["needs_review", "replied", "dismissed"] }).notNull().default("needs_review"),
+  repliedAt: timestamp("replied_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type EmailConversation = typeof emailConversationsTable.$inferSelect;
 export type EmailConversationMessage = typeof emailConversationMessagesTable.$inferSelect;
 export type SupportEmailConversation = typeof supportEmailConversationsTable.$inferSelect;
 export type SupportEmailConversationMessage = typeof supportEmailConversationMessagesTable.$inferSelect;
 export type AbandonedCartEmailTrigger = typeof abandonedCartEmailTriggersTable.$inferSelect;
 export type MetaLeadEmailTrigger = typeof metaLeadEmailTriggersTable.$inferSelect;
+export type UnmatchedInboundEmail = typeof unmatchedInboundEmailsTable.$inferSelect;

@@ -5,6 +5,7 @@ import { db, customersTable, emailConversationsTable, supportEmailConversationsT
 import { recordWebhookEventIfNew, markWebhookEventProcessed, markWebhookEventFailed, caseInsensitiveEmailEq } from "./webhooks.service.js";
 import { processInboundEmail } from "./lucy-email-dispatch.service.js";
 import { processInboundSupportEmail } from "./sarah-email-dispatch.service.js";
+import { recordAndClassifyUnmatchedEmail } from "./unmatched-inbound-email.service.js";
 import { htmlToPlainText } from "../lib/email/templates.js";
 import { logger } from "../lib/logger.js";
 
@@ -144,11 +145,17 @@ export async function sweepInboundEmail(): Promise<EmailInboundSweepResult> {
             throw new Error("Inbound email has no From address.");
           }
           const personId = await findCustomerIdByEmail(fromAddress);
+          const bodyText = stripQuotedReply(extractBodyText(parsed));
           if (!personId) {
-            logger.warn({ fromDomain: fromAddress.split("@")[1] }, "inbound email from an unrecognized address — no matching customer");
+            await recordAndClassifyUnmatchedEmail({
+              fromAddress,
+              fromName: parsed.from?.value[0]?.name || null,
+              subject: parsed.subject ?? "(no subject)",
+              body: bodyText,
+              messageId: parsed.messageId ?? null,
+            });
             await markWebhookEventProcessed(recorded.id);
           } else {
-            const bodyText = stripQuotedReply(extractBodyText(parsed));
             await dispatchInboundEmail(personId, parsed.subject ?? "(no subject)", bodyText, parsed.messageId ?? null);
             await markWebhookEventProcessed(recorded.id, personId);
           }
