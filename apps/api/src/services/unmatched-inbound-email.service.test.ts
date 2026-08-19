@@ -22,6 +22,15 @@ vi.mock("../lib/email-provider.js", async () => {
   return { ...actual, getEmailProvider: () => ({ provider: { sendEmail: sendEmailMock }, fromName: "Lucy at Luma Health" }) };
 });
 
+// Handoff-after-lead-creation is tested here only as "was processInboundEmail
+// called with the right args" — Lucy's actual pipeline (its own Claude call,
+// guardrails, sending) is covered by lucy-email-dispatch.service.test.ts.
+const processInboundEmailMock = vi.fn();
+vi.mock("./lucy-email-dispatch.service.js", async () => {
+  const actual = await vi.importActual<typeof import("./lucy-email-dispatch.service.js")>("./lucy-email-dispatch.service.js");
+  return { ...actual, processInboundEmail: (...args: unknown[]) => processInboundEmailMock(...args) };
+});
+
 const {
   recordAndClassifyUnmatchedEmail,
   listUnmatchedEmailThreads,
@@ -62,6 +71,7 @@ function uniqueAddress(prefix: string): string {
 beforeEach(() => {
   createMock.mockClear();
   sendEmailMock.mockClear();
+  processInboundEmailMock.mockClear();
 });
 
 describe("recordAndClassifyUnmatchedEmail", () => {
@@ -154,6 +164,15 @@ describe("recordAndClassifyUnmatchedEmail", () => {
     expect(customer.lastName).toBe("Morgan");
     expect(customer.email).toBe(thread.fromAddress);
     expect(customer.leadType).toBe("Email Inquiry");
+
+    // The triggering message is handed straight to Lucy's real pipeline —
+    // not left as a generic staff-reviewed draft, and no redundant generic
+    // acknowledgment sent alongside it.
+    expect(processInboundEmailMock).toHaveBeenCalledWith(thread.linkedCustomerId, "Interested", "I'd like to learn more about your program.", null);
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    expect(thread.status).toBe("replied");
+    expect(thread.suggestedReply).toBeNull();
+    expect(thread.repliedAt).not.toBeNull();
   });
 
   it("does not create a lead when intent is existing_customer_support, even with a known name — that path is human-gated via matchCandidateIndex instead", async () => {
@@ -221,6 +240,76 @@ describe("recordAndClassifyUnmatchedEmail", () => {
   });
 });
 
+describe("auto-acknowledgment", () => {
+  it("sends a fixed, name-asking acknowledgment (threaded off the inbound message) on a thread's first message, independent of the classification result", async () => {
+    createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "First contact." })));
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<ack-1@example.com>" });
+
+    const fromAddress = uniqueAddress("first-contact");
+    await recordAndClassifyUnmatchedEmail({ fromAddress, fromName: null, subject: "Hello", body: "Do you offer this?", messageId: "<in-ack-1@example.com>" });
+
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    const [to, subject, html, opts] = sendEmailMock.mock.calls[0];
+    expect(to).toBe(fromAddress);
+    expect(subject).toBe("Re: Hello");
+    expect(html).toContain("could you share your name");
+    expect(opts.inReplyTo).toBe("<in-ack-1@example.com>");
+  });
+
+  it("sends the name-known variant (no request for a name) when the From header already carries one", async () => {
+    createMock.mockResolvedValueOnce(toolResponse(classification()));
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<ack-2@example.com>" });
+
+    await recordAndClassifyUnmatchedEmail({
+      fromAddress: uniqueAddress("named-sender"),
+      fromName: "Casey Nguyen",
+      subject: "Question",
+      body: "Hi, quick question.",
+      messageId: null,
+    });
+
+    const [, , html] = sendEmailMock.mock.calls[0];
+    expect(html).not.toContain("share your name");
+    expect(html).toContain("Thanks for reaching out");
+  });
+
+  it("does NOT send a second acknowledgment when another message arrives on the same thread", async () => {
+    const fromAddress = uniqueAddress("no-double-ack");
+
+    createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "First." })));
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<ack-3@example.com>" });
+    await recordAndClassifyUnmatchedEmail({ fromAddress, fromName: null, subject: "Hi", body: "First message.", messageId: null });
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+
+    createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "Second." })));
+    sendEmailMock.mockClear();
+    await recordAndClassifyUnmatchedEmail({ fromAddress, fromName: null, subject: "Following up", body: "Second message.", messageId: null });
+    expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
+  it("still records the inbound message and runs classification even when the acknowledgment send fails", async () => {
+    createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "Ack failed but this still worked." })));
+    sendEmailMock.mockClear();
+    sendEmailMock.mockRejectedValueOnce(new Error("smtp down"));
+
+    const thread = await recordAndClassifyUnmatchedEmail({
+      fromAddress: uniqueAddress("ack-fails"),
+      fromName: null,
+      subject: "Hi",
+      body: "hello",
+      messageId: null,
+    });
+
+    expect(thread.aiSummary).toBe("Ack failed but this still worked.");
+    const detail = await getUnmatchedEmailThreadDetail(thread.id);
+    expect(detail?.messages).toHaveLength(1); // just the inbound message — the failed ack was never logged
+    expect(detail?.messages[0].direction).toBe("inbound");
+  });
+});
+
 describe("listUnmatchedEmailThreads / getUnmatchedEmailThread / dismissUnmatchedEmailThread", () => {
   it("lists (with last-message preview), fetches by id, and dismisses", async () => {
     createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "Unclear intent." })));
@@ -256,6 +345,7 @@ describe("sendUnmatchedInboundEmailReply", () => {
       messageId: "<original-1@example.com>",
     });
 
+    sendEmailMock.mockClear(); // the setup call above also triggers the first-message auto-acknowledgment send
     sendEmailMock.mockResolvedValueOnce({ messageId: "<staff-reply@example.com>" });
     const result = await sendUnmatchedInboundEmailReply(thread.id, "A team member will follow up with pricing details shortly.");
 

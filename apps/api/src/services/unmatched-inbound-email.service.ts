@@ -9,6 +9,7 @@ import {
   type UnmatchedEmailMessage,
 } from "@luma/db";
 import { getEmailProvider } from "../lib/email-provider.js";
+import { processInboundEmail } from "./lucy-email-dispatch.service.js";
 import { logger } from "../lib/logger.js";
 
 /**
@@ -33,6 +34,15 @@ import { logger } from "../lib/logger.js";
  * already operates at (the GHL/Meta webhooks create customers with no
  * human review either) — it's the "guess which existing person this is"
  * action that stays human-gated, not "add a new row for someone new."
+ *
+ * The moment a lead is created, the triggering message itself is handed
+ * off to Lucy's real, guardrailed pipeline (lucy-email-dispatch.service.ts's
+ * processInboundEmail) instead of sitting in this queue with a generic
+ * draft — being confident enough to create the lead means being confident
+ * enough to let the same pipeline every other lead gets handle it live.
+ * Every message from that sender after this one skips this file entirely,
+ * since findCustomerIdByEmail now matches them on the normal inbound-email
+ * path (email-inbound.service.ts).
  */
 
 const MODEL = "claude-haiku-4-5-20251001";
@@ -210,8 +220,12 @@ function splitName(fullName: string): { firstName: string; lastName: string } {
  * that case goes to matchCandidateIndex instead, human-gated), and this
  * thread hasn't already been linked to a customer.
  */
-async function maybeCreateLead(thread: UnmatchedEmailThread, classification: Classification, matchedExisting: boolean): Promise<string | null> {
-  if (thread.linkedCustomerId) return thread.linkedCustomerId;
+async function maybeCreateLead(
+  thread: UnmatchedEmailThread,
+  classification: Classification,
+  matchedExisting: boolean,
+): Promise<{ customerId: string; justCreated: boolean } | null> {
+  if (thread.linkedCustomerId) return { customerId: thread.linkedCustomerId, justCreated: false };
   if (matchedExisting) return null;
   if (classification.intent !== "new_lead_interest") return null;
 
@@ -231,11 +245,46 @@ async function maybeCreateLead(thread: UnmatchedEmailThread, classification: Cla
     .returning({ id: customersTable.id });
 
   logger.info({ threadId: thread.id, customerId: created.id }, "created a new lead from an unmatched inbound email");
-  return created.id;
+  return { customerId: created.id, justCreated: true };
 }
 
 export async function listUnmatchedEmailMessages(threadId: string): Promise<UnmatchedEmailMessage[]> {
   return db.select().from(unmatchedEmailMessagesTable).where(eq(unmatchedEmailMessagesTable.threadId, threadId)).orderBy(unmatchedEmailMessagesTable.createdAt);
+}
+
+const ACK_ASKING_NAME =
+  "Thanks for reaching out to Luma Health — could you share your name so we can help you further? A member of our team will follow up shortly.";
+const ACK_KNOWN_NAME = "Thanks for reaching out to Luma Health — a member of our team will follow up shortly.";
+
+/**
+ * The one message this pipeline sends with no review at all — a fixed,
+ * content-free acknowledgment, not Claude's substantive suggestedReply.
+ * Deliberately a hardcoded template rather than anything AI-generated:
+ * it makes no claim about their actual question, so there's nothing for a
+ * guardrail to get wrong. Failure here is logged and swallowed — a
+ * send failure on the acknowledgment shouldn't block recording the email
+ * or running classification.
+ */
+async function sendAutoAcknowledgment(threadId: string, fromAddress: string, subject: string, knownName: string | null, inReplyTo: string | null): Promise<void> {
+  const body = knownName ? ACK_KNOWN_NAME : ACK_ASKING_NAME;
+  const replySubject = /^re:/i.test(subject.trim()) ? subject : `Re: ${subject}`;
+
+  let messageId: string | null = null;
+  try {
+    const { provider } = getEmailProvider("lucy");
+    const html = wrapReplyHtml(body);
+    const result = await provider.sendEmail(fromAddress, replySubject, html, {
+      fromName: "Luma Health Team",
+      inReplyTo: inReplyTo ?? undefined,
+      references: inReplyTo ?? undefined,
+    });
+    messageId = result.messageId;
+  } catch (err) {
+    logger.warn({ threadId, reason: err instanceof Error ? err.message : String(err) }, "unmatched-email auto-acknowledgment send failed");
+    return;
+  }
+
+  await db.insert(unmatchedEmailMessagesTable).values({ threadId, direction: "outbound", subject: replySubject, body, messageId });
 }
 
 /**
@@ -258,6 +307,9 @@ export async function recordAndClassifyUnmatchedEmail(input: {
   if (input.fromName && !thread.fromName) {
     await db.update(unmatchedEmailThreadsTable).set({ fromName: input.fromName }).where(eq(unmatchedEmailThreadsTable.id, thread.id));
   }
+
+  const priorMessages = await listUnmatchedEmailMessages(thread.id);
+  const isFirstMessage = priorMessages.length === 0;
 
   await db.insert(unmatchedEmailMessagesTable).values({
     threadId: thread.id,
@@ -286,7 +338,30 @@ export async function recordAndClassifyUnmatchedEmail(input: {
   const matchCandidate =
     classification?.matchCandidateIndex !== null && classification?.matchCandidateIndex !== undefined ? candidates[classification.matchCandidateIndex] : undefined;
 
-  const linkedCustomerId = classification ? await maybeCreateLead(thread, classification, Boolean(matchCandidate)) : (thread.linkedCustomerId ?? null);
+  const leadResult = classification ? await maybeCreateLead(thread, classification, Boolean(matchCandidate)) : null;
+
+  if (leadResult?.justCreated) {
+    // Confident enough to create the lead means confident enough to hand
+    // THIS message straight to Lucy's real, guardrailed pipeline — not the
+    // generic "a team member will follow up" queue. Same trust level Lucy
+    // already operates at unattended for every other lead; sending the
+    // generic acknowledgment on top would just be a redundant second email.
+    try {
+      await processInboundEmail(leadResult.customerId, input.subject, input.body, input.messageId);
+    } catch (err) {
+      logger.warn({ threadId: thread.id, reason: err instanceof Error ? err.message : String(err) }, "handoff to Lucy after lead creation failed");
+    }
+  } else if (isFirstMessage) {
+    // One immediate, fixed, content-free acknowledgment per thread — not
+    // Claude's substantive suggestedReply, which still waits for staff
+    // review. This is the one thing safe to send with zero review: it makes
+    // no claims about their actual question, so a stranger isn't left with
+    // no response at all until someone happens to check the dashboard.
+    // Only on the thread's first-ever message, so a repeat sender doesn't
+    // get re-acknowledged on every email; skipped above when Lucy is about
+    // to send the real thing instead.
+    await sendAutoAcknowledgment(thread.id, input.fromAddress, input.subject, knownName, input.messageId);
+  }
 
   const [updated] = await db
     .update(unmatchedEmailThreadsTable)
@@ -294,11 +369,12 @@ export async function recordAndClassifyUnmatchedEmail(input: {
       fromName: knownName ?? classification?.senderName ?? undefined,
       aiIntent: classification?.intent ?? thread.aiIntent,
       aiSummary: classification?.summary ?? thread.aiSummary,
-      suggestedReply: classification?.suggestedReply ?? thread.suggestedReply,
+      suggestedReply: leadResult?.justCreated ? null : (classification?.suggestedReply ?? thread.suggestedReply),
       suggestedMatchCustomerId: matchCandidate?.id ?? thread.suggestedMatchCustomerId,
       suggestedMatchConfidence: matchCandidate ? (classification?.matchConfidence ?? null) : thread.suggestedMatchConfidence,
-      linkedCustomerId: linkedCustomerId ?? undefined,
-      status: "needs_review",
+      linkedCustomerId: leadResult?.customerId ?? thread.linkedCustomerId,
+      status: leadResult?.justCreated ? "replied" : "needs_review",
+      repliedAt: leadResult?.justCreated ? new Date() : thread.repliedAt,
     })
     .where(eq(unmatchedEmailThreadsTable.id, thread.id))
     .returning();
