@@ -1,5 +1,5 @@
-import { desc, eq } from "drizzle-orm";
-import { db, emailConversationsTable, emailConversationMessagesTable, type EmailConversation, type EmailConversationMessage } from "@luma/db";
+import { desc, eq, sql } from "drizzle-orm";
+import { db, emailConversationsTable, emailConversationMessagesTable, customersTable, type EmailConversation, type EmailConversationMessage } from "@luma/db";
 import type { BotPreviewRequestBody } from "../lib/messaging/types.js";
 
 const MAX_HISTORY_MESSAGES = 20;
@@ -113,4 +113,86 @@ export function toEmailPreviewBody(conversation: EmailConversation, history: rea
     linkProvided: conversation.linkProvided,
     promoOffered: conversation.promoOffered,
   };
+}
+
+/** Email twin of conversations.service.ts's ConversationSummary — same shape, its own table. */
+export interface EmailConversationSummary {
+  readonly id: string;
+  readonly personId: string;
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly leadSource: "abandoned_cart" | "meta_form";
+  readonly status: "active" | "closed";
+  readonly lastMessageAt: string | null;
+  readonly lastMessagePreview: string | null;
+  readonly lastSentiment: "positive" | "neutral" | "negative" | null;
+  readonly needsAttention: boolean;
+}
+
+/** For the dashboard's Conversations tab, email view: one row per email conversation, most recently active first. */
+export async function listEmailConversationSummaries(): Promise<EmailConversationSummary[]> {
+  const rows = await db
+    .select({
+      id: emailConversationsTable.id,
+      personId: emailConversationsTable.personId,
+      firstName: customersTable.firstName,
+      lastName: customersTable.lastName,
+      leadSource: emailConversationsTable.leadSource,
+      status: emailConversationsTable.status,
+      needsAttention: emailConversationsTable.needsAttention,
+      lastMessageAt: sql<string | null>`(select max(${emailConversationMessagesTable.createdAt}) from ${emailConversationMessagesTable} where ${emailConversationMessagesTable.conversationId} = ${emailConversationsTable.id})`,
+      lastMessagePreview: sql<string | null>`(select ${emailConversationMessagesTable.body} from ${emailConversationMessagesTable} where ${emailConversationMessagesTable.conversationId} = ${emailConversationsTable.id} order by ${emailConversationMessagesTable.createdAt} desc limit 1)`,
+      lastSentiment: sql<string | null>`(select ${emailConversationMessagesTable.sentiment} from ${emailConversationMessagesTable} where ${emailConversationMessagesTable.conversationId} = ${emailConversationsTable.id} and ${emailConversationMessagesTable.direction} = 'inbound' order by ${emailConversationMessagesTable.createdAt} desc limit 1)`,
+    })
+    .from(emailConversationsTable)
+    .innerJoin(customersTable, eq(customersTable.id, emailConversationsTable.personId))
+    .orderBy(desc(sql`(select max(${emailConversationMessagesTable.createdAt}) from ${emailConversationMessagesTable} where ${emailConversationMessagesTable.conversationId} = ${emailConversationsTable.id})`));
+
+  return rows.map((r) => ({ ...r, lastSentiment: r.lastSentiment as EmailConversationSummary["lastSentiment"] }));
+}
+
+export interface EmailConversationResponseStats {
+  readonly totalContacted: number;
+  readonly totalResponded: number;
+  readonly responseRate: number;
+}
+
+/** Email twin of conversations.service.ts's getConversationResponseStats — same "count each contact once" logic, against the email tables. */
+export async function getEmailConversationResponseStats(): Promise<EmailConversationResponseStats> {
+  const rows = await db
+    .select({
+      hasOutbound: sql<boolean>`bool_or(${emailConversationMessagesTable.direction} = 'outbound')`,
+      hasInbound: sql<boolean>`bool_or(${emailConversationMessagesTable.direction} = 'inbound')`,
+    })
+    .from(emailConversationMessagesTable)
+    .groupBy(emailConversationMessagesTable.conversationId);
+
+  const totalContacted = rows.filter((r) => r.hasOutbound).length;
+  const totalResponded = rows.filter((r) => r.hasOutbound && r.hasInbound).length;
+  const responseRate = totalContacted > 0 ? totalResponded / totalContacted : 0;
+  return { totalContacted, totalResponded, responseRate };
+}
+
+/** Email twin of conversations.service.ts's getConversationDetail — customer.email included since that's the relevant contact identifier for this channel (customer.phone stays too, for display consistency with the SMS detail panel). */
+export async function getEmailConversationDetail(
+  conversationId: string,
+): Promise<{
+  conversation: EmailConversation;
+  customer: { firstName: string; lastName: string; phone: string | null; email: string };
+  messages: EmailConversationMessage[];
+} | null> {
+  const [row] = await db
+    .select({
+      conversation: emailConversationsTable,
+      firstName: customersTable.firstName,
+      lastName: customersTable.lastName,
+      phone: customersTable.phone,
+      email: customersTable.email,
+    })
+    .from(emailConversationsTable)
+    .innerJoin(customersTable, eq(customersTable.id, emailConversationsTable.personId))
+    .where(eq(emailConversationsTable.id, conversationId));
+  if (!row) return null;
+  const messages = await listEmailMessages(conversationId, 200);
+  return { conversation: row.conversation, customer: { firstName: row.firstName, lastName: row.lastName, phone: row.phone, email: row.email }, messages };
 }

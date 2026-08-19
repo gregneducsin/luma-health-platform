@@ -5,9 +5,26 @@ import {
   useSendSarahTestMessage,
   useClearSupportNeedsAttention,
   useSendStaffReply,
+  type SupportConversationChannel,
 } from "../hooks/useSupportConversations";
 import { Badge, Card, Button, Input } from "../components/ui";
 import { ApiError } from "../hooks/useAuth";
+
+function ChannelToggle({ channel, onChange }: { channel: SupportConversationChannel; onChange: (c: SupportConversationChannel) => void }) {
+  return (
+    <div className="flex gap-1">
+      {(["sms", "email"] as const).map((c) => (
+        <button
+          key={c}
+          onClick={() => onChange(c)}
+          className={"rounded px-2 py-1 text-xs font-medium uppercase " + (channel === c ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600")}
+        >
+          {c}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const SENTIMENT_COLOR: Record<string, "green" | "gray" | "red"> = {
   positive: "green",
@@ -31,8 +48,18 @@ function relativeTime(iso: string | null): string {
   return new Date(iso).toLocaleDateString();
 }
 
-function SupportConversationList({ selectedId, onSelect }: { selectedId: string | null; onSelect: (id: string) => void }) {
-  const { data, isLoading } = useSupportConversationsList();
+function SupportConversationList({
+  channel,
+  onChannelChange,
+  selectedId,
+  onSelect,
+}: {
+  channel: SupportConversationChannel;
+  onChannelChange: (c: SupportConversationChannel) => void;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  const { data, isLoading } = useSupportConversationsList(channel);
   const [onlyNeedsAttention, setOnlyNeedsAttention] = useState(false);
 
   const attentionCount = data?.conversations.filter((c) => c.needsAttention).length ?? 0;
@@ -46,7 +73,10 @@ function SupportConversationList({ selectedId, onSelect }: { selectedId: string 
       <div className="border-b border-gray-200 px-4 py-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-900">Support</h2>
-          {attentionCount > 0 && <Badge color="red">{attentionCount} need attention</Badge>}
+          <div className="flex items-center gap-2">
+            {attentionCount > 0 && <Badge color="red">{attentionCount} need attention</Badge>}
+            <ChannelToggle channel={channel} onChange={onChannelChange} />
+          </div>
         </div>
         <div className="mt-2 flex gap-1">
           <button
@@ -135,8 +165,8 @@ function StaffReplyBox({ conversationId }: { conversationId: string }) {
   );
 }
 
-function SupportConversationDetailPanel({ conversationId }: { conversationId: string }) {
-  const { data, isLoading } = useSupportConversationDetail(conversationId);
+function SupportConversationDetailPanel({ conversationId, channel }: { conversationId: string; channel: SupportConversationChannel }) {
+  const { data, isLoading } = useSupportConversationDetail(conversationId, channel);
   const [input, setInput] = useState("");
   const sendMessage = useSendSarahTestMessage();
   const clearAttention = useClearSupportNeedsAttention();
@@ -172,7 +202,9 @@ function SupportConversationDetailPanel({ conversationId }: { conversationId: st
               {customer.firstName} {customer.lastName}
               {conversation.needsAttention && <Badge color="red">Needs attention</Badge>}
             </p>
-            <p className="text-xs text-gray-400">{customer.phone ?? "No phone on file"}</p>
+            <p className="text-xs text-gray-400">
+              {channel === "email" ? customer.email ?? "No email on file" : customer.phone ?? "No phone on file"}
+            </p>
           </div>
           <div className="flex flex-wrap justify-end gap-1">
             {conversation.prescriptionWritten && <Badge color="blue">prescription written</Badge>}
@@ -185,11 +217,19 @@ function SupportConversationDetailPanel({ conversationId }: { conversationId: st
           <div className="mt-2 rounded-md bg-red-50 px-3 py-2">
             <div className="flex items-center justify-between">
               <p className="text-xs text-red-700">This conversation needs staff attention.</p>
-              <Button variant="secondary" onClick={() => clearAttention.mutate(conversation.id)} disabled={clearAttention.isPending}>
+              <Button
+                variant="secondary"
+                onClick={() => clearAttention.mutate({ conversationId: conversation.id, channel })}
+                disabled={clearAttention.isPending}
+              >
                 {clearAttention.isPending ? "Marking…" : "Mark reviewed"}
               </Button>
             </div>
-            <StaffReplyBox conversationId={conversation.id} />
+            {channel === "sms" ? (
+              <StaffReplyBox conversationId={conversation.id} />
+            ) : (
+              <p className="mt-2 text-xs text-gray-500">Reply directly from your email client — no dashboard reply page for email yet.</p>
+            )}
           </div>
         )}
       </div>
@@ -199,6 +239,7 @@ function SupportConversationDetailPanel({ conversationId }: { conversationId: st
         {messages.map((m) => (
           <div key={m.id} className={m.direction === "inbound" ? "text-left" : "text-right"}>
             <div className={"inline-flex max-w-[75%] flex-col gap-1 " + (m.direction === "inbound" ? "items-start" : "items-end")}>
+              {m.subject && <span className="px-1 text-[11px] font-medium text-gray-500">{m.subject}</span>}
               <span
                 className={
                   m.direction === "inbound"
@@ -218,48 +259,60 @@ function SupportConversationDetailPanel({ conversationId }: { conversationId: st
         {sendMessage.isPending && <p className="text-sm text-gray-400">Sarah is thinking…</p>}
       </div>
 
-      <form onSubmit={handleSubmit} className="border-t border-gray-200 p-3">
-        <p className="mb-2 text-xs text-gray-400">
-          Simulates what the patient would text back, running the real Sarah pipeline (Claude call, guardrails,
-          persistence) — an SMS provider is now connected, so this <strong>will</strong> send a real reply to this
-          patient's phone number if one is on file. Only use this against test/fake customer records.
-        </p>
-        <div className="flex items-center gap-2">
-          <Input
-            className="flex-1"
-            placeholder="Simulate an inbound message…"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            disabled={sendMessage.isPending}
-          />
-          <Button type="submit" disabled={sendMessage.isPending || !input.trim()}>
-            Send
-          </Button>
-        </div>
-        {sendMessage.isError && (
-          <p className="mt-2 text-xs text-red-600">
-            {sendMessage.error instanceof ApiError ? sendMessage.error.message : "Something went wrong."}
+      {channel === "sms" ? (
+        <form onSubmit={handleSubmit} className="border-t border-gray-200 p-3">
+          <p className="mb-2 text-xs text-gray-400">
+            Simulates what the patient would text back, running the real Sarah pipeline (Claude call, guardrails,
+            persistence) — an SMS provider is now connected, so this <strong>will</strong> send a real reply to this
+            patient's phone number if one is on file. Only use this against test/fake customer records.
           </p>
-        )}
-        {sendMessage.isSuccess && sendMessage.data.ok === false && (
-          <p className="mt-2 text-xs text-red-600">Sarah's reply was rejected by the guardrail ({sendMessage.data.code}) — nothing was sent.</p>
-        )}
-      </form>
+          <div className="flex items-center gap-2">
+            <Input
+              className="flex-1"
+              placeholder="Simulate an inbound message…"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              disabled={sendMessage.isPending}
+            />
+            <Button type="submit" disabled={sendMessage.isPending || !input.trim()}>
+              Send
+            </Button>
+          </div>
+          {sendMessage.isError && (
+            <p className="mt-2 text-xs text-red-600">
+              {sendMessage.error instanceof ApiError ? sendMessage.error.message : "Something went wrong."}
+            </p>
+          )}
+          {sendMessage.isSuccess && sendMessage.data.ok === false && (
+            <p className="mt-2 text-xs text-red-600">Sarah's reply was rejected by the guardrail ({sendMessage.data.code}) — nothing was sent.</p>
+          )}
+        </form>
+      ) : (
+        <div className="border-t border-gray-200 p-3">
+          <p className="text-xs text-gray-400">This is a read-only view of the email thread — reply from your email client.</p>
+        </div>
+      )}
     </Card>
   );
 }
 
 export function SupportPage() {
+  const [channel, setChannel] = useState<SupportConversationChannel>("sms");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  function handleChannelChange(c: SupportConversationChannel) {
+    setChannel(c);
+    setSelectedId(null);
+  }
 
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
       <div className="md:col-span-1">
-        <SupportConversationList selectedId={selectedId} onSelect={setSelectedId} />
+        <SupportConversationList channel={channel} onChannelChange={handleChannelChange} selectedId={selectedId} onSelect={setSelectedId} />
       </div>
       <div className="md:col-span-2">
         {selectedId ? (
-          <SupportConversationDetailPanel conversationId={selectedId} />
+          <SupportConversationDetailPanel conversationId={selectedId} channel={channel} />
         ) : (
           <Card className="flex h-[calc(100vh-180px)] items-center justify-center">
             <p className="text-sm text-gray-400">Select a conversation to view it.</p>

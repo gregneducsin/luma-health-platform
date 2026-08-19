@@ -1,14 +1,25 @@
 import { Router, type Router as RouterType } from "express";
 import { sendSupportConversationReplyRequestSchema } from "@luma/shared";
 import * as supportConversationsService from "../services/support-conversations.service.js";
+import * as supportEmailConversationsService from "../services/support-email-conversations.service.js";
 import { requireRole } from "../middleware/requireAuth.js";
 import { requireCsrf } from "../middleware/csrf.js";
+
+/** SMS or email — same customer, same Sarah pipeline, two independent threads. Defaults to "sms" so every pre-existing caller of this router keeps its current behavior untouched. */
+function channelFromQuery(req: { query: { channel?: unknown } }): "sms" | "email" {
+  return req.query.channel === "email" ? "email" : "sms";
+}
 
 export function createSupportConversationsRouter(): RouterType {
   const router: RouterType = Router();
 
-  router.get("/", requireRole("admin", "manager"), async (_req, res, next) => {
+  router.get("/", requireRole("admin", "manager"), async (req, res, next) => {
     try {
+      if (channelFromQuery(req) === "email") {
+        const conversations = await supportEmailConversationsService.listSupportEmailConversationSummaries();
+        res.json({ conversations });
+        return;
+      }
       const conversations = await supportConversationsService.listSupportConversationSummaries();
       res.json({ conversations });
     } catch (err) {
@@ -18,7 +29,10 @@ export function createSupportConversationsRouter(): RouterType {
 
   router.get("/:id", requireRole("admin", "manager"), async (req, res, next) => {
     try {
-      const detail = await supportConversationsService.getSupportConversationDetail(req.params.id as string);
+      const detail =
+        channelFromQuery(req) === "email"
+          ? await supportEmailConversationsService.getSupportEmailConversationDetail(req.params.id as string)
+          : await supportConversationsService.getSupportConversationDetail(req.params.id as string);
       if (!detail) {
         res.status(404).json({ error: "Conversation not found." });
         return;
@@ -31,6 +45,17 @@ export function createSupportConversationsRouter(): RouterType {
 
   router.post("/:id/clear-attention", requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
     try {
+      const channel = channelFromQuery(req);
+      if (channel === "email") {
+        const detail = await supportEmailConversationsService.getSupportEmailConversationDetail(req.params.id as string);
+        if (!detail) {
+          res.status(404).json({ error: "Conversation not found." });
+          return;
+        }
+        await supportEmailConversationsService.updateSupportEmailConversationState(req.params.id as string, { needsAttention: false });
+        res.json({ ok: true });
+        return;
+      }
       const detail = await supportConversationsService.getSupportConversationDetail(req.params.id as string);
       if (!detail) {
         res.status(404).json({ error: "Conversation not found." });

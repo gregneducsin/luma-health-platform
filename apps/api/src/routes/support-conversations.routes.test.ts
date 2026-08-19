@@ -79,6 +79,24 @@ describe("Support conversations", () => {
     expect(found.firstName).toBe("Route");
     expect(found.lastMessagePreview).toBe("Thanks for the update!");
     expect(found.lastSentiment).toBe("positive");
+
+    // channel=email is a separate list entirely — reuses this test's login
+    // rather than a fresh one, since the auth rate limiter caps logins per
+    // test file and every test in this file already sits at that budget.
+    const { getOrCreateSupportEmailConversation, appendSupportEmailMessage } = await import("../services/support-email-conversations.service.js");
+    const emailConversation = await getOrCreateSupportEmailConversation(personId);
+    await appendSupportEmailMessage(emailConversation.id, "outbound", "Order update", "Hi, this is Sarah.");
+    await appendSupportEmailMessage(emailConversation.id, "inbound", "Re: Order update", "Thanks for the email update!", { sentiment: "positive" });
+
+    const smsListRes = await agent.get("/api/app/support-conversations");
+    expect(smsListRes.body.conversations.some((c: { id: string }) => c.id === emailConversation.id)).toBe(false);
+
+    const emailListRes = await agent.get("/api/app/support-conversations").query({ channel: "email" });
+    expect(emailListRes.status).toBe(200);
+    const foundEmail = emailListRes.body.conversations.find((c: { id: string }) => c.id === emailConversation.id);
+    expect(foundEmail).toBeDefined();
+    expect(foundEmail.lastMessagePreview).toBe("Thanks for the email update!");
+    expect(foundEmail.lastSentiment).toBe("positive");
   });
 
   it("returns conversation detail with customer contact and full message history", async () => {
@@ -94,6 +112,18 @@ describe("Support conversations", () => {
     expect(res.status).toBe(200);
     expect(res.body.customer.firstName).toBe("Route");
     expect(res.body.messages).toHaveLength(2);
+
+    // channel=email detail, reusing this test's login (see rate-limiter note above).
+    const { getOrCreateSupportEmailConversation, appendSupportEmailMessage } = await import("../services/support-email-conversations.service.js");
+    const emailConversation = await getOrCreateSupportEmailConversation(personId);
+    await appendSupportEmailMessage(emailConversation.id, "outbound", "Where's my order?", "email message one");
+
+    const emailRes = await agent.get(`/api/app/support-conversations/${emailConversation.id}`).query({ channel: "email" });
+    expect(emailRes.status).toBe(200);
+    expect(emailRes.body.customer.firstName).toBe("Route");
+    expect(emailRes.body.customer.email).toBeTruthy();
+    expect(emailRes.body.messages).toHaveLength(1);
+    expect(emailRes.body.messages[0].subject).toBe("Where's my order?");
   });
 
   it("returns 404 for an unknown conversation id", async () => {
@@ -121,6 +151,23 @@ describe("Support conversations", () => {
 
     const afterRes = await agent.get(`/api/app/support-conversations/${conversation.id}`);
     expect(afterRes.body.conversation.needsAttention).toBe(false);
+
+    // Same check for channel=email, reusing this test's login (see rate-limiter note above).
+    const { getOrCreateSupportEmailConversation, updateSupportEmailConversationState } = await import(
+      "../services/support-email-conversations.service.js"
+    );
+    const emailConversation = await getOrCreateSupportEmailConversation(personId);
+    await updateSupportEmailConversationState(emailConversation.id, { needsAttention: true });
+
+    const emailClearRes = await agent
+      .post(`/api/app/support-conversations/${emailConversation.id}/clear-attention`)
+      .query({ channel: "email" })
+      .set("x-csrf-token", csrf)
+      .send({});
+    expect(emailClearRes.status).toBe(200);
+
+    const emailAfterRes = await agent.get(`/api/app/support-conversations/${emailConversation.id}`).query({ channel: "email" });
+    expect(emailAfterRes.body.conversation.needsAttention).toBe(false);
   });
 
   it("clear-attention returns 404 for an unknown conversation id", async () => {
@@ -193,4 +240,5 @@ describe("Support conversations", () => {
       expect(res.status).toBe(403);
     });
   });
+
 });

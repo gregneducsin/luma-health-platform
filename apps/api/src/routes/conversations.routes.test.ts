@@ -86,6 +86,28 @@ describe("Conversations", () => {
     expect(typeof res.body.stats.responseRate).toBe("number");
     // This conversation (outbound then inbound) is included in the global count.
     expect(res.body.stats.totalResponded).toBeGreaterThanOrEqual(1);
+
+    // channel=email is a separate list entirely — an email conversation for
+    // this same customer must not leak into the SMS list, and must show up
+    // (with its own preview/sentiment) under ?channel=email. Reuses this
+    // test's login rather than a fresh one — the auth rate limiter caps
+    // logins per test file, so every test in this file shares its agent
+    // across both the SMS assertion above and this email assertion.
+    const { getOrCreateEmailConversation, appendEmailMessage } = await import("../services/email-conversations.service.js");
+    const emailConversation = await getOrCreateEmailConversation(personId);
+    await appendEmailMessage(emailConversation.id, "outbound", "Welcome", "Hi there, this is Lucy.");
+    await appendEmailMessage(emailConversation.id, "inbound", "Re: Welcome", "yes I'm interested by email", { sentiment: "positive" });
+
+    const smsListRes = await agent.get("/api/app/conversations");
+    expect(smsListRes.body.conversations.some((c: { id: string }) => c.id === emailConversation.id)).toBe(false);
+
+    const emailListRes = await agent.get("/api/app/conversations").query({ channel: "email" });
+    expect(emailListRes.status).toBe(200);
+    const foundEmail = emailListRes.body.conversations.find((c: { id: string }) => c.id === emailConversation.id);
+    expect(foundEmail).toBeDefined();
+    expect(foundEmail.lastMessagePreview).toBe("yes I'm interested by email");
+    expect(foundEmail.lastSentiment).toBe("positive");
+    expect(emailListRes.body.stats).toBeDefined();
   });
 
   it("returns conversation detail with customer contact and full message history", async () => {
@@ -101,6 +123,18 @@ describe("Conversations", () => {
     expect(res.status).toBe(200);
     expect(res.body.customer.firstName).toBe("Route");
     expect(res.body.messages).toHaveLength(2);
+
+    // channel=email detail, reusing this test's login (see rate-limiter note above).
+    const { getOrCreateEmailConversation, appendEmailMessage } = await import("../services/email-conversations.service.js");
+    const emailConversation = await getOrCreateEmailConversation(personId);
+    await appendEmailMessage(emailConversation.id, "outbound", "Welcome to Luma Health", "email message one");
+
+    const emailRes = await agent.get(`/api/app/conversations/${emailConversation.id}`).query({ channel: "email" });
+    expect(emailRes.status).toBe(200);
+    expect(emailRes.body.customer.firstName).toBe("Route");
+    expect(emailRes.body.customer.email).toBeTruthy();
+    expect(emailRes.body.messages).toHaveLength(1);
+    expect(emailRes.body.messages[0].subject).toBe("Welcome to Luma Health");
   });
 
   it("returns 404 for an unknown conversation id", async () => {
@@ -131,6 +165,22 @@ describe("Conversations", () => {
 
     const afterRes = await agent.get(`/api/app/conversations/${conversation.id}`);
     expect(afterRes.body.conversation.needsAttention).toBe(false);
+
+    // Same check for channel=email, reusing this test's login (see rate-limiter note above) —
+    // needsAttention is a genuinely separate flag on the email_conversations table.
+    const { getOrCreateEmailConversation, updateEmailConversationState } = await import("../services/email-conversations.service.js");
+    const emailConversation = await getOrCreateEmailConversation(personId);
+    await updateEmailConversationState(emailConversation.id, { needsAttention: true });
+
+    const emailClearRes = await agent
+      .post(`/api/app/conversations/${emailConversation.id}/clear-attention`)
+      .query({ channel: "email" })
+      .set("x-csrf-token", csrf)
+      .send({});
+    expect(emailClearRes.status).toBe(200);
+
+    const emailAfterRes = await agent.get(`/api/app/conversations/${emailConversation.id}`).query({ channel: "email" });
+    expect(emailAfterRes.body.conversation.needsAttention).toBe(false);
   });
 
   it("clear-attention returns 404 for an unknown conversation id", async () => {
@@ -203,4 +253,5 @@ describe("Conversations", () => {
       expect(res.status).toBe(403);
     });
   });
+
 });

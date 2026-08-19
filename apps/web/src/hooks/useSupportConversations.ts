@@ -11,18 +11,20 @@ import { api } from "../lib/apiClient";
 const LIST_POLL_INTERVAL_MS = 8_000;
 const DETAIL_POLL_INTERVAL_MS = 4_000;
 
-export function useSupportConversationsList() {
+export type SupportConversationChannel = "sms" | "email";
+
+export function useSupportConversationsList(channel: SupportConversationChannel) {
   return useQuery({
-    queryKey: ["support-conversations", "list"],
-    queryFn: () => api.get<{ conversations: SupportConversationSummary[] }>("/api/app/support-conversations"),
+    queryKey: ["support-conversations", "list", channel],
+    queryFn: () => api.get<{ conversations: SupportConversationSummary[] }>("/api/app/support-conversations", { channel }),
     refetchInterval: LIST_POLL_INTERVAL_MS,
   });
 }
 
-export function useSupportConversationDetail(id: string | null) {
+export function useSupportConversationDetail(id: string | null, channel: SupportConversationChannel) {
   return useQuery({
-    queryKey: ["support-conversations", "detail", id],
-    queryFn: () => api.get<SupportConversationDetail>(`/api/app/support-conversations/${id}`),
+    queryKey: ["support-conversations", "detail", channel, id],
+    queryFn: () => api.get<SupportConversationDetail>(`/api/app/support-conversations/${id}`, { channel }),
     enabled: id !== null,
     refetchInterval: DETAIL_POLL_INTERVAL_MS,
   });
@@ -42,7 +44,8 @@ export function useSendSarahTestMessage() {
 export function useClearSupportNeedsAttention() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (conversationId: string) => api.post<{ ok: true }>(`/api/app/support-conversations/${conversationId}/clear-attention`),
+    mutationFn: ({ conversationId, channel }: { conversationId: string; channel: SupportConversationChannel }) =>
+      api.post<{ ok: true }>(`/api/app/support-conversations/${conversationId}/clear-attention?channel=${channel}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["support-conversations"] });
     },

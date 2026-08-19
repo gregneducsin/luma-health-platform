@@ -1,5 +1,12 @@
-import { desc, eq } from "drizzle-orm";
-import { db, supportEmailConversationsTable, supportEmailConversationMessagesTable, type SupportEmailConversation, type SupportEmailConversationMessage } from "@luma/db";
+import { desc, eq, sql } from "drizzle-orm";
+import {
+  db,
+  supportEmailConversationsTable,
+  supportEmailConversationMessagesTable,
+  customersTable,
+  type SupportEmailConversation,
+  type SupportEmailConversationMessage,
+} from "@luma/db";
 import type { SarahPreviewRequestBody } from "../lib/support/types.js";
 
 const MAX_HISTORY_MESSAGES = 20;
@@ -89,4 +96,62 @@ export function toSupportEmailPreviewBody(conversation: SupportEmailConversation
     pendingTopic: conversation.pendingTopic,
     lastDraft: conversation.lastDraft,
   };
+}
+
+/** Email twin of support-conversations.service.ts's SupportConversationSummary — same shape, its own table. */
+export interface SupportEmailConversationSummary {
+  readonly id: string;
+  readonly personId: string;
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly status: "active" | "closed";
+  readonly lastMessageAt: string | null;
+  readonly lastMessagePreview: string | null;
+  readonly lastSentiment: "positive" | "neutral" | "negative" | null;
+  readonly needsAttention: boolean;
+}
+
+/** For the dashboard's Support tab, email view: one row per email conversation, most recently active first. */
+export async function listSupportEmailConversationSummaries(): Promise<SupportEmailConversationSummary[]> {
+  const rows = await db
+    .select({
+      id: supportEmailConversationsTable.id,
+      personId: supportEmailConversationsTable.personId,
+      firstName: customersTable.firstName,
+      lastName: customersTable.lastName,
+      status: supportEmailConversationsTable.status,
+      needsAttention: supportEmailConversationsTable.needsAttention,
+      lastMessageAt: sql<string | null>`(select max(${supportEmailConversationMessagesTable.createdAt}) from ${supportEmailConversationMessagesTable} where ${supportEmailConversationMessagesTable.conversationId} = ${supportEmailConversationsTable.id})`,
+      lastMessagePreview: sql<string | null>`(select ${supportEmailConversationMessagesTable.body} from ${supportEmailConversationMessagesTable} where ${supportEmailConversationMessagesTable.conversationId} = ${supportEmailConversationsTable.id} order by ${supportEmailConversationMessagesTable.createdAt} desc limit 1)`,
+      lastSentiment: sql<string | null>`(select ${supportEmailConversationMessagesTable.sentiment} from ${supportEmailConversationMessagesTable} where ${supportEmailConversationMessagesTable.conversationId} = ${supportEmailConversationsTable.id} and ${supportEmailConversationMessagesTable.direction} = 'inbound' order by ${supportEmailConversationMessagesTable.createdAt} desc limit 1)`,
+    })
+    .from(supportEmailConversationsTable)
+    .innerJoin(customersTable, eq(customersTable.id, supportEmailConversationsTable.personId))
+    .orderBy(desc(sql`(select max(${supportEmailConversationMessagesTable.createdAt}) from ${supportEmailConversationMessagesTable} where ${supportEmailConversationMessagesTable.conversationId} = ${supportEmailConversationsTable.id})`));
+
+  return rows.map((r) => ({ ...r, lastSentiment: r.lastSentiment as SupportEmailConversationSummary["lastSentiment"] }));
+}
+
+/** Email twin of support-conversations.service.ts's getSupportConversationDetail — customer.email included, same reasoning as the Lucy-side twin. */
+export async function getSupportEmailConversationDetail(
+  conversationId: string,
+): Promise<{
+  conversation: SupportEmailConversation;
+  customer: { firstName: string; lastName: string; phone: string | null; email: string };
+  messages: SupportEmailConversationMessage[];
+} | null> {
+  const [row] = await db
+    .select({
+      conversation: supportEmailConversationsTable,
+      firstName: customersTable.firstName,
+      lastName: customersTable.lastName,
+      phone: customersTable.phone,
+      email: customersTable.email,
+    })
+    .from(supportEmailConversationsTable)
+    .innerJoin(customersTable, eq(customersTable.id, supportEmailConversationsTable.personId))
+    .where(eq(supportEmailConversationsTable.id, conversationId));
+  if (!row) return null;
+  const messages = await listSupportEmailMessages(conversationId, 200);
+  return { conversation: row.conversation, customer: { firstName: row.firstName, lastName: row.lastName, phone: row.phone, email: row.email }, messages };
 }

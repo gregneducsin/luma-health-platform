@@ -12,18 +12,21 @@ import { api } from "../lib/apiClient";
 const LIST_POLL_INTERVAL_MS = 8_000;
 const DETAIL_POLL_INTERVAL_MS = 4_000;
 
-export function useConversationsList() {
+export type ConversationChannel = "sms" | "email";
+
+export function useConversationsList(channel: ConversationChannel) {
   return useQuery({
-    queryKey: ["conversations", "list"],
-    queryFn: () => api.get<{ conversations: ConversationSummary[]; stats: ConversationResponseStats }>("/api/app/conversations"),
+    queryKey: ["conversations", "list", channel],
+    queryFn: () =>
+      api.get<{ conversations: ConversationSummary[]; stats: ConversationResponseStats }>("/api/app/conversations", { channel }),
     refetchInterval: LIST_POLL_INTERVAL_MS,
   });
 }
 
-export function useConversationDetail(id: string | null) {
+export function useConversationDetail(id: string | null, channel: ConversationChannel) {
   return useQuery({
-    queryKey: ["conversations", "detail", id],
-    queryFn: () => api.get<ConversationDetail>(`/api/app/conversations/${id}`),
+    queryKey: ["conversations", "detail", channel, id],
+    queryFn: () => api.get<ConversationDetail>(`/api/app/conversations/${id}`, { channel }),
     enabled: id !== null,
     refetchInterval: DETAIL_POLL_INTERVAL_MS,
   });
@@ -43,7 +46,8 @@ export function useSendLucyTestMessage() {
 export function useClearNeedsAttention() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (conversationId: string) => api.post<{ ok: true }>(`/api/app/conversations/${conversationId}/clear-attention`),
+    mutationFn: ({ conversationId, channel }: { conversationId: string; channel: ConversationChannel }) =>
+      api.post<{ ok: true }>(`/api/app/conversations/${conversationId}/clear-attention?channel=${channel}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
     },

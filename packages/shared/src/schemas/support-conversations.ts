@@ -16,6 +16,8 @@ export type SupportConversationSummary = z.infer<typeof supportConversationSumma
 export const supportConversationMessageSchema = z.object({
   id: z.string(),
   direction: z.enum(["inbound", "outbound"]),
+  /** Only present for email-channel messages — absent (not merely null) on every SMS message, since the SMS table has no subject column at all. */
+  subject: z.string().optional(),
   body: z.string(),
   sentiment: z.enum(["positive", "neutral", "negative"]).nullable(),
   createdAt: z.string(),
@@ -34,7 +36,8 @@ export const supportConversationDetailSchema = z.object({
     reviewSentiment: z.enum(["positive", "neutral", "negative"]).nullable(),
     needsAttention: z.boolean(),
   }),
-  customer: z.object({ firstName: z.string(), lastName: z.string(), phone: z.string().nullable() }),
+  /** email is only populated on the email-channel response — optional so the SMS response shape (no email field at all) still matches. */
+  customer: z.object({ firstName: z.string(), lastName: z.string(), phone: z.string().nullable(), email: z.string().optional() }),
   messages: z.array(supportConversationMessageSchema),
 });
 export type SupportConversationDetail = z.infer<typeof supportConversationDetailSchema>;
