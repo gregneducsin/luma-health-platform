@@ -73,6 +73,25 @@ describe("processInboundSupportEmail", () => {
     expect(messages[1].messageId).toBe("<sarah-reply-1@example.com>");
   });
 
+  it("greets the customer by first name and signs off as Sarah — Claude's draft is only the substantive reply, not a full email", async () => {
+    runSarahTurnMock.mockClear();
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<sarah-reply-2@example.com>" });
+    runSarahTurnMock.mockResolvedValueOnce(okResult());
+
+    const personId = await seedCustomer();
+    await processInboundSupportEmail(personId, "Where's my order?", "Has it shipped yet?", "<sarah-inbound-2@example.com>");
+
+    const [, , html] = sendEmailMock.mock.calls[0];
+    expect(html).toContain("Hi Support,");
+    expect(html).toContain("Sarah at Luma Health");
+
+    const conversation = await getOrCreateSupportEmailConversation(personId);
+    const messages = await listSupportEmailMessages(conversation.id);
+    expect(messages[1].body).toContain("Hi Support,");
+    expect(messages[1].body).toContain("— Sarah at Luma Health");
+  });
+
   it("sends the OPT_OUT confirmation reply, then marks the customer DND — the confirmation itself is not blocked", async () => {
     runSarahTurnMock.mockClear();
     sendEmailMock.mockClear();

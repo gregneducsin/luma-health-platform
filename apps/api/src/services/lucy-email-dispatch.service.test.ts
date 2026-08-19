@@ -79,6 +79,25 @@ describe("processInboundEmail", () => {
     expect(messages[1].inReplyTo).toBe("<inbound-1@example.com>");
   });
 
+  it("greets the customer by first name and signs off as Lucy — Claude's draft is only the substantive reply, not a full email", async () => {
+    runLucyTurnMock.mockClear();
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<reply-2@example.com>" });
+    runLucyTurnMock.mockResolvedValueOnce(okResult());
+
+    const personId = await seedCustomer();
+    await processInboundEmail(personId, "Question about pricing", "How much is semaglutide?", "<inbound-2@example.com>");
+
+    const [, , html] = sendEmailMock.mock.calls[0];
+    expect(html).toContain("Hi Email,");
+    expect(html).toContain("Lucy at Luma Health");
+
+    const conversation = await getOrCreateEmailConversation(personId);
+    const messages = await listEmailMessages(conversation.id);
+    expect(messages[1].body).toContain("Hi Email,");
+    expect(messages[1].body).toContain("— Lucy at Luma Health");
+  });
+
   it("does not double 'Re:' when the inbound subject already has one", async () => {
     runLucyTurnMock.mockClear();
     sendEmailMock.mockClear();

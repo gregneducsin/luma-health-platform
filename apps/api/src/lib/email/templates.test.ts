@@ -19,6 +19,24 @@ describe("htmlToPlainText", () => {
   it("strips tags and collapses whitespace", () => {
     expect(htmlToPlainText("<p>Hello  <strong>there</strong></p>\n<p>Bye</p>")).toBe("Hello there Bye");
   });
+
+  it("strips <style> block content, not just the tags around it — CSS rules aren't visible body text", () => {
+    const html = "<head><style>.step { color: #b8935a; border-radius: 50%; }</style></head><body><p>Welcome</p></body>";
+    expect(htmlToPlainText(html)).toBe("Welcome");
+  });
+
+  it("strips <script> block content", () => {
+    expect(htmlToPlainText("<script>console.log('x');</script><p>Hi</p>")).toBe("Hi");
+  });
+
+  it("strips HTML comments, including MSO conditional comments", () => {
+    expect(htmlToPlainText("<p>Warmly,<!--[if mso]>&nbsp;<![endif]--><br>The Team</p>")).toBe("Warmly, The Team");
+  });
+
+  it("decodes common HTML entities instead of leaving them literal", () => {
+    expect(htmlToPlainText("<p>Approval &amp; Prescription</p>")).toBe("Approval & Prescription");
+    expect(htmlToPlainText("<p>Here&#39;s to your journey</p>")).toBe("Here's to your journey");
+  });
 });
 
 describe("wrapEmailHtml", () => {

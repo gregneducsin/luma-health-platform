@@ -26,6 +26,14 @@ function replySubject(originalSubject: string): string {
   return /^re:/i.test(originalSubject.trim()) ? originalSubject : `Re: ${originalSubject}`;
 }
 
+const SIGN_OFF = "Lucy at Luma Health";
+
+/** Unlike a text, an email reads as unfinished without a greeting and a sign-off — Claude drafts only the substantive reply body (same as it does for SMS), so this wraps it, not the model. */
+function withGreetingAndSignOff(firstName: string, bodyText: string): string {
+  const greeting = firstName.trim() ? `Hi ${firstName.trim()},` : "Hi,";
+  return `${greeting}\n\n${bodyText}\n\n— ${SIGN_OFF}`;
+}
+
 /**
  * Sends a threaded reply email and logs it in the email conversation
  * regardless of whether the send succeeds — same fail-soft reasoning as
@@ -38,6 +46,7 @@ async function sendAndLog(
   personId: string,
   conversationId: string,
   email: string,
+  firstName: string,
   subject: string,
   bodyText: string,
   inReplyTo: string | null,
@@ -47,10 +56,11 @@ async function sendAndLog(
     return;
   }
 
+  const signedBody = withGreetingAndSignOff(firstName, bodyText);
   let messageId: string | null = null;
   try {
     const { provider, fromName } = getEmailProvider("lucy");
-    const html = renderConversationReplyEmail(bodyText, buildUnsubscribeUrl(personId));
+    const html = renderConversationReplyEmail(signedBody, buildUnsubscribeUrl(personId));
     const result = await provider.sendEmail(email, subject, html, {
       fromName,
       inReplyTo: inReplyTo ?? undefined,
@@ -60,7 +70,7 @@ async function sendAndLog(
   } catch (err) {
     logger.warn({ conversationId, reason: err instanceof Error ? err.message : String(err) }, "outbound Lucy email send failed");
   }
-  await appendEmailMessage(conversationId, "outbound", subject, bodyText, { messageId, inReplyTo });
+  await appendEmailMessage(conversationId, "outbound", subject, signedBody, { messageId, inReplyTo });
 }
 
 /**
@@ -95,7 +105,7 @@ async function processInboundEmailLocked(personId: string, subject: string, body
   const customer = await getCustomerContact(personId);
   const combinedBody = [result.reply, result.nextQuestion].filter((t): t is string => Boolean(t)).join("\n\n");
   if (combinedBody && customer) {
-    await sendAndLog(personId, conversation.id, customer.email, replySubject(subject), combinedBody, inboundMessage.messageId);
+    await sendAndLog(personId, conversation.id, customer.email, customer.firstName, replySubject(subject), combinedBody, inboundMessage.messageId);
   }
 
   // Set DND only after this turn's reply has gone out — see sendAndLog's docstring.

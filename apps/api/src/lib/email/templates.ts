@@ -41,7 +41,20 @@ export interface RenderedEmail {
  */
 export function htmlToPlainText(html: string): string {
   return html
+    // <style>/<script> block content isn't visible markup — stripping only
+    // the tags (as this function used to) leaves the CSS/JS text itself
+    // behind as if it were body copy. Comments (including MSO conditional
+    // comments the templates use for Outlook) get the same treatment.
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
     .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0?39;/gi, "'")
     .replace(/\s+/g, " ")
     .trim();
 }

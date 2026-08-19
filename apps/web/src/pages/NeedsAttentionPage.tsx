@@ -63,9 +63,17 @@ function NeedsAttentionRow({ item }: { item: NeedsAttentionItem }) {
         <div className="border-t border-gray-100">
           <ItemMessages item={item} />
           <div className="flex items-center justify-between border-t border-gray-100 px-4 py-2">
-            <a href={CHANNEL_PAGE[item.persona]} className="text-xs font-medium text-blue-600 hover:underline">
-              Open full thread to reply →
-            </a>
+            {item.channel === "sms" ? (
+              <a href={CHANNEL_PAGE[item.persona]} className="text-xs font-medium text-blue-600 hover:underline">
+                Open full thread to reply →
+              </a>
+            ) : (
+              // No dashboard page for email conversations yet (only SMS has
+              // one) — showing a link here would go nowhere useful. Staff
+              // can reply directly from their own email client instead;
+              // the thread above shows everything sent/received so far.
+              <span className="text-xs text-gray-400">Reply directly from your email client — no dashboard reply page for email yet.</span>
+            )}
             <Button
               variant="secondary"
               onClick={() => clearItem.mutate({ channel: item.channel, persona: item.persona, conversationId: item.conversationId })}
