@@ -17,7 +17,7 @@ import { logger } from "../lib/logger.js";
  * about what's actually new. Best-effort: matches the common Gmail/Apple
  * Mail/Outlook quote-header shapes, not exhaustive.
  */
-const QUOTE_HEADER_RE = /(^|\n)(on .{0,80} wrote:|-{2,}\s*original message\s*-{2,}|from:\s*.+\n+sent:\s*.+)/i;
+const QUOTE_HEADER_RE = /(^|\n)(on .{0,300} wrote:|-{2,}\s*original message\s*-{2,}|from:\s*.+\n+sent:\s*.+)/i;
 
 export function stripQuotedReply(bodyText: string): string {
   const lines = bodyText.split("\n");

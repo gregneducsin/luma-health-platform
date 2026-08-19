@@ -24,4 +24,15 @@ describe("stripQuotedReply", () => {
   it("trims surrounding whitespace", () => {
     expect(stripQuotedReply("  hello there  \n\n")).toBe("hello there");
   });
+
+  it("cuts off at a quote header even when the display name + address push it past 80 characters", () => {
+    // Real-world case that slipped through: a long display name plus a
+    // subdomain address ("Sarah at Luma Health <lucym@start.mylumahealth.com>")
+    // pushes the "On ... wrote:" header past a too-tight character cap,
+    // leaving the whole header line stuck in the visible message.
+    const body =
+      "okay and then if i wanted to speak to the doctor?\n\n" +
+      "On Wed, Aug 19, 2026 at 12:01 AM Sarah at Luma Health <lucym@start.mylumahealth.com> wrote:\n> previous message text";
+    expect(stripQuotedReply(body)).toBe("okay and then if i wanted to speak to the doctor?");
+  });
 });

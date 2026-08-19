@@ -9,6 +9,7 @@ import {
 } from "../hooks/useSupportConversations";
 import { Badge, Card, Button, Input } from "../components/ui";
 import { ApiError } from "../hooks/useAuth";
+import { formatTime, formatDate } from "../lib/formatTime";
 
 function ChannelToggle({ channel, onChange }: { channel: SupportConversationChannel; onChange: (c: SupportConversationChannel) => void }) {
   return (
@@ -45,7 +46,7 @@ function relativeTime(iso: string | null): string {
   if (mins < 60) return `${mins}m ago`;
   const hours = Math.round(mins / 60);
   if (hours < 24) return `${hours}h ago`;
-  return new Date(iso).toLocaleDateString();
+  return formatDate(iso);
 }
 
 function SupportConversationList({
@@ -250,7 +251,7 @@ function SupportConversationDetailPanel({ conversationId, channel }: { conversat
                 {m.body}
               </span>
               <div className="flex items-center gap-2 px-1">
-                <span className="text-[11px] text-gray-400">{new Date(m.createdAt).toLocaleTimeString()}</span>
+                <span className="text-[11px] text-gray-400">{formatTime(m.createdAt)}</span>
                 <SentimentBadge sentiment={m.sentiment} />
               </div>
             </div>

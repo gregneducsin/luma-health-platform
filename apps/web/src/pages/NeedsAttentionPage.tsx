@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { NeedsAttentionItem, NeedsAttentionChannel, NeedsAttentionPersona } from "@luma/shared";
 import { useNeedsAttentionList, useNeedsAttentionMessages, useClearNeedsAttentionItem } from "../hooks/useNeedsAttention";
 import { Badge, Card, Button } from "../components/ui";
+import { formatDate, formatDateTime } from "../lib/formatTime";
 
 function relativeTime(iso: string | null): string {
   if (!iso) return "";
@@ -11,7 +12,7 @@ function relativeTime(iso: string | null): string {
   if (mins < 60) return `${mins}m ago`;
   const hours = Math.round(mins / 60);
   if (hours < 24) return `${hours}h ago`;
-  return new Date(iso).toLocaleDateString();
+  return formatDate(iso);
 }
 
 const CHANNEL_LABEL: Record<NeedsAttentionChannel, string> = { sms: "SMS", email: "Email" };
@@ -34,7 +35,7 @@ function ItemMessages({ item }: { item: NeedsAttentionItem }) {
             {m.subject && <p className="mb-0.5 font-semibold">{m.subject}</p>}
             <p className="whitespace-pre-wrap">{m.body}</p>
           </div>
-          <p className="mt-0.5 text-[11px] text-gray-400">{new Date(m.createdAt).toLocaleString()}</p>
+          <p className="mt-0.5 text-[11px] text-gray-400">{formatDateTime(m.createdAt)}</p>
         </div>
       ))}
     </div>

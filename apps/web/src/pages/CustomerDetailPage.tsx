@@ -3,6 +3,7 @@ import { useParams } from "wouter";
 import { useCustomer, useCreatePurchase, useUpdatePurchase, useCreateIntakeLink } from "../hooks/useCustomers";
 import { Badge, Button, Card, ErrorText, Field, Input } from "../components/ui";
 import { ApiError } from "../hooks/useAuth";
+import { formatDate, formatDateTime } from "../lib/formatTime";
 
 const STATUS_COLORS: Record<string, "gray" | "green" | "yellow" | "red"> = {
   pending: "yellow",
@@ -67,7 +68,7 @@ export function CustomerDetailPage() {
                 <span className="text-sm text-gray-800">{qe.questionnaireId}</span>
                 <div className="flex items-center gap-2">
                   <Badge color={QUESTIONNAIRE_BADGE_COLOR[qe.status] ?? "gray"}>{qe.status}</Badge>
-                  <span className="text-xs text-gray-400">as of {new Date(qe.lastEventAt).toLocaleDateString()}</span>
+                  <span className="text-xs text-gray-400">as of {formatDate(qe.lastEventAt)}</span>
                 </div>
               </div>
             ))}
@@ -148,7 +149,7 @@ function IntakeLinkCard({ customerId }: { customerId: string }) {
         </div>
       )}
       {createLink.isSuccess && (
-        <p className="mt-1 text-xs text-gray-400">Expires {new Date(createLink.data.expiresAt).toLocaleString()}</p>
+        <p className="mt-1 text-xs text-gray-400">Expires {formatDateTime(createLink.data.expiresAt)}</p>
       )}
 
       <ErrorText>
