@@ -308,6 +308,36 @@ describe("auto-acknowledgment", () => {
     expect(detail?.messages).toHaveLength(1); // just the inbound message — the failed ack was never logged
     expect(detail?.messages[0].direction).toBe("inbound");
   });
+
+  it("does not send an acknowledgment when Claude classifies the message as spam_or_irrelevant, even on the first message", async () => {
+    createMock.mockResolvedValueOnce(
+      toolResponse(classification({ intent: "spam_or_irrelevant", summary: "Automated bounce notification.", suggestedReply: null })),
+    );
+    sendEmailMock.mockClear();
+
+    const thread = await recordAndClassifyUnmatchedEmail({
+      fromAddress: uniqueAddress("bounce-notice"),
+      fromName: "Mail Delivery Subsystem",
+      subject: "Delivery failure",
+      body: "Message could not be delivered.",
+      messageId: null,
+    });
+
+    expect(thread.aiIntent).toBe("spam_or_irrelevant");
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    const detail = await getUnmatchedEmailThreadDetail(thread.id);
+    expect(detail?.messages).toHaveLength(1); // just the inbound message, no ack logged
+  });
+
+  it("still sends the acknowledgment when Claude fails entirely — no way to know it's spam without a classification, so default to acknowledging", async () => {
+    createMock.mockRejectedValueOnce(new Error("network error"));
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<ack-fallback@example.com>" });
+
+    await recordAndClassifyUnmatchedEmail({ fromAddress: uniqueAddress("classify-down"), fromName: null, subject: "Hi", body: "hello", messageId: null });
+
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("listUnmatchedEmailThreads / getUnmatchedEmailThread / dismissUnmatchedEmailThread", () => {

@@ -351,7 +351,7 @@ export async function recordAndClassifyUnmatchedEmail(input: {
     } catch (err) {
       logger.warn({ threadId: thread.id, reason: err instanceof Error ? err.message : String(err) }, "handoff to Lucy after lead creation failed");
     }
-  } else if (isFirstMessage) {
+  } else if (isFirstMessage && classification?.intent !== "spam_or_irrelevant") {
     // One immediate, fixed, content-free acknowledgment per thread — not
     // Claude's substantive suggestedReply, which still waits for staff
     // review. This is the one thing safe to send with zero review: it makes
@@ -359,7 +359,12 @@ export async function recordAndClassifyUnmatchedEmail(input: {
     // no response at all until someone happens to check the dashboard.
     // Only on the thread's first-ever message, so a repeat sender doesn't
     // get re-acknowledged on every email; skipped above when Lucy is about
-    // to send the real thing instead.
+    // to send the real thing instead. Also skipped for spam/irrelevant —
+    // replying to an automated bounce notice or a spam sender wastes a
+    // send at best, and at worst signals to a real spammer that this
+    // address is live and reads its mail. A failed classification call
+    // (classification is null) still gets the ack, same as before — no
+    // way to know it's spam without Claude, so default to acknowledging.
     await sendAutoAcknowledgment(thread.id, input.fromAddress, input.subject, knownName, input.messageId);
   }
 
