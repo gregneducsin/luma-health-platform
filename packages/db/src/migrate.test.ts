@@ -39,6 +39,14 @@ const EXPECTED_TABLES = [
   "support_conversation_messages",
   "review_request_triggers",
   "lead_checkin_triggers",
+  "email_conversations",
+  "email_conversation_messages",
+  "support_email_conversations",
+  "support_email_conversation_messages",
+  "abandoned_cart_email_triggers",
+  "meta_lead_email_triggers",
+  "unmatched_email_threads",
+  "unmatched_email_messages",
 ].sort();
 
 let testSchema: string;
