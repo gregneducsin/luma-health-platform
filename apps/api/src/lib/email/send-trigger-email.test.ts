@@ -44,7 +44,10 @@ describe("sendTriggerEmail", () => {
     });
 
     expect(result).toEqual({ status: "sent", messageId: "<trigger-1@example.com>" });
-    expect(sendEmailMock).toHaveBeenCalledWith("customer@example.com", "Hello", expect.stringContaining("Hi there"), { fromName: "Lucy at Luma Health" });
+    expect(sendEmailMock).toHaveBeenCalledWith("customer@example.com", "Hello", expect.stringContaining("Hi there"), {
+      fromName: "Lucy at Luma Health",
+      unsubscribeUrl: expect.stringContaining("/unsubscribe/"),
+    });
     expect(appendMessage).toHaveBeenCalledWith("conv-1", "outbound", "Hello", expect.stringContaining("Hi there"), { messageId: "<trigger-1@example.com>" });
   });
 

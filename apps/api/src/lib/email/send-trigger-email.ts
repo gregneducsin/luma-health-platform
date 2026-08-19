@@ -51,9 +51,11 @@ export async function sendTriggerEmail(params: {
     return { status: "dnd" };
   }
 
+  let unsubscribeUrl: string;
   let rendered: RenderedEmail;
   try {
-    rendered = render(buildUnsubscribeUrl(personId));
+    unsubscribeUrl = buildUnsubscribeUrl(personId);
+    rendered = render(unsubscribeUrl);
   } catch (err) {
     logger.warn({ personId, conversationId, reason: err instanceof Error ? err.message : String(err) }, `${logLabel} email not sent: failed to render`);
     return { status: "render_failed" };
@@ -63,7 +65,7 @@ export async function sendTriggerEmail(params: {
   let messageId: string | null = null;
   try {
     const { provider, fromName } = getEmailProvider(persona);
-    const result = await provider.sendEmail(email, rendered.subject, rendered.html, { fromName });
+    const result = await provider.sendEmail(email, rendered.subject, rendered.html, { fromName, unsubscribeUrl });
     messageId = result.messageId;
   } catch (err) {
     logger.warn({ personId, conversationId, reason: err instanceof Error ? err.message : String(err) }, `${logLabel} email send failed`);

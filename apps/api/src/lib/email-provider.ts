@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import nodemailer, { type Transporter } from "nodemailer";
 import { createGmailClient, encodeMessage } from "../services/gmail.service.js";
+import { htmlToPlainText } from "./email/templates.js";
 
 /**
  * Outbound email provider abstraction — same shape as sms-provider.ts's
@@ -21,6 +22,18 @@ export interface EmailSendOptions {
   readonly inReplyTo?: string;
   /** RFC 5322 References header (the full thread chain) — set alongside inReplyTo for correct threading in every mail client, not just ones that thread off In-Reply-To alone. */
   readonly references?: string;
+  /**
+   * This customer's one-click unsubscribe URL (same value already embedded
+   * as a link in the HTML body). When set, both providers also emit a
+   * List-Unsubscribe header pointing at it plus List-Unsubscribe-Post,
+   * which is what actually gets a mailbox provider to trust automated
+   * mail: it's the difference between "give the recipient an easy,
+   * one-click opt-out" (a strong positive signal to Gmail/spam filters,
+   * per Google's bulk-sender guidelines) and making them dig through the
+   * body or hit "report spam" instead — which is exactly the pattern that
+   * tanks a new sending identity's reputation.
+   */
+  readonly unsubscribeUrl?: string;
 }
 
 export interface EmailProvider {
@@ -84,9 +97,16 @@ class GoogleWorkspaceEmailProvider implements EmailProvider {
       to,
       subject,
       html,
+      // A plain-text alternative alongside the HTML part — an HTML-only
+      // body is itself a well-known spam signal, on top of being what a
+      // new sending identity can least afford.
+      text: htmlToPlainText(html),
       replyTo: opts.replyTo,
       inReplyTo: opts.inReplyTo,
       references: opts.references,
+      ...(opts.unsubscribeUrl
+        ? { headers: { "List-Unsubscribe": `<${opts.unsubscribeUrl}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } }
+        : {}),
     });
 
     if (!info.messageId) {
@@ -136,6 +156,7 @@ class GmailApiEmailProvider implements EmailProvider {
     const messageId = `<${randomUUID()}@${domain}>`;
     const wrapMessageId = (id: string) => (id.startsWith("<") ? id : `<${id}>`);
     const from = opts.fromName ? `"${encodeHeaderValue(opts.fromName)}" <${this.fromEmail}>` : this.fromEmail;
+    const boundary = `luma-${randomUUID()}`;
 
     const headers = [
       `From: ${from}`,
@@ -145,11 +166,31 @@ class GmailApiEmailProvider implements EmailProvider {
       opts.replyTo ? `Reply-To: ${opts.replyTo}` : null,
       opts.inReplyTo ? `In-Reply-To: ${wrapMessageId(opts.inReplyTo)}` : null,
       opts.references ? `References: ${wrapMessageId(opts.references)}` : null,
+      // A one-click List-Unsubscribe is a strong positive signal to
+      // mailbox providers for automated mail — see EmailSendOptions'
+      // unsubscribeUrl doc for why this matters more than it looks.
+      opts.unsubscribeUrl ? `List-Unsubscribe: <${opts.unsubscribeUrl}>` : null,
+      opts.unsubscribeUrl ? `List-Unsubscribe-Post: List-Unsubscribe=One-Click` : null,
       "MIME-Version: 1.0",
-      'Content-Type: text/html; charset="UTF-8"',
+      `Content-Type: multipart/alternative; boundary="${boundary}"`,
     ].filter((header): header is string => header !== null);
 
-    const raw = [...headers, "", html].join("\r\n");
+    // multipart/alternative with a text/plain part alongside the HTML: an
+    // HTML-only body is itself a well-known spam signal, on top of being
+    // what a freshly-connected sending identity can least afford.
+    const body = [
+      `--${boundary}`,
+      'Content-Type: text/plain; charset="UTF-8"',
+      "",
+      htmlToPlainText(html),
+      `--${boundary}`,
+      'Content-Type: text/html; charset="UTF-8"',
+      "",
+      html,
+      `--${boundary}--`,
+    ].join("\r\n");
+
+    const raw = [...headers, "", body].join("\r\n");
 
     await createGmailClient().users.messages.send({
       userId: "me",

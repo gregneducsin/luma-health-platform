@@ -53,11 +53,13 @@ async function sendAndLog(
   let messageId: string | null = null;
   try {
     const { provider, fromName } = getEmailProvider("sarah");
-    const html = renderConversationReplyEmail(signedBody, buildUnsubscribeUrl(personId));
+    const unsubscribeUrl = buildUnsubscribeUrl(personId);
+    const html = renderConversationReplyEmail(signedBody, unsubscribeUrl);
     const result = await provider.sendEmail(email, subject, html, {
       fromName,
       inReplyTo: inReplyTo ?? undefined,
       references: inReplyTo ?? undefined,
+      unsubscribeUrl,
     });
     messageId = result.messageId;
   } catch (err) {

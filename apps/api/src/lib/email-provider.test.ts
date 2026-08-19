@@ -159,6 +159,38 @@ describe("getEmailProvider", () => {
         expect(decoded).toContain("Subject: Welcome to Luma Health\r\n");
       });
 
+      it("sends a multipart/alternative message with both a plain-text and an HTML part, not HTML-only", async () => {
+        sendMock.mockClear();
+        const provider = configuredProvider();
+        await provider.sendEmail("customer@example.com", "Welcome", "<p>Hi <b>there</b></p>");
+
+        const decoded = decodeRawPayload();
+        expect(decoded).toMatch(/Content-Type: multipart\/alternative; boundary="[^"]+"/);
+        expect(decoded).toContain('Content-Type: text/plain; charset="UTF-8"');
+        expect(decoded).toContain("Hi there");
+        expect(decoded).toContain('Content-Type: text/html; charset="UTF-8"');
+        expect(decoded).toContain("<p>Hi <b>there</b></p>");
+      });
+
+      it("adds List-Unsubscribe and List-Unsubscribe-Post headers when an unsubscribeUrl is given", async () => {
+        sendMock.mockClear();
+        const provider = configuredProvider();
+        await provider.sendEmail("customer@example.com", "Welcome", "<p>hi</p>", { unsubscribeUrl: "http://localhost:3000/unsubscribe/abc.def" });
+
+        const decoded = decodeRawPayload();
+        expect(decoded).toContain("List-Unsubscribe: <http://localhost:3000/unsubscribe/abc.def>");
+        expect(decoded).toContain("List-Unsubscribe-Post: List-Unsubscribe=One-Click");
+      });
+
+      it("omits List-Unsubscribe headers entirely when no unsubscribeUrl is given", async () => {
+        sendMock.mockClear();
+        const provider = configuredProvider();
+        await provider.sendEmail("customer@example.com", "Welcome", "<p>hi</p>");
+
+        const decoded = decodeRawPayload();
+        expect(decoded).not.toContain("List-Unsubscribe");
+      });
+
       it("every real trigger-email subject in the codebase round-trips correctly through the raw MIME send path", async () => {
         const unsubUrl = "http://localhost:3000/unsubscribe/abc.def";
         const ctaUrl = "http://localhost:3000/go/abc123";

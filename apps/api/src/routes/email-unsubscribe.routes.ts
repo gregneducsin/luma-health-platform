@@ -25,5 +25,23 @@ export function createEmailUnsubscribeRouter(): RouterType {
     }
   });
 
+  // RFC 8058 one-click unsubscribe: Gmail/Yahoo/Outlook POST here (with
+  // body "List-Unsubscribe=One-Click") instead of following the link,
+  // whenever a List-Unsubscribe-Post header is present — no page render,
+  // just the DND flip. Same token/verification path as the GET link above.
+  router.post("/:token", async (req, res, next) => {
+    try {
+      const personId = verifyUnsubscribeToken(req.params.token);
+      if (!personId) {
+        res.status(400).end();
+        return;
+      }
+      await setCustomerEmailDnd(personId, true);
+      res.status(200).end();
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return router;
 }
