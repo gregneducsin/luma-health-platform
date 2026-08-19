@@ -197,32 +197,53 @@ export const metaLeadEmailTriggersTable = pgTable(
 );
 
 /**
- * Inbound email from an address that matched no customer record —
- * previously silently dropped (logged and marked processed, invisible to
- * staff). Recorded here instead so it shows up somewhere, with a Claude-
- * drafted classification and suggested reply attached — never auto-sent.
- * suggestedMatchCustomerId is a candidate guess, never applied
- * automatically: matching health-context correspondence to the wrong
- * customer by an unverified fuzzy match is exactly the kind of mistake this
- * system should never make unattended, so a human confirms it explicitly
- * before anything acts on it.
+ * One row per unrecognized SENDER (not per email) — a second email from the
+ * same address joins the same thread via unmatchedEmailMessagesTable rather
+ * than creating a disconnected duplicate. linkedCustomerId is set once this
+ * sender has been turned into a real lead (see recordAndClassifyUnmatchedEmail
+ * in unmatched-inbound-email.service.ts) — distinct from
+ * suggestedMatchCustomerId, which is an unconfirmed guess that this sender
+ * might be a DIFFERENT, already-existing customer using a new address.
  */
-export const unmatchedInboundEmailsTable = pgTable("unmatched_inbound_emails", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  fromAddress: text("from_address").notNull(),
-  fromName: text("from_name"),
-  subject: text("subject").notNull(),
-  body: text("body").notNull(),
-  messageId: text("message_id"),
-  aiIntent: text("ai_intent"),
-  aiSummary: text("ai_summary"),
-  suggestedMatchCustomerId: uuid("suggested_match_customer_id").references(() => customersTable.id, { onDelete: "set null" }),
-  suggestedMatchConfidence: text("suggested_match_confidence", { enum: ["high", "medium", "low"] }),
-  suggestedReply: text("suggested_reply"),
-  status: text("status", { enum: ["needs_review", "replied", "dismissed"] }).notNull().default("needs_review"),
-  repliedAt: timestamp("replied_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const unmatchedEmailThreadsTable = pgTable(
+  "unmatched_email_threads",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    fromAddress: text("from_address").notNull(),
+    fromName: text("from_name"),
+    aiIntent: text("ai_intent"),
+    aiSummary: text("ai_summary"),
+    suggestedMatchCustomerId: uuid("suggested_match_customer_id").references(() => customersTable.id, { onDelete: "set null" }),
+    suggestedMatchConfidence: text("suggested_match_confidence", { enum: ["high", "medium", "low"] }),
+    suggestedReply: text("suggested_reply"),
+    linkedCustomerId: uuid("linked_customer_id").references(() => customersTable.id, { onDelete: "set null" }),
+    status: text("status", { enum: ["needs_review", "replied", "dismissed"] }).notNull().default("needs_review"),
+    repliedAt: timestamp("replied_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [uniqueIndex("unmatched_email_threads_from_address_key").on(t.fromAddress)],
+);
+
+/** Every message in an unmatched-sender thread, in order — inbound (their emails) and outbound (staff-approved replies). */
+export const unmatchedEmailMessagesTable = pgTable(
+  "unmatched_email_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    threadId: uuid("thread_id")
+      .notNull()
+      .references(() => unmatchedEmailThreadsTable.id, { onDelete: "cascade" }),
+    direction: text("direction", { enum: ["inbound", "outbound"] }).notNull(),
+    subject: text("subject").notNull(),
+    body: text("body").notNull(),
+    messageId: text("message_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("unmatched_email_messages_thread_id_idx").on(t.threadId, t.createdAt)],
+);
 
 export type EmailConversation = typeof emailConversationsTable.$inferSelect;
 export type EmailConversationMessage = typeof emailConversationMessagesTable.$inferSelect;
@@ -230,4 +251,5 @@ export type SupportEmailConversation = typeof supportEmailConversationsTable.$in
 export type SupportEmailConversationMessage = typeof supportEmailConversationMessagesTable.$inferSelect;
 export type AbandonedCartEmailTrigger = typeof abandonedCartEmailTriggersTable.$inferSelect;
 export type MetaLeadEmailTrigger = typeof metaLeadEmailTriggersTable.$inferSelect;
-export type UnmatchedInboundEmail = typeof unmatchedInboundEmailsTable.$inferSelect;
+export type UnmatchedEmailThread = typeof unmatchedEmailThreadsTable.$inferSelect;
+export type UnmatchedEmailMessage = typeof unmatchedEmailMessagesTable.$inferSelect;

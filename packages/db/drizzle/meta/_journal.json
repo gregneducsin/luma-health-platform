@@ -134,6 +134,20 @@
       "when": 1787114064076,
       "tag": "0018_fuzzy_moondragon",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1787148114719,
+      "tag": "0019_dapper_quicksilver",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1787148226034,
+      "tag": "0020_clear_leader",
+      "breakpoints": true
     }
   ]
 }

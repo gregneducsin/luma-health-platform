@@ -9,7 +9,7 @@ export function createUnmatchedEmailsRouter(): RouterType {
 
   router.get("/", requireRole("admin", "manager"), async (_req, res, next) => {
     try {
-      const items = await unmatchedEmailsService.listUnmatchedInboundEmails();
+      const items = await unmatchedEmailsService.listUnmatchedEmailThreads();
       res.json({ items });
     } catch (err) {
       next(err);
@@ -18,12 +18,12 @@ export function createUnmatchedEmailsRouter(): RouterType {
 
   router.get("/:id", requireRole("admin", "manager"), async (req, res, next) => {
     try {
-      const item = await unmatchedEmailsService.getUnmatchedInboundEmail(req.params.id as string);
-      if (!item) {
+      const detail = await unmatchedEmailsService.getUnmatchedEmailThreadDetail(req.params.id as string);
+      if (!detail) {
         res.status(404).json({ error: "Not found." });
         return;
       }
-      res.json(item);
+      res.json({ ...detail.thread, messages: detail.messages });
     } catch (err) {
       next(err);
     }
@@ -49,7 +49,7 @@ export function createUnmatchedEmailsRouter(): RouterType {
 
   router.post("/:id/dismiss", requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
     try {
-      const ok = await unmatchedEmailsService.dismissUnmatchedInboundEmail(req.params.id as string);
+      const ok = await unmatchedEmailsService.dismissUnmatchedEmailThread(req.params.id as string);
       if (!ok) {
         res.status(404).json({ error: "Not found." });
         return;

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { UnmatchedEmailsListResponse, UnmatchedEmailItem, SendUnmatchedEmailReplyResponse } from "@luma/shared";
+import type { UnmatchedEmailsListResponse, UnmatchedEmailThreadDetail, SendUnmatchedEmailReplyResponse } from "@luma/shared";
 import { api } from "../lib/apiClient";
 
 const LIST_POLL_INTERVAL_MS = 15_000;
@@ -14,10 +14,10 @@ export function useUnmatchedEmailsList(enabled = true) {
   });
 }
 
-export function useUnmatchedEmail(id: string | null) {
+export function useUnmatchedEmailThread(id: string | null) {
   return useQuery({
     queryKey: ["unmatched-emails", "detail", id],
-    queryFn: () => api.get<UnmatchedEmailItem>(`/api/app/unmatched-emails/${id}`),
+    queryFn: () => api.get<UnmatchedEmailThreadDetail>(`/api/app/unmatched-emails/${id}`),
     enabled: id !== null,
   });
 }

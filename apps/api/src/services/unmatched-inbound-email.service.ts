@@ -1,25 +1,44 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { desc, eq, sql } from "drizzle-orm";
-import { db, customersTable, unmatchedInboundEmailsTable, type UnmatchedInboundEmail } from "@luma/db";
+import { eq, sql } from "drizzle-orm";
+import {
+  db,
+  customersTable,
+  unmatchedEmailThreadsTable,
+  unmatchedEmailMessagesTable,
+  type UnmatchedEmailThread,
+  type UnmatchedEmailMessage,
+} from "@luma/db";
 import { getEmailProvider } from "../lib/email-provider.js";
 import { logger } from "../lib/logger.js";
 
 /**
  * What used to happen to an inbound email from an address matching no
  * customer record: logged and silently dropped, invisible to staff. This
- * records it instead, with a Claude-drafted classification and suggested
- * reply attached for a human to review — nothing here ever sends
- * automatically or attaches the message to an existing customer's
- * conversation on its own. Health-context correspondence misrouted to the
- * wrong person, or an unreviewed AI reply going out to a stranger, is
- * exactly the failure mode a background sweep with nobody watching must
- * not risk — so every output of this pipeline is a suggestion, not an
- * action, until staff confirms it from the dashboard.
+ * records it instead, grouped into one thread per sender (a second email
+ * from the same address joins the existing thread, not a disconnected
+ * duplicate), with a Claude-drafted classification and suggested reply
+ * attached — never auto-sent. suggestedMatchCustomerId (a guess that this
+ * sender might be a DIFFERENT, already-existing customer) is never applied
+ * automatically: matching health-context correspondence to the wrong
+ * customer by an unverified fuzzy match is exactly the kind of mistake this
+ * system should never make unattended, so a human confirms it explicitly
+ * before anything acts on it.
+ *
+ * The one thing this pipeline DOES do automatically — create a new lead —
+ * is a deliberately different risk category: it only ever adds a new,
+ * clearly-sourced customer row (never touches or links to an existing
+ * person's record), and only once we actually know the sender's name and
+ * Claude is confident this is a genuine prospective customer. That's the
+ * same trust level every other unattended lead-capture path in this app
+ * already operates at (the GHL/Meta webhooks create customers with no
+ * human review either) — it's the "guess which existing person this is"
+ * action that stays human-gated, not "add a new row for someone new."
  */
 
 const MODEL = "claude-haiku-4-5-20251001";
 const CALL_TIMEOUT_MS = 10_000;
-const MAX_BODY_CHARS = 4_000;
+const MAX_TRANSCRIPT_CHARS = 6_000;
+const MAX_TRANSCRIPT_MESSAGES = 10;
 
 let cachedClient: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -40,13 +59,13 @@ interface MatchCandidate {
 /**
  * Conservative substring match, not a fuzzy/similarity search: a candidate
  * only qualifies if BOTH their first and last name literally appear in the
- * sender's display name or the email body. This is deliberately narrow —
- * the cost of a false positive here (suggesting the wrong person as a
- * match on a health-context thread) is much higher than the cost of
+ * sender's display name or the thread's message text. This is deliberately
+ * narrow — the cost of a false positive here (suggesting the wrong person
+ * as a match on a health-context thread) is much higher than the cost of
  * missing a real match that staff could instead find by searching manually.
  */
-async function findMatchCandidates(fromName: string | null, body: string): Promise<MatchCandidate[]> {
-  const searchText = `${fromName ?? ""} ${body}`.trim();
+async function findMatchCandidates(fromName: string | null, transcriptText: string): Promise<MatchCandidate[]> {
+  const searchText = `${fromName ?? ""} ${transcriptText}`.trim();
   if (!searchText) return [];
 
   const { rows } = await db.execute<{ id: string; firstName: string; lastName: string; email: string }>(sql`
@@ -65,13 +84,14 @@ interface Classification {
   readonly intent: "new_lead_interest" | "existing_customer_support" | "spam_or_irrelevant" | "other";
   readonly summary: string;
   readonly suggestedReply: string | null;
+  readonly senderName: string | null;
   readonly matchCandidateIndex: number | null;
   readonly matchConfidence: "high" | "medium" | "low" | null;
 }
 
 const CLASSIFY_TOOL: Anthropic.Tool = {
   name: "classify_unmatched_email",
-  description: "Classify an inbound email from an unrecognized sender and draft a safe, generic suggested reply for staff to review before sending.",
+  description: "Classify an inbound email thread from an unrecognized sender and draft a safe, generic suggested reply for staff to review before sending.",
   input_schema: {
     type: "object",
     properties: {
@@ -79,7 +99,12 @@ const CLASSIFY_TOOL: Anthropic.Tool = {
       summary: { type: "string", description: "One sentence: what does this person want?" },
       suggestedReply: {
         type: ["string", "null"],
-        description: "A short, safe, generic reply body — no greeting/sign-off (added separately), no clinical claims, no pricing figures, no promises. Null for spam_or_irrelevant.",
+        description:
+          "A short, safe, generic reply body — no greeting/sign-off (added separately), no clinical claims, no pricing figures, no promises. If senderName is null, this MUST include asking for their name so we can help them properly. Null only for spam_or_irrelevant.",
+      },
+      senderName: {
+        type: ["string", "null"],
+        description: "The sender's full name, if known — from the From header display name (given separately) or signed/stated anywhere in the thread. Null if genuinely unknown.",
       },
       matchCandidateIndex: {
         type: ["integer", "null"],
@@ -87,47 +112,63 @@ const CLASSIFY_TOOL: Anthropic.Tool = {
       },
       matchConfidence: { type: ["string", "null"], enum: ["high", "medium", "low", null] },
     },
-    required: ["intent", "summary", "suggestedReply", "matchCandidateIndex", "matchConfidence"],
+    required: ["intent", "summary", "suggestedReply", "senderName", "matchCandidateIndex", "matchConfidence"],
   },
 };
 
-function systemPrompt(candidates: readonly MatchCandidate[]): string {
+function buildTranscript(messages: readonly UnmatchedEmailMessage[]): string {
+  const capped = messages.slice(-MAX_TRANSCRIPT_MESSAGES);
+  const lines = capped.map((m) => `${m.direction === "inbound" ? "Sender" : "Luma Health"} (Subject: ${m.subject}): ${m.body}`);
+  let text = lines.join("\n\n");
+  if (text.length > MAX_TRANSCRIPT_CHARS) {
+    text = "...\n" + text.slice(-(MAX_TRANSCRIPT_CHARS - 4));
+  }
+  return text;
+}
+
+function systemPrompt(candidates: readonly MatchCandidate[], knownName: string | null): string {
   const candidateList = candidates.length
     ? candidates.map((c, i) => `${i}: ${c.firstName} ${c.lastName} (${c.email})`).join("\n")
     : "(no plausible candidates found)";
 
-  return `You triage inbound email at Luma Health, a healthcare company, for a sender whose email address doesn't match any customer record in the CRM.
+  return `You triage inbound email at Luma Health, a healthcare company, for a sender whose email address doesn't match any customer record in the CRM. You're seeing the full thread so far with this sender, not just one message.
 
 Classify the message and draft a short suggested reply for a staff member to review — you are never sending anything yourself, only drafting.
+
+We currently know the sender's name as: ${knownName ?? "unknown"}.
 
 Rules for the suggested reply:
 - Never state or imply a price, discount, or specific dollar figure.
 - Never give clinical/medical advice, dosing information, or comment on a specific medication.
 - Never promise a timeline, outcome, or that a specific person will follow up.
-- Keep it to 1-3 short sentences. Acknowledge what they asked, and say a member of the team will follow up. If their intent is unclear, ask one clarifying question instead.
+- Keep it to 1-3 short sentences. Acknowledge what they asked, and say a member of the team will follow up.
+- If we don't know their name yet, the reply MUST ask for it naturally (e.g. "Could you share your name so we can look into this for you?") — asking for their name takes priority over any other clarifying question.
 - Do not include a greeting ("Hi ...") or sign-off — those are added separately.
 - If the message is spam, a phishing attempt, an automated notification, or otherwise not a real inquiry, set intent to spam_or_irrelevant and suggestedReply to null.
 
-Possible existing customers this sender might be (matched by name appearing in their message) — only pick one if you're confident, based on real evidence in the message (e.g. they sign the email with a matching name), never based on the topic alone:
+For senderName: if we already know it (${knownName ?? "unknown"}), just return that. Otherwise extract it only if the sender actually states or signs their name somewhere in the thread — never guess from an email address or writing style.
+
+Possible existing customers this sender might be (matched by name appearing in their messages) — only pick one if you're confident, based on real evidence (e.g. they sign with a matching name), never based on the topic alone:
 ${candidateList}`;
 }
 
-async function classifyAndDraft(fromAddress: string, fromName: string | null, subject: string, body: string, candidates: readonly MatchCandidate[]): Promise<Classification> {
+async function classifyAndDraft(
+  fromAddress: string,
+  fromName: string | null,
+  messages: readonly UnmatchedEmailMessage[],
+  candidates: readonly MatchCandidate[],
+): Promise<Classification> {
   const client = getClient();
-  const truncatedBody = body.length > MAX_BODY_CHARS ? `${body.slice(0, MAX_BODY_CHARS)}...` : body;
+  const transcript = buildTranscript(messages);
+  const knownName = fromName;
 
   const createPromise = client.messages.create({
     model: MODEL,
     max_tokens: 500,
-    system: systemPrompt(candidates),
+    system: systemPrompt(candidates, knownName),
     tools: [CLASSIFY_TOOL],
     tool_choice: { type: "tool", name: "classify_unmatched_email" },
-    messages: [
-      {
-        role: "user",
-        content: `From: ${fromName ? `${fromName} <${fromAddress}>` : fromAddress}\nSubject: ${subject}\n\n${truncatedBody}`,
-      },
-    ],
+    messages: [{ role: "user", content: `From: ${fromName ? `${fromName} <${fromAddress}>` : fromAddress}\n\nThread so far:\n${transcript}` }],
   });
 
   const timeoutPromise = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("TIMEOUT")), CALL_TIMEOUT_MS));
@@ -140,11 +181,71 @@ async function classifyAndDraft(fromAddress: string, fromName: string | null, su
   return toolBlock.input as Classification;
 }
 
+async function getOrCreateThread(fromAddress: string, fromName: string | null): Promise<UnmatchedEmailThread> {
+  const [existing] = await db.select().from(unmatchedEmailThreadsTable).where(eq(unmatchedEmailThreadsTable.fromAddress, fromAddress));
+  if (existing) return existing;
+
+  const [created] = await db
+    .insert(unmatchedEmailThreadsTable)
+    .values({ fromAddress, fromName })
+    .onConflictDoNothing({ target: unmatchedEmailThreadsTable.fromAddress })
+    .returning();
+  if (created) return created;
+
+  const [row] = await db.select().from(unmatchedEmailThreadsTable).where(eq(unmatchedEmailThreadsTable.fromAddress, fromAddress));
+  return row;
+}
+
+/** first token as firstName, remainder (if any) as lastName — customers.lastName is NOT NULL, so a single-word name gets an empty-string lastName rather than failing. */
+function splitName(fullName: string): { firstName: string; lastName: string } {
+  const parts = fullName.trim().split(/\s+/);
+  return { firstName: parts[0] ?? fullName, lastName: parts.slice(1).join(" ") };
+}
+
 /**
- * Records the email and attaches a best-effort classification/draft — a
- * Claude failure (timeout, misconfigured key, malformed output) still
- * results in a plain needs_review record with nothing AI-generated
- * attached, rather than losing the email entirely.
+ * The only place this pipeline creates data unattended: a brand-new
+ * customer row, never a link to an existing one. Only fires once we have a
+ * real name, Claude is confident this is a genuine prospective customer
+ * (not spam/irrelevant, not someone claiming to already be a customer —
+ * that case goes to matchCandidateIndex instead, human-gated), and this
+ * thread hasn't already been linked to a customer.
+ */
+async function maybeCreateLead(thread: UnmatchedEmailThread, classification: Classification, matchedExisting: boolean): Promise<string | null> {
+  if (thread.linkedCustomerId) return thread.linkedCustomerId;
+  if (matchedExisting) return null;
+  if (classification.intent !== "new_lead_interest") return null;
+
+  const name = thread.fromName ?? classification.senderName;
+  if (!name) return null;
+
+  const { firstName, lastName } = splitName(name);
+  const [created] = await db
+    .insert(customersTable)
+    .values({
+      firstName,
+      lastName,
+      email: thread.fromAddress,
+      leadReceivedDate: new Date().toISOString().slice(0, 10),
+      leadType: "Email Inquiry",
+    })
+    .returning({ id: customersTable.id });
+
+  logger.info({ threadId: thread.id, customerId: created.id }, "created a new lead from an unmatched inbound email");
+  return created.id;
+}
+
+export async function listUnmatchedEmailMessages(threadId: string): Promise<UnmatchedEmailMessage[]> {
+  return db.select().from(unmatchedEmailMessagesTable).where(eq(unmatchedEmailMessagesTable.threadId, threadId)).orderBy(unmatchedEmailMessagesTable.createdAt);
+}
+
+/**
+ * Records the inbound message (joining the sender's existing thread if one
+ * exists) and attaches a best-effort classification/draft, re-run against
+ * the FULL thread history each time — a Claude failure (timeout,
+ * misconfigured key, malformed output) still leaves the message recorded
+ * with nothing AI-generated attached, rather than losing it. A new inbound
+ * message on a thread previously replied-to or dismissed resurfaces it by
+ * resetting status back to needs_review.
  */
 export async function recordAndClassifyUnmatchedEmail(input: {
   fromAddress: string;
@@ -152,53 +253,117 @@ export async function recordAndClassifyUnmatchedEmail(input: {
   subject: string;
   body: string;
   messageId: string | null;
-}): Promise<UnmatchedInboundEmail> {
-  const candidates = await findMatchCandidates(input.fromName, input.body).catch((err) => {
+}): Promise<UnmatchedEmailThread> {
+  const thread = await getOrCreateThread(input.fromAddress, input.fromName);
+  if (input.fromName && !thread.fromName) {
+    await db.update(unmatchedEmailThreadsTable).set({ fromName: input.fromName }).where(eq(unmatchedEmailThreadsTable.id, thread.id));
+  }
+
+  await db.insert(unmatchedEmailMessagesTable).values({
+    threadId: thread.id,
+    direction: "inbound",
+    subject: input.subject,
+    body: input.body,
+    messageId: input.messageId,
+  });
+
+  const messages = await listUnmatchedEmailMessages(thread.id);
+  const knownName = input.fromName ?? thread.fromName;
+  const transcriptText = messages.map((m) => m.body).join(" ");
+
+  const candidates = await findMatchCandidates(knownName, transcriptText).catch((err) => {
     logger.warn({ reason: err instanceof Error ? err.message : String(err) }, "unmatched-email candidate lookup failed");
     return [];
   });
 
   let classification: Classification | null = null;
   try {
-    classification = await classifyAndDraft(input.fromAddress, input.fromName, input.subject, input.body, candidates);
+    classification = await classifyAndDraft(input.fromAddress, knownName, messages, candidates);
   } catch (err) {
     logger.warn({ reason: err instanceof Error ? err.message : String(err) }, "unmatched-email classification failed");
   }
 
   const matchCandidate =
-    classification?.matchCandidateIndex !== null && classification?.matchCandidateIndex !== undefined
-      ? candidates[classification.matchCandidateIndex]
-      : undefined;
+    classification?.matchCandidateIndex !== null && classification?.matchCandidateIndex !== undefined ? candidates[classification.matchCandidateIndex] : undefined;
 
-  const [row] = await db
-    .insert(unmatchedInboundEmailsTable)
-    .values({
-      fromAddress: input.fromAddress,
-      fromName: input.fromName,
-      subject: input.subject,
-      body: input.body,
-      messageId: input.messageId,
-      aiIntent: classification?.intent ?? null,
-      aiSummary: classification?.summary ?? null,
-      suggestedReply: classification?.suggestedReply ?? null,
-      suggestedMatchCustomerId: matchCandidate?.id ?? null,
-      suggestedMatchConfidence: matchCandidate ? classification?.matchConfidence ?? null : null,
+  const linkedCustomerId = classification ? await maybeCreateLead(thread, classification, Boolean(matchCandidate)) : (thread.linkedCustomerId ?? null);
+
+  const [updated] = await db
+    .update(unmatchedEmailThreadsTable)
+    .set({
+      fromName: knownName ?? classification?.senderName ?? undefined,
+      aiIntent: classification?.intent ?? thread.aiIntent,
+      aiSummary: classification?.summary ?? thread.aiSummary,
+      suggestedReply: classification?.suggestedReply ?? thread.suggestedReply,
+      suggestedMatchCustomerId: matchCandidate?.id ?? thread.suggestedMatchCustomerId,
+      suggestedMatchConfidence: matchCandidate ? (classification?.matchConfidence ?? null) : thread.suggestedMatchConfidence,
+      linkedCustomerId: linkedCustomerId ?? undefined,
+      status: "needs_review",
     })
+    .where(eq(unmatchedEmailThreadsTable.id, thread.id))
     .returning();
+  return updated;
+}
+
+export interface UnmatchedEmailThreadSummary extends UnmatchedEmailThread {
+  readonly lastMessageAt: Date | null;
+  readonly lastMessagePreview: string | null;
+}
+
+/**
+ * Hand-qualified raw query, not the `.select({...})` builder: drizzle only
+ * table-qualifies column references in a correlated subquery when the outer
+ * query also has a JOIN — without one, an unqualified "id" inside the
+ * subquery resolves to unmatched_email_messages.id (it has its own id PK
+ * too) instead of the intended unmatched_email_threads.id, silently
+ * returning null for every row. There's no natural join target here, so
+ * this is qualified explicitly instead of relying on that quirk.
+ */
+export async function listUnmatchedEmailThreads(): Promise<UnmatchedEmailThreadSummary[]> {
+  const { rows } = await db.execute<{
+    id: string;
+    fromAddress: string;
+    fromName: string | null;
+    aiIntent: UnmatchedEmailThread["aiIntent"];
+    aiSummary: string | null;
+    suggestedMatchCustomerId: string | null;
+    suggestedMatchConfidence: UnmatchedEmailThread["suggestedMatchConfidence"];
+    suggestedReply: string | null;
+    linkedCustomerId: string | null;
+    status: UnmatchedEmailThread["status"];
+    repliedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+    lastMessageAt: Date | null;
+    lastMessagePreview: string | null;
+  }>(sql`
+    select
+      t.id, t.from_address as "fromAddress", t.from_name as "fromName", t.ai_intent as "aiIntent", t.ai_summary as "aiSummary",
+      t.suggested_match_customer_id as "suggestedMatchCustomerId", t.suggested_match_confidence as "suggestedMatchConfidence",
+      t.suggested_reply as "suggestedReply", t.linked_customer_id as "linkedCustomerId", t.status, t.replied_at as "repliedAt",
+      t.created_at as "createdAt", t.updated_at as "updatedAt",
+      (select max(m.created_at) from unmatched_email_messages m where m.thread_id = t.id) as "lastMessageAt",
+      (select m.body from unmatched_email_messages m where m.thread_id = t.id order by m.created_at desc limit 1) as "lastMessagePreview"
+    from unmatched_email_threads t
+    order by (select max(m.created_at) from unmatched_email_messages m where m.thread_id = t.id) desc nulls last
+  `);
+  return rows;
+}
+
+export async function getUnmatchedEmailThread(id: string): Promise<UnmatchedEmailThread | undefined> {
+  const [row] = await db.select().from(unmatchedEmailThreadsTable).where(eq(unmatchedEmailThreadsTable.id, id));
   return row;
 }
 
-export async function listUnmatchedInboundEmails(): Promise<UnmatchedInboundEmail[]> {
-  return db.select().from(unmatchedInboundEmailsTable).orderBy(desc(unmatchedInboundEmailsTable.createdAt));
+export async function getUnmatchedEmailThreadDetail(id: string): Promise<{ thread: UnmatchedEmailThread; messages: UnmatchedEmailMessage[] } | undefined> {
+  const thread = await getUnmatchedEmailThread(id);
+  if (!thread) return undefined;
+  const messages = await listUnmatchedEmailMessages(id);
+  return { thread, messages };
 }
 
-export async function getUnmatchedInboundEmail(id: string): Promise<UnmatchedInboundEmail | undefined> {
-  const [row] = await db.select().from(unmatchedInboundEmailsTable).where(eq(unmatchedInboundEmailsTable.id, id));
-  return row;
-}
-
-export async function dismissUnmatchedInboundEmail(id: string): Promise<boolean> {
-  const [row] = await db.update(unmatchedInboundEmailsTable).set({ status: "dismissed" }).where(eq(unmatchedInboundEmailsTable.id, id)).returning({ id: unmatchedInboundEmailsTable.id });
+export async function dismissUnmatchedEmailThread(id: string): Promise<boolean> {
+  const [row] = await db.update(unmatchedEmailThreadsTable).set({ status: "dismissed" }).where(eq(unmatchedEmailThreadsTable.id, id)).returning({ id: unmatchedEmailThreadsTable.id });
   return Boolean(row);
 }
 
@@ -219,25 +384,32 @@ function wrapReplyHtml(bodyText: string): string {
   return `<div style="font-family: -apple-system, sans-serif; font-size: 15px; line-height: 1.5; color: #1a1a1a; max-width: 600px;">${paragraphs}</div>`;
 }
 
-/** A staff-approved reply to an unmatched sender — the only path by which this pipeline ever actually sends anything. */
+/** A staff-approved reply to an unmatched sender — the only path by which this pipeline ever actually sends anything. Threads off the most recent message in the thread (inbound or outbound, whichever is last). */
 export async function sendUnmatchedInboundEmailReply(id: string, body: string): Promise<UnmatchedEmailReplyResult> {
-  const row = await getUnmatchedInboundEmail(id);
-  if (!row) return { sent: false, reason: "not_found" };
+  const detail = await getUnmatchedEmailThreadDetail(id);
+  if (!detail) return { sent: false, reason: "not_found" };
+  const { thread, messages } = detail;
 
-  const subject = /^re:/i.test(row.subject.trim()) ? row.subject : `Re: ${row.subject}`;
+  const lastMessage = messages.at(-1);
+  const lastSubject = lastMessage?.subject ?? "Your message to Luma Health";
+  const subject = /^re:/i.test(lastSubject.trim()) ? lastSubject : `Re: ${lastSubject}`;
+
+  let messageId: string | null = null;
   try {
     const { provider } = getEmailProvider("lucy");
     const html = wrapReplyHtml(body);
-    await provider.sendEmail(row.fromAddress, subject, html, {
+    const result = await provider.sendEmail(thread.fromAddress, subject, html, {
       fromName: "Luma Health Team",
-      inReplyTo: row.messageId ?? undefined,
-      references: row.messageId ?? undefined,
+      inReplyTo: lastMessage?.messageId ?? undefined,
+      references: lastMessage?.messageId ?? undefined,
     });
+    messageId = result.messageId;
   } catch (err) {
     logger.warn({ id, reason: err instanceof Error ? err.message : String(err) }, "unmatched-email staff reply send failed");
     return { sent: false, reason: "send_failed" };
   }
 
-  await db.update(unmatchedInboundEmailsTable).set({ status: "replied", repliedAt: new Date() }).where(eq(unmatchedInboundEmailsTable.id, id));
+  await db.insert(unmatchedEmailMessagesTable).values({ threadId: thread.id, direction: "outbound", subject, body, messageId });
+  await db.update(unmatchedEmailThreadsTable).set({ status: "replied", repliedAt: new Date() }).where(eq(unmatchedEmailThreadsTable.id, id));
   return { sent: true };
 }
