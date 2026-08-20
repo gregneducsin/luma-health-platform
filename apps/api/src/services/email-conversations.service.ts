@@ -93,7 +93,7 @@ export async function listEmailMessages(conversationId: string, limit = MAX_HIST
  * the same body shape an SMS turn does. `body.body` here is the plain-text
  * subject+content, not the raw HTML.
  */
-export function toEmailPreviewBody(conversation: EmailConversation, history: readonly EmailConversationMessage[]): BotPreviewRequestBody {
+export function toEmailPreviewBody(conversation: EmailConversation, history: readonly EmailConversationMessage[], customerFirstName: string | null): BotPreviewRequestBody {
   return {
     messages: history.map((m) => ({ direction: m.direction, body: m.body })),
     leadSource: conversation.leadSource,
@@ -112,6 +112,7 @@ export function toEmailPreviewBody(conversation: EmailConversation, history: rea
     objectionStage: conversation.objectionStage as 0 | 1 | 2,
     linkProvided: conversation.linkProvided,
     promoOffered: conversation.promoOffered,
+    customerFirstName,
   };
 }
 

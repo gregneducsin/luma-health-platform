@@ -71,6 +71,8 @@ export const ClaudeInteractiveSchema = z
     promoOffered: z.boolean().optional().default(false),
     /** Sentiment of the customer's most recent inbound message. Null with no inbound to react to. */
     inboundSentiment: z.enum(["positive", "neutral", "negative"]).nullable().optional().default(null),
+    /** The patient's first name, set only on the turn where they state it themselves. */
+    learnedFirstName: z.string().trim().min(1).max(60).nullable().optional().default(null),
   })
   .superRefine((data, ctx) => {
     // Actions that require a non-empty reply

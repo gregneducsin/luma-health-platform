@@ -70,6 +70,14 @@ export interface ClaudeInteractiveResult {
    * was no inbound message to react to (e.g. a proactive opener).
    */
   readonly inboundSentiment: "positive" | "neutral" | "negative" | null;
+  /**
+   * The patient's first name, set only on the turn where they actually state
+   * it in their own message — null every other turn, including once it's
+   * already known (the caller persists it once; Claude doesn't need to keep
+   * re-reporting it). Never guessed or inferred from anything but the
+   * patient directly giving their name.
+   */
+  readonly learnedFirstName: string | null;
 }
 
 export interface BotPreviewMessage {
@@ -116,4 +124,12 @@ export interface BotPreviewRequestBody {
   readonly linkProvided: boolean;
   /** True once the first_month_offer topic has been used at any point this session. */
   readonly promoOffered: boolean;
+  /**
+   * The patient's first name, if already known (from the customer record —
+   * not something Claude has said or guessed). Null means genuinely unknown,
+   * distinct from the "Unknown" placeholder a webhook-created customer row
+   * gets when no name was ever provided — the caller resolves that
+   * placeholder to null before this reaches the prompt builder.
+   */
+  readonly customerFirstName: string | null;
 }

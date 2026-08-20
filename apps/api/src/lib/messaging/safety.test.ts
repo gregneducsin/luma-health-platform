@@ -20,6 +20,7 @@ function reply(overrides: Partial<ClaudeInteractiveResult> = {}): ClaudeInteract
     objectionStage: 0,
     promoOffered: false,
     inboundSentiment: null,
+    learnedFirstName: null,
     ...overrides,
   };
 }

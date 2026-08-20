@@ -21,6 +21,7 @@ export type LucyTurnResult =
       validatedSlotUpdates: Record<string, unknown>;
       source: "pre_check_block" | "model";
       preCheckCode: string | null;
+      learnedFirstName: string | null;
     }
   | { ok: false; code: string };
 
@@ -115,6 +116,7 @@ export async function runLucyTurn(personId: string, body: BotPreviewRequestBody)
         validatedSlotUpdates: {},
         source: "pre_check_block",
         preCheckCode: pre.code,
+        learnedFirstName: null,
       };
     }
   }
@@ -190,5 +192,6 @@ export async function runLucyTurn(personId: string, body: BotPreviewRequestBody)
     validatedSlotUpdates: post.validatedSlotUpdates,
     source: "model",
     preCheckCode: null,
+    learnedFirstName: result.learnedFirstName,
   };
 }

@@ -110,7 +110,10 @@ async function processInboundEmailLocked(personId: string, subject: string, body
   const priorMessages = await listEmailMessages(conversation.id);
   const inboundMessage = await appendEmailMessage(conversation.id, "inbound", subject, bodyText, { messageId });
 
-  const body = toEmailPreviewBody(conversation, [...priorMessages, inboundMessage]);
+  const emailCustomer = await getCustomerContact(personId);
+  const customerFirstName = emailCustomer && emailCustomer.firstName && emailCustomer.firstName !== "Unknown" ? emailCustomer.firstName : null;
+
+  const body = toEmailPreviewBody(conversation, [...priorMessages, inboundMessage], customerFirstName);
   let result: LucyTurnResult;
   try {
     result = await runLucyTurn(personId, body);
@@ -131,6 +134,15 @@ async function processInboundEmailLocked(personId: string, subject: string, body
   }
 
   await setEmailMessageSentiment(inboundMessage.id, result.inboundSentiment);
+
+  // Guarded the same way as lucy-dispatch.service.ts's (SMS) equivalent —
+  // trust but verify even though the prompt already tells Claude not to
+  // report this once customerFirstName is known. Written before the re-fetch
+  // below so this very reply's greeting already uses the name just learned,
+  // instead of "Unknown."
+  if (result.learnedFirstName && customerFirstName === null) {
+    await db.update(customersTable).set({ firstName: result.learnedFirstName }).where(eq(customersTable.id, personId));
+  }
 
   const customer = await getCustomerContact(personId);
   const combinedBody = [result.reply, result.nextQuestion].filter((t): t is string => Boolean(t)).join("\n\n");

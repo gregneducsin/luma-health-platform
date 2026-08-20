@@ -19,11 +19,11 @@ vi.mock("../lib/sms-provider.js", async () => {
 const { processInboundMessage } = await import("./lucy-dispatch.service.js");
 const { getOrCreateConversation, listMessages } = await import("./conversations.service.js");
 
-async function seedCustomer(opts: { phone?: string | null } = {}): Promise<string> {
+async function seedCustomer(opts: { phone?: string | null; firstName?: string } = {}): Promise<string> {
   const [row] = await db
     .insert(customersTable)
     .values({
-      firstName: "Dispatch",
+      firstName: opts.firstName ?? "Dispatch",
       lastName: "Test",
       email: `dispatch-${crypto.randomUUID()}@example.com`,
       leadReceivedDate: "2026-08-15",
@@ -49,6 +49,7 @@ function okResult(overrides: Partial<Extract<LucyTurnResult, { ok: true }>> = {}
     validatedSlotUpdates: {},
     source: "model",
     preCheckCode: null,
+    learnedFirstName: null,
     ...overrides,
   };
 }
@@ -78,6 +79,48 @@ describe("processInboundMessage", () => {
     expect(messages[0].sentiment).toBe("positive");
     expect(messages[1].providerMessageId).toBe("msg_1");
     expect(messages[2].providerMessageId).toBe("msg_2");
+  });
+
+  it("passes the customer's known first name to runLucyTurn, and null for the 'Unknown' placeholder", async () => {
+    runLucyTurnMock.mockClear();
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValue({ providerMessageId: "msg_x" });
+    runLucyTurnMock.mockResolvedValue(okResult());
+
+    const knownPersonId = await seedCustomer({ firstName: "Jordan" });
+    await processInboundMessage(knownPersonId, "hi");
+    expect(runLucyTurnMock.mock.calls[0]![1].customerFirstName).toBe("Jordan");
+
+    runLucyTurnMock.mockClear();
+    const unknownPersonId = await seedCustomer({ firstName: "Unknown" });
+    await processInboundMessage(unknownPersonId, "hi");
+    expect(runLucyTurnMock.mock.calls[0]![1].customerFirstName).toBeNull();
+  });
+
+  it("writes a name learned mid-conversation to the customer record once it was previously unknown", async () => {
+    runLucyTurnMock.mockClear();
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValue({ providerMessageId: "msg_x" });
+    runLucyTurnMock.mockResolvedValueOnce(okResult({ learnedFirstName: "Jordan" }));
+
+    const personId = await seedCustomer({ firstName: "Unknown" });
+    await processInboundMessage(personId, "It's Jordan");
+
+    const [customer] = await db.select({ firstName: customersTable.firstName }).from(customersTable).where(eq(customersTable.id, personId));
+    expect(customer!.firstName).toBe("Jordan");
+  });
+
+  it("does not overwrite an already-known first name, even if runLucyTurn reports one", async () => {
+    runLucyTurnMock.mockClear();
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValue({ providerMessageId: "msg_x" });
+    runLucyTurnMock.mockResolvedValueOnce(okResult({ learnedFirstName: "SomeoneElse" }));
+
+    const personId = await seedCustomer({ firstName: "Jordan" });
+    await processInboundMessage(personId, "hi");
+
+    const [customer] = await db.select({ firstName: customersTable.firstName }).from(customersTable).where(eq(customersTable.id, personId));
+    expect(customer!.firstName).toBe("Jordan");
   });
 
   it("merges validatedSlotUpdates into conversation state and stores objectionStage/linkProvided/promoOffered", async () => {

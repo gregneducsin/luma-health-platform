@@ -157,7 +157,7 @@ describe("toBotPreviewBody", () => {
     const updated = await getOrCreateConversation(personId);
     const messages = await appendMessage(conversation.id, "inbound", "yes please").then(() => listMessages(conversation.id));
 
-    const body = toBotPreviewBody(updated, messages);
+    const body = toBotPreviewBody(updated, messages, null);
     expect(body.currentSlots.selectedProduct).toBe("tirzepatide");
     expect(body.lastQuestion).toBe("Want to see pricing?");
     expect(body.objectionStage).toBe(2);
@@ -172,7 +172,7 @@ describe("toBotPreviewBody", () => {
     await updateConversationState(conversation.id, { state: "Texas" });
     const updated = await getOrCreateConversation(personId);
 
-    const body = toBotPreviewBody(updated, []);
+    const body = toBotPreviewBody(updated, [], null);
     expect(body.leadSource).toBe("meta_form");
     expect(body.currentSlots.state).toBe("Texas");
   });

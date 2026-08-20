@@ -23,6 +23,7 @@ function baseResult(overrides: Partial<ClaudeInteractiveResult> = {}): ClaudeInt
     objectionStage: 0,
     promoOffered: false,
     inboundSentiment: null,
+    learnedFirstName: null,
     ...overrides,
   };
 }

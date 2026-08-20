@@ -44,6 +44,7 @@ function baseBody(overrides: Partial<BotPreviewRequestBody> = {}): BotPreviewReq
     objectionStage: 0,
     linkProvided: false,
     promoOffered: false,
+    customerFirstName: "Test",
     ...overrides,
   };
 }
@@ -65,6 +66,7 @@ function modelResult(overrides: Partial<ClaudeInteractiveResult> = {}): ClaudeIn
     objectionStage: 0,
     promoOffered: false,
     inboundSentiment: null,
+    learnedFirstName: null,
     ...overrides,
   };
 }
