@@ -161,6 +161,7 @@ describe("runLucyTurn", () => {
       expect(result.action).toBe("send_form");
       expect(result.link).toMatch(/^http:\/\/localhost:3000\/go\/.+/);
       expect(result.reply).toContain(result.link as string);
+      expect(result.reply).toContain("Affirm");
       expect(result.linkProvided).toBe(true);
     }
   });

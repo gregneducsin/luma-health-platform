@@ -162,6 +162,13 @@ export async function runLucyTurn(personId: string, body: BotPreviewRequestBody)
       const minted = await createIntakeLink(personId, result.promoOffered ? "first_month_20" : "none");
       link = minted.url;
       finalReply = result.reply ? `${result.reply} ${link}` : link;
+      // Deterministic, not AI-drafted — same reasoning as the link itself
+      // never being something Claude generates: a financing mention is a
+      // real claim about a third-party product, not something to leave to
+      // per-turn phrasing. Sent every time a real link goes out, not gated
+      // on plan size — the conversation doesn't track which specific
+      // duration/tier the patient ends up choosing at checkout.
+      finalReply = `${finalReply} If a bigger package works better for you, you can use Affirm at checkout to split it into payments.`;
     } catch (err) {
       // Same fail-soft posture as every other trigger/send path in this
       // codebase — a config or DB problem minting the link must not silence
