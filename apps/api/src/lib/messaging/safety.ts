@@ -165,6 +165,45 @@ const LEGAL_WORDS_LOWER = ["attorney", "lawyer", "lawsuit", "litigation", "legal
 const LEGAL_SUE_RE = /\bsu(?:e|es|ed|ing)\b/i;
 
 /**
+ * Plain shipping/delivery-timing questions — these contain "medication" or
+ * "prescription" (both in MEDICAL_WORDS_LOWER) but are asking when a package
+ * arrives, not for clinical judgment. Checked with priority before
+ * MEDICAL_WORDS_LOWER, same reasoning as SUITABILITY_PHRASES_LOWER below:
+ * without this, "how long will it take to get my medication" was blocked at
+ * pre-check and routed to staff review even though shipping_delivery is an
+ * approved, pre-vetted knowledge topic that answers exactly this question —
+ * Claude never got the chance to use it. Deliberately narrow (get/receive/
+ * arrive/ship verbs only) so it doesn't also catch a drug-efficacy-onset
+ * question like "how long until my medication starts working" — that stays
+ * blocked here on purpose: medication_onset_timeline is a Sarah-only topic
+ * (an existing-patient question, not a lead's), so Lucy has no approved
+ * answer to hand it to and should keep routing it to staff.
+ */
+const SHIPPING_TIMING_PHRASES_LOWER = [
+  "how long will it take to get my",
+  "how long until i get my",
+  "how long does it take to get my",
+  "how long will it take to receive my",
+  "how long to receive my",
+  "how long until my medication arrives",
+  "how long until my medication ships",
+  "how long until my order arrives",
+  "how long until my order ships",
+  "how long until my prescription arrives",
+  "how long until my prescription ships",
+  "when will my medication arrive",
+  "when will my medication ship",
+  "when will my order arrive",
+  "when will my order ship",
+  "when will my prescription arrive",
+  "when will my prescription ship",
+  "when is my medication arriving",
+  "when is my order arriving",
+  "how long does shipping take",
+  "how long does delivery take",
+] as const;
+
+/**
  * Phrases that indicate a request for individualized clinical suitability
  * judgment. These must never reach the provider — route to staff review.
  */
@@ -218,7 +257,7 @@ export type InteractivePreCheckResult = { readonly blocked: false } | { readonly
  * Check the last inbound message for content that must never reach the
  * provider. Returns the block code or { blocked: false }.
  *
- * Priority order: opt_out > STOP_WORD > emergency > suitability > medical > legal.
+ * Priority order: opt_out > STOP_WORD > emergency > suitability > shipping timing > medical > legal.
  *
  * Opt-out (code "OPT_OUT") takes the highest priority and is terminal —
  * no objection handling, no rebuttal, no provider call.
@@ -247,6 +286,12 @@ export function interactivePreCheck(lastInbound: string): InteractivePreCheckRes
   // than MEDICAL_CONTENT (the word "medication" is in MEDICAL_WORDS_LOWER).
   if (SUITABILITY_PHRASES_LOWER.some((w) => lower.includes(w))) {
     return { blocked: true, code: "SUITABILITY_QUESTION" };
+  }
+  // Shipping timing is also checked before medical, same reasoning: "how
+  // long will it take to get my medication?" must not be blocked just
+  // because it contains "medication" — see SHIPPING_TIMING_PHRASES_LOWER.
+  if (SHIPPING_TIMING_PHRASES_LOWER.some((w) => lower.includes(w))) {
+    return { blocked: false };
   }
   if (MEDICAL_WORDS_LOWER.some((w) => lower.includes(w))) {
     return { blocked: true, code: "MEDICAL_CONTENT" };

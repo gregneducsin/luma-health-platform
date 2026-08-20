@@ -76,6 +76,21 @@ describe("interactivePreCheck", () => {
     expect(interactivePreCheck("what's the dosage?")).toEqual({ blocked: true, code: "MEDICAL_CONTENT" });
   });
 
+  it("does not block plain shipping-timing questions despite containing 'medication'", () => {
+    expect(interactivePreCheck("How long will it take to get my medication?")).toEqual({ blocked: false });
+    expect(interactivePreCheck("When will my prescription arrive?")).toEqual({ blocked: false });
+    expect(interactivePreCheck("How long does shipping take?")).toEqual({ blocked: false });
+  });
+
+  it("still blocks onset-timing questions — medication_onset_timeline is Sarah-only, Lucy has no approved answer for a lead", () => {
+    expect(interactivePreCheck("How long until my medication starts working?")).toEqual({ blocked: true, code: "MEDICAL_CONTENT" });
+    expect(interactivePreCheck("When will I start seeing results?")).toEqual({ blocked: false }); // no MEDICAL_WORDS_LOWER term present at all
+  });
+
+  it("still blocks medication questions that aren't about shipping timing", () => {
+    expect(interactivePreCheck("Will this medication interact badly with my other medication?")).toEqual({ blocked: true, code: "MEDICAL_CONTENT" });
+  });
+
   it("blocks legal content", () => {
     expect(interactivePreCheck("I'm going to sue you")).toEqual({ blocked: true, code: "LEGAL_CONTENT" });
     // No trailing space/comma after "sue" — was previously missed.
