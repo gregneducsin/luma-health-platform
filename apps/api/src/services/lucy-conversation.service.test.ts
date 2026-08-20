@@ -85,7 +85,7 @@ describe("runLucyTurn", () => {
     }
   });
 
-  it("routes a suitability question to staff_review via pre-check, no provider call", async () => {
+  it("routes a suitability question to staff_review via pre-check, no provider call, but still replies instead of leaving the customer in silence", async () => {
     callClaudeInteractiveMock.mockClear();
     const personId = await seedCustomer();
     const result = await runLucyTurn(personId, baseBody({ messages: [{ direction: "inbound", body: "which one is right for me?" }] }));
@@ -95,6 +95,7 @@ describe("runLucyTurn", () => {
     if (result.ok) {
       expect(result.action).toBe("staff_review");
       expect(result.requiresStaff).toBe(true);
+      expect(result.reply).toMatch(/doctor/i);
     }
   });
 

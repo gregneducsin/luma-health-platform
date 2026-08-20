@@ -146,8 +146,18 @@ const MEDICAL_WORDS_LOWER = [
   // TOPIC_GATED post-check rule (requires side_effects, weight_loss_expectations,
   // or product_comparison topic). Blocking at pre-check prevented Claude
   // from giving approved educational answers.
-  "dosage",
-  "dosing",
+  //
+  // "dosage" / "dosing" intentionally omitted here too, same reasoning:
+  // TOPIC_SPECIFIC_LANGUAGE in the post-check section below already requires
+  // the titration topic to be cited before Claude's own reply may use either
+  // word — titration's approved text is the exact dosing protocol (the real
+  // mg-by-mg progression schedule) plus a standing instruction never to tell
+  // a customer to independently change their dose. That's the real guardrail
+  // for dosing content; blocking it here just stopped a general "how does
+  // dosing work?" from ever reaching it. A genuinely individualized dosing
+  // request ("what dose should I take", "should I increase my dose") is
+  // still caught separately by SUITABILITY_PHRASES_LOWER below, checked
+  // with higher priority than this list either way.
 ] as const;
 
 const LEGAL_WORDS_LOWER = ["attorney", "lawyer", "lawsuit", "litigation", "legal action"] as const;

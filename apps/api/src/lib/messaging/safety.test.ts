@@ -73,7 +73,17 @@ describe("interactivePreCheck", () => {
   });
 
   it("blocks medical content", () => {
-    expect(interactivePreCheck("what's the dosage?")).toEqual({ blocked: true, code: "MEDICAL_CONTENT" });
+    expect(interactivePreCheck("what's the diagnosis?")).toEqual({ blocked: true, code: "MEDICAL_CONTENT" });
+  });
+
+  it("does not block plain dosing questions — titration's approved text is the real dosing protocol, and the post-check requires citing it", () => {
+    expect(interactivePreCheck("What's the dosage?")).toEqual({ blocked: false });
+    expect(interactivePreCheck("How does dosing work?")).toEqual({ blocked: false });
+  });
+
+  it("still blocks individualized dosing requests via suitability, not the (now removed) blanket dosage/dosing block", () => {
+    expect(interactivePreCheck("What should I take?")).toEqual({ blocked: true, code: "SUITABILITY_QUESTION" });
+    expect(interactivePreCheck("Should I increase my dose?")).toEqual({ blocked: true, code: "SUITABILITY_QUESTION" });
   });
 
   it("does not block plain shipping-timing questions despite containing 'medication'", () => {
