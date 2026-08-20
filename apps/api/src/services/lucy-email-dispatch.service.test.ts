@@ -86,17 +86,24 @@ describe("processInboundEmail", () => {
     sendEmailMock.mockResolvedValueOnce({ messageId: "<reply-2@example.com>" });
     runLucyTurnMock.mockResolvedValueOnce(okResult());
 
-    const personId = await seedCustomer();
-    await processInboundEmail(personId, "Question about pricing", "How much is semaglutide?", "<inbound-2@example.com>");
+    // The greeting style is randomized (see withGreetingAndSignOff) — pin it
+    // to the full "Hi <name>," style so this test stays deterministic.
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
+    try {
+      const personId = await seedCustomer();
+      await processInboundEmail(personId, "Question about pricing", "How much is semaglutide?", "<inbound-2@example.com>");
 
-    const [, , html] = sendEmailMock.mock.calls[0];
-    expect(html).toContain("Hi Email,");
-    expect(html).toContain("Lucy at Luma Health");
+      const [, , html] = sendEmailMock.mock.calls[0];
+      expect(html).toContain("Hi Email,");
+      expect(html).toContain("Lucy at Luma Health");
 
-    const conversation = await getOrCreateEmailConversation(personId);
-    const messages = await listEmailMessages(conversation.id);
-    expect(messages[1].body).toContain("Hi Email,");
-    expect(messages[1].body).toContain("— Lucy at Luma Health");
+      const conversation = await getOrCreateEmailConversation(personId);
+      const messages = await listEmailMessages(conversation.id);
+      expect(messages[1].body).toContain("Hi Email,");
+      expect(messages[1].body).toContain("— Lucy at Luma Health");
+    } finally {
+      randomSpy.mockRestore();
+    }
   });
 
   it("does not double 'Re:' when the inbound subject already has one", async () => {
@@ -182,6 +189,9 @@ describe("sendEmailStaffReply", () => {
     sendEmailMock.mockClear();
     sendEmailMock.mockResolvedValueOnce({ messageId: "<staff-reply-1@example.com>" });
 
+    // Pin the randomized greeting style — see the equivalent note above.
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
+
     const personId = await seedCustomer();
     const conversation = await getOrCreateEmailConversation(personId);
     await appendEmailMessage(conversation.id, "inbound", "Pricing question", "How much is tirzepatide?", { messageId: "<inbound-1@example.com>" });
@@ -189,6 +199,7 @@ describe("sendEmailStaffReply", () => {
 
     const [customerRow] = await db.select({ email: customersTable.email }).from(customersTable).where(eq(customersTable.id, personId));
     const result = await sendEmailStaffReply(conversation.id, "It's $180/month for the standard plan.");
+    randomSpy.mockRestore();
 
     expect(result).toEqual({ sent: true });
     expect(sendEmailMock).toHaveBeenCalledTimes(1);

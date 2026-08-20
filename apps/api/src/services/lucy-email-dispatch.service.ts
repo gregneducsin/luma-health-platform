@@ -29,10 +29,26 @@ function replySubject(originalSubject: string): string {
 
 const SIGN_OFF = "Lucy at Luma Health";
 
-/** Unlike a text, an email reads as unfinished without a greeting and a sign-off — Claude drafts only the substantive reply body (same as it does for SMS), so this wraps it, not the model. */
+/**
+ * Unlike a text, an email reads as unfinished without a sign-off — Claude
+ * drafts only the substantive reply body (same as it does for SMS), so this
+ * wraps it, not the model. The greeting itself is randomized across a few
+ * natural styles (full "Hi <name>,", just the name, or no greeting line at
+ * all) rather than always "Hi <name>," on every single email — a real person
+ * doesn't open every reply in a thread the same way, and always repeating
+ * the same opener reads as templated.
+ */
+const GREETING_STYLES: ReadonlyArray<(firstName: string) => string> = [
+  (name) => (name ? `Hi ${name},` : "Hi,"),
+  (name) => (name ? `${name},` : "Hi,"),
+  () => "",
+];
+
 function withGreetingAndSignOff(firstName: string, bodyText: string): string {
-  const greeting = firstName.trim() ? `Hi ${firstName.trim()},` : "Hi,";
-  return `${greeting}\n\n${bodyText}\n\n— ${SIGN_OFF}`;
+  const name = firstName.trim();
+  const greeting = GREETING_STYLES[Math.floor(Math.random() * GREETING_STYLES.length)](name);
+  const opening = greeting ? `${greeting}\n\n${bodyText}` : bodyText;
+  return `${opening}\n\n— ${SIGN_OFF}`;
 }
 
 /**

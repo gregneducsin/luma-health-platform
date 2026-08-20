@@ -29,10 +29,23 @@ function replySubject(originalSubject: string): string {
 
 const SIGN_OFF = "Sarah at Luma Health";
 
-/** Unlike a text, an email reads as unfinished without a greeting and a sign-off — Claude drafts only the substantive reply body (same as it does for SMS), so this wraps it, not the model. */
+/**
+ * Same randomized-greeting reasoning as lucy-email-dispatch.service.ts's
+ * withGreetingAndSignOff — always opening "Hi <name>," reads as templated,
+ * so this varies between the full greeting, just the name, or no greeting
+ * line at all.
+ */
+const GREETING_STYLES: ReadonlyArray<(firstName: string) => string> = [
+  (name) => (name ? `Hi ${name},` : "Hi,"),
+  (name) => (name ? `${name},` : "Hi,"),
+  () => "",
+];
+
 function withGreetingAndSignOff(firstName: string, bodyText: string): string {
-  const greeting = firstName.trim() ? `Hi ${firstName.trim()},` : "Hi,";
-  return `${greeting}\n\n${bodyText}\n\n— ${SIGN_OFF}`;
+  const name = firstName.trim();
+  const greeting = GREETING_STYLES[Math.floor(Math.random() * GREETING_STYLES.length)](name);
+  const opening = greeting ? `${greeting}\n\n${bodyText}` : bodyText;
+  return `${opening}\n\n— ${SIGN_OFF}`;
 }
 
 /** Email twin of sarah-dispatch.service.ts's sendAndLog — same fail-soft and DND-checked-here reasoning as lucy-email-dispatch.service.ts's sendAndLog. */

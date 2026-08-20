@@ -82,17 +82,24 @@ describe("processInboundSupportEmail", () => {
     sendEmailMock.mockResolvedValueOnce({ messageId: "<sarah-reply-2@example.com>" });
     runSarahTurnMock.mockResolvedValueOnce(okResult());
 
-    const personId = await seedCustomer();
-    await processInboundSupportEmail(personId, "Where's my order?", "Has it shipped yet?", "<sarah-inbound-2@example.com>");
+    // The greeting style is randomized (see withGreetingAndSignOff) — pin it
+    // to the full "Hi <name>," style so this test stays deterministic.
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
+    try {
+      const personId = await seedCustomer();
+      await processInboundSupportEmail(personId, "Where's my order?", "Has it shipped yet?", "<sarah-inbound-2@example.com>");
 
-    const [, , html] = sendEmailMock.mock.calls[0];
-    expect(html).toContain("Hi Support,");
-    expect(html).toContain("Sarah at Luma Health");
+      const [, , html] = sendEmailMock.mock.calls[0];
+      expect(html).toContain("Hi Support,");
+      expect(html).toContain("Sarah at Luma Health");
 
-    const conversation = await getOrCreateSupportEmailConversation(personId);
-    const messages = await listSupportEmailMessages(conversation.id);
-    expect(messages[1].body).toContain("Hi Support,");
-    expect(messages[1].body).toContain("— Sarah at Luma Health");
+      const conversation = await getOrCreateSupportEmailConversation(personId);
+      const messages = await listSupportEmailMessages(conversation.id);
+      expect(messages[1].body).toContain("Hi Support,");
+      expect(messages[1].body).toContain("— Sarah at Luma Health");
+    } finally {
+      randomSpy.mockRestore();
+    }
   });
 
   it("sends the OPT_OUT confirmation reply, then marks the customer DND — the confirmation itself is not blocked", async () => {
@@ -151,6 +158,9 @@ describe("sendEmailStaffReply", () => {
     sendEmailMock.mockClear();
     sendEmailMock.mockResolvedValueOnce({ messageId: "<staff-support-reply-1@example.com>" });
 
+    // Pin the randomized greeting style — see the equivalent note above.
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
+
     const personId = await seedCustomer();
     const conversation = await getOrCreateSupportEmailConversation(personId);
     await appendSupportEmailMessage(conversation.id, "inbound", "Order status", "Has it shipped?", { messageId: "<inbound-1@example.com>" });
@@ -158,6 +168,7 @@ describe("sendEmailStaffReply", () => {
 
     const [customerRow] = await db.select({ email: customersTable.email }).from(customersTable).where(eq(customersTable.id, personId));
     const result = await sendEmailStaffReply(conversation.id, "It shipped this morning.");
+    randomSpy.mockRestore();
 
     expect(result).toEqual({ sent: true });
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
