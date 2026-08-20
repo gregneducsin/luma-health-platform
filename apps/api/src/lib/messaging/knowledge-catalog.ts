@@ -225,6 +225,47 @@ export const KNOWLEDGE_CATALOG: readonly KnowledgeTopic[] = [
     enabledForPreview: true,
   },
 
+  // ── Medication onset timing ─────────────────────────────────────────────────
+  // Source: owner-confirmed 2026-08-20. General onset-timing education only —
+  // never a personalized prediction of when any one customer will notice
+  // changes. Sarah-only: excluded from Lucy via LUCY_EXCLUDED_TOPIC_KEYS below
+  // — this is a question an existing patient already taking the medication
+  // asks, not a prospect. Wording deliberately avoids "dose"/"dosing" — Sarah's
+  // own post-check (lib/support/safety.ts's SARAH_PROHIBITED_CLINICAL_RE)
+  // unconditionally rejects those words in her reply, no topic-gate exception,
+  // so the approved text itself has to stay inside that vocabulary.
+  {
+    key: "medication_onset_timeline",
+    approvedText:
+      "Many people notice initial appetite changes within the first few weeks of treatment, though this varies from person to person. " +
+      "If you haven't noticed changes yet, that's common early on — your care team can review your progress at your next check-in.",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-20",
+    prohibitedClaims: ["guaranteed_onset_timeline", "specific_day_or_week_promise", "personal_response_prediction"],
+    enabledForPreview: true,
+  },
+
+  // ── Appetite / still feeling hungry ────────────────────────────────────────
+  // Source: owner-confirmed 2026-08-20. General, non-personalized coping tips
+  // only — never tells a customer to change their own dose. Sarah-only, same
+  // reasoning and same "dose"-free wording constraint as
+  // medication_onset_timeline above.
+  {
+    key: "appetite_hunger_management",
+    approvedText:
+      "It's common to still feel hungry sometimes, especially early in treatment. " +
+      "Eating slowly, prioritizing protein and fiber, drinking enough water, and staying active can all help for some people. " +
+      "If hunger doesn't improve or you're concerned, your care team can help figure out the right next step.",
+    allowedParaphrase: true,
+    legalStatus: "approved",
+    clinicalStatus: "approved",
+    lastReviewedDate: "2026-08-20",
+    prohibitedClaims: ["independent_dose_change", "guaranteed_appetite_suppression", "personalized_dietary_prescription"],
+    enabledForPreview: true,
+  },
+
   // ── Insurance and payment options ─────────────────────────────────────────
   // Source: lucy-knowledge-v1 §INSURANCE AND PAYMENT OPTIONS
   {
@@ -603,8 +644,18 @@ export const KNOWLEDGE_CATALOG: readonly KnowledgeTopic[] = [
  * it reassures an existing customer about the rate they're *already enrolled at*,
  * which doesn't apply to a prospect who hasn't purchased yet. Lucy's pricing
  * conversations with prospects are handled by her own pre-purchase pricing topics.
+ *
+ * medication_onset_timeline and appetite_hunger_management: both are
+ * questions an existing patient already taking the medication asks, not a
+ * prospect deciding whether to sign up — see each topic's own comment.
  */
-const LUCY_EXCLUDED_TOPIC_KEYS = new Set(["portal_help", "how_luma_works_after_purchase", "existing_customer_current_rate"]);
+const LUCY_EXCLUDED_TOPIC_KEYS = new Set([
+  "portal_help",
+  "how_luma_works_after_purchase",
+  "existing_customer_current_rate",
+  "medication_onset_timeline",
+  "appetite_hunger_management",
+]);
 
 /** All topics available for the development bot-test preview. */
 export function getPreviewEnabledTopics(): readonly KnowledgeTopic[] {
@@ -649,6 +700,14 @@ export const APPROVED_REVIEW_WRITE_URL = "https://www.consumeraffairs.com/review
  * entirely for a prospect who hasn't signed up yet (select a plan, complete
  * the questionnaire) — wrong framing for every patient Sarah talks to, who's
  * already done that. See how_luma_works_after_purchase's own comment above.
+ *
+ * medication_onset_timeline and appetite_hunger_management are two more
+ * exceptions, for the same reason: general, non-personalized education (when
+ * effects typically start, coping with residual hunger) that an existing
+ * patient legitimately asks Sarah, not individualized clinical guidance.
+ * Both are worded to avoid "dose"/"mg"/"side effect" — see each topic's own
+ * comment for why: Sarah's SARAH_PROHIBITED_CLINICAL_RE rejects those words
+ * in her reply unconditionally, with no topic-gate exception.
  */
 export const SARAH_TOPIC_KEYS = new Set([
   "insurance_payment",
@@ -661,6 +720,8 @@ export const SARAH_TOPIC_KEYS = new Set([
   "portal_help",
   "compounded_medication",
   "existing_customer_current_rate",
+  "medication_onset_timeline",
+  "appetite_hunger_management",
 ]);
 
 /** Topics available to Sarah's conversation loop. */

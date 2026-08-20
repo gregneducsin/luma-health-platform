@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { supportPreCheck, supportPostCheck } from "./safety.js";
+import { getTopicByKey } from "../messaging/knowledge-catalog.js";
 import type { SarahInteractiveResult } from "./types.js";
 
 function reply(overrides: Partial<SarahInteractiveResult> = {}): SarahInteractiveResult {
@@ -140,6 +141,15 @@ describe("supportPostCheck", () => {
     expect(check(reply({ reply: "Zepbound is a different brand." }))).toEqual({ ok: false, code: "PROHIBITED_CLINICAL" });
     expect(check(reply({ reply: "Ours contains semaglutide." }))).toEqual({ ok: false, code: "PROHIBITED_CLINICAL" });
     expect(check(reply({ reply: "Ours contains tirzepatide." }))).toEqual({ ok: false, code: "PROHIBITED_CLINICAL" });
+  });
+
+  it("accepts the real approved text for medication_onset_timeline and appetite_hunger_management, declared as their own topic", () => {
+    for (const key of ["medication_onset_timeline", "appetite_hunger_management"]) {
+      const topic = getTopicByKey(key);
+      expect(topic).toBeDefined();
+      const result = check(reply({ reply: topic!.approvedText, knowledgeTopicsUsed: [key] }), null, new Set([key]));
+      expect(result.ok, `${key} should pass supportPostCheck with its own approved text`).toBe(true);
+    }
   });
 
   it("allows brand/generic medication names when compounded_medication is declared", () => {

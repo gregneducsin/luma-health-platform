@@ -55,4 +55,25 @@ describe("Lucy/Sarah topic-list separation", () => {
     expect(enrollment?.legalStatus).toBe("approved");
     expect(enrollment?.enabledForPreview).toBe(true);
   });
+
+  it("medication_onset_timeline and appetite_hunger_management are Sarah-only — approved and available to Sarah, but excluded from Lucy's topic list", () => {
+    const lucyKeys = new Set(getPreviewEnabledTopics().map((t) => t.key));
+    const sarahKeys = new Set(getSarahEnabledTopics().map((t) => t.key));
+    for (const key of ["medication_onset_timeline", "appetite_hunger_management"]) {
+      const topic = getTopicByKey(key);
+      expect(topic?.legalStatus).toBe("approved");
+      expect(topic?.clinicalStatus).toBe("approved");
+      expect(sarahKeys.has(key)).toBe(true);
+      expect(lucyKeys.has(key)).toBe(false);
+    }
+  });
+
+  it("medication_onset_timeline and appetite_hunger_management avoid words Sarah's own post-check unconditionally rejects (dose/mg/side effect/symptom/diagnos/contraindicat)", () => {
+    const forbidden = /\bdos(e|es|age|ages|ing)\b|\b\d+\s?mg\b|\bside.?effect|\bsymptom|\bdiagnos(e|is|ed|ing)\b|\bcontraindicat(e|ed|es|ing|ion|ions)\b/i;
+    for (const key of ["medication_onset_timeline", "appetite_hunger_management"]) {
+      const topic = getTopicByKey(key);
+      expect(topic?.approvedText).toBeDefined();
+      expect(forbidden.test(topic!.approvedText)).toBe(false);
+    }
+  });
 });
