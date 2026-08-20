@@ -22,15 +22,28 @@ export class SmsProviderNotConfiguredError extends Error {
 }
 
 /**
- * iBluSend — iMessage-first send with SMS fallback. send_mode "instant" is
- * used unconditionally here (not the default "drip" paced queue): every
- * caller of SmsProvider.sendMessage is a conversational reply to an inbound
- * message Lucy/Sarah just processed, not cold outreach, so it should go out
- * now, not be paced over the next ~10 minutes. Instant sends are
- * rate-limited by iBluSend itself (10/min, 75/day per key) — a caller
- * exceeding that gets a thrown error, same as any other send failure; the
- * dispatch pipeline (sendAndLog) already logs-and-continues rather than
- * blocking on a transport failure.
+ * iBluSend — iMessage-first send with SMS fallback, via the dedicated AI
+ * Agent API (/agent-api/messages), not the generic /send-message endpoint —
+ * iBluSend's own docs recommend the Agent API specifically for AI-bot
+ * traffic ("safer than pointing an agent at raw iMessage"), and it's the
+ * only one of the two with the pacing behavior send_mode controls.
+ *
+ * send_mode "instant" is used unconditionally here (not the default "drip"
+ * paced queue): every caller of SmsProvider.sendMessage is a conversational
+ * reply to an inbound message Lucy/Sarah just processed, not cold outreach,
+ * so it should go out now, not be paced over the next ~10 minutes.
+ *
+ * Field names (phone_number/content, not to/message) and the path itself
+ * (agent-api/messages, no /v1/) were corrected 2026-08-21 against iBluSend's
+ * current docs — the previous values didn't match any endpoint shown there
+ * and would have failed against the real API. The exact instant-send rate
+ * limit (previously noted here as 10/min, 75/day) isn't confirmed against
+ * the current docs, which only publish the general per-plan API rate limit
+ * (Starter 60/min, Pro 150/min, Agency 500/min) and defer pacing specifics
+ * to a separate "AI Agent Guide" not yet reviewed — a caller exceeding
+ * whatever the real limit is gets a thrown error either way, same as any
+ * other send failure; the dispatch pipeline (sendAndLog) already
+ * logs-and-continues rather than blocking on a transport failure.
  */
 class IbluSendProvider implements SmsProvider {
   constructor(
@@ -39,13 +52,13 @@ class IbluSendProvider implements SmsProvider {
   ) {}
 
   async sendMessage(to: string, body: string): Promise<SmsSendResult> {
-    const res = await fetch(`${this.baseUrl}/agent-api/v1/messages`, {
+    const res = await fetch(`${this.baseUrl}/agent-api/messages`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ to, message: body, send_mode: "instant" }),
+      body: JSON.stringify({ phone_number: to, content: body, send_mode: "instant" }),
     });
 
     if (!res.ok) {

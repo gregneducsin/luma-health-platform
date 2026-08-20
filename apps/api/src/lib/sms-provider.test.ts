@@ -50,14 +50,14 @@ describe("getSmsProvider", () => {
 
       expect(result).toEqual({ providerMessageId: "sim_abc123" });
       expect(fetchMock).toHaveBeenCalledWith(
-        "https://api.iblusend.com/functions/v1/agent-api/v1/messages",
+        "https://api.iblusend.com/functions/v1/agent-api/messages",
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({ Authorization: "Bearer iblu_test_abc123" }),
         }),
       );
       const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-      expect(body).toEqual({ to: "+15551234567", message: "Hello there", send_mode: "instant" });
+      expect(body).toEqual({ phone_number: "+15551234567", content: "Hello there", send_mode: "instant" });
     });
 
     it("throws when iBluSend responds with a non-2xx status", async () => {
