@@ -14,9 +14,13 @@ const { handleIbluSendWebhook } = await import("./iblusend-webhook.service.js");
 // files seeding customers with hardcoded phone numbers, and a shared
 // (non-schema-isolated) DATABASE_URL across files means a hardcoded number
 // here could match an unrelated customer from another file's test, causing
-// findCustomerIdByPhone to silently resolve to the wrong row.
+// findCustomerIdByPhone to silently resolve to the wrong row. Digits only
+// (not the raw hex UUID, which can contain a-f) — findCustomerIdByPhone
+// matches on digits, so a letter in the "phone number" would break the
+// same-number-should-match assertions below.
 function uniquePhone(): string {
-  return "+1555" + crypto.randomUUID().replace(/-/g, "").slice(0, 7);
+  const digits = crypto.randomUUID().replace(/\D/g, "");
+  return `+1555${(digits + "0000000").slice(0, 7)}`;
 }
 
 async function seedCustomer(phone: string): Promise<string> {
@@ -94,6 +98,20 @@ describe("handleIbluSendWebhook", () => {
 
     expect(processInboundSupportMessageMock).toHaveBeenCalled();
     expect(processInboundMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("matches a customer whose phone is stored without a country code or plus sign", async () => {
+    processInboundMessageMock.mockClear();
+    processInboundSupportMessageMock.mockClear();
+
+    const bareDigits = uniquePhone().replace(/\D/g, "").slice(-10);
+    const personId = await seedCustomer(bareDigits);
+    await db.insert(conversationsTable).values({ personId });
+
+    const result = await handleIbluSendWebhook(envelope({ data: { phone_number: `+1${bareDigits}`, content: "hi" } }));
+
+    expect(result).toEqual({ duplicate: false });
+    expect(processInboundMessageMock).toHaveBeenCalledWith(personId, "hi");
   });
 
   it("does not dispatch to either bot for an unrecognized phone number", async () => {

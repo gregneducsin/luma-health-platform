@@ -1,13 +1,25 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, customersTable, conversationsTable, supportConversationsTable } from "@luma/db";
 import { ibluSendMessageReceivedDataSchema, type IbluSendWebhookEnvelope } from "@luma/shared";
 import { recordWebhookEventIfNew, markWebhookEventProcessed, markWebhookEventFailed } from "./webhooks.service.js";
 import { processInboundMessage } from "./lucy-dispatch.service.js";
 import { processInboundSupportMessage } from "./sarah-dispatch.service.js";
+import { phoneMatchKey } from "../lib/phone.js";
 import { logger } from "../lib/logger.js";
 
+// Matches on the last 10 digits rather than an exact string — phone numbers
+// written before phone normalization existed (or entered by hand) may be
+// stored as bare 10-digit strings, with dashes, or without a country code,
+// while iBluSend always sends E.164 ("+1..."). An exact-match lookup here
+// silently misses those real customers, which is exactly how a real
+// inbound text from an existing customer went unanswered.
 async function findCustomerIdByPhone(phone: string): Promise<string | undefined> {
-  const [row] = await db.select({ id: customersTable.id }).from(customersTable).where(eq(customersTable.phone, phone));
+  const key = phoneMatchKey(phone);
+  if (key.length !== 10) return undefined;
+  const [row] = await db
+    .select({ id: customersTable.id })
+    .from(customersTable)
+    .where(sql`right(regexp_replace(${customersTable.phone}, '\D', '', 'g'), 10) = ${key}`);
   return row?.id;
 }
 

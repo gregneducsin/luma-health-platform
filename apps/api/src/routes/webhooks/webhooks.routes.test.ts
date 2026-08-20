@@ -775,6 +775,27 @@ describe("Webhooks", () => {
       expect(customer.phone).toBe("+15551234567");
     });
 
+    it("normalizes an unformatted phone number to E.164 on the created customer", async () => {
+      const payload = {
+        eventId: "bask-q-evt-phone-unformatted",
+        externalPersonId: "bask-person-phone-unformatted",
+        email: "phone-unformatted-test@example.com",
+        firstName: "Phone",
+        lastName: "Tester",
+        phone: "(555) 123-9999",
+        questionnaireId: "QUEST-3-unformatted",
+        status: "abandoned" as const,
+        occurredAt: new Date().toISOString(),
+      };
+      const res = await request(app).post("/api/webhooks/bask-questionnaire").set("x-webhook-secret", QUESTIONNAIRE_SECRET).send(payload);
+      expect(res.status).toBe(200);
+
+      const { db, customersTable } = await import("@luma/db");
+      const { eq } = await import("drizzle-orm");
+      const [customer] = await db.select().from(customersTable).where(eq(customersTable.email, "phone-unformatted-test@example.com"));
+      expect(customer.phone).toBe("+15551239999");
+    });
+
     it("defaults occurredAt to now when the source doesn't provide one", async () => {
       const payload = {
         eventId: "bask-q-evt-no-timestamp",

@@ -23,6 +23,7 @@ import { sendMetaLeadOpener } from "./meta-lead.service.js";
 import { scheduleMetaLeadEmailSequence } from "./meta-lead-email.service.js";
 import { sendOrderReceivedOpener, handlePrescriptionWritten, handleOrderShipped } from "./order-fulfillment.service.js";
 import { setCustomerSmsDnd, setCustomerEmailDnd } from "./dnd.service.js";
+import { normalizePhone } from "../lib/phone.js";
 import { logger } from "../lib/logger.js";
 
 /**
@@ -122,7 +123,7 @@ export async function findOrCreateCustomerByExternalIdentity(params: {
               firstName: params.firstName ?? "Unknown",
               lastName: params.lastName ?? "Unknown",
               email: params.email,
-              phone: params.phone,
+              phone: params.phone ? normalizePhone(params.phone) : params.phone,
               leadReceivedDate: params.leadReceivedDate,
               leadType: params.leadType ?? "Other / Unknown",
               leadCreatedAt: new Date(),

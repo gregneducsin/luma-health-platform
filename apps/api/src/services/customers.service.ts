@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, ilike, or, sql, getTableColumns } from "drizzle-orm";
 import { db, customersTable, purchasesTable, questionnaireEventsTable, externalIdentitiesTable } from "@luma/db";
 import type { CreateCustomerRequest, CustomersSummaryQuery, ListCustomersQuery, UpdateCustomerRequest } from "@luma/shared";
+import { normalizePhone } from "../lib/phone.js";
 
 const SORT_COLUMNS = {
   createdAt: customersTable.createdAt,
@@ -195,7 +196,7 @@ export async function createCustomer(input: CreateCustomerRequest) {
       firstName: input.firstName,
       lastName: input.lastName,
       email: input.email,
-      phone: input.phone,
+      phone: input.phone ? normalizePhone(input.phone) : input.phone,
       leadReceivedDate: input.leadReceivedDate,
       leadType: input.leadType ?? "Other / Unknown",
       leadCreatedAt: new Date(),
@@ -207,7 +208,7 @@ export async function createCustomer(input: CreateCustomerRequest) {
 export async function updateCustomer(id: string, input: UpdateCustomerRequest) {
   const [customer] = await db
     .update(customersTable)
-    .set(input)
+    .set({ ...input, phone: input.phone ? normalizePhone(input.phone) : input.phone })
     .where(eq(customersTable.id, id))
     .returning();
   return customer ?? null;
