@@ -1,5 +1,5 @@
-import { and, eq, lte, sql } from "drizzle-orm";
-import { db, metaLeadEmailTriggersTable, customersTable, purchasesTable } from "@luma/db";
+import { and, eq, inArray, lte, sql } from "drizzle-orm";
+import { db, metaLeadEmailTriggersTable, abandonedCartEmailTriggersTable, customersTable, purchasesTable } from "@luma/db";
 import { getOrCreateEmailConversation, appendEmailMessage, updateEmailConversationState } from "./email-conversations.service.js";
 import { createIntakeLink } from "./intake-links.service.js";
 import { sendTriggerEmail } from "../lib/email/send-trigger-email.js";
@@ -36,13 +36,37 @@ const STEP_DELAY_MS: Record<MetaLeadEmailStep, number> = {
  * from the GHL webhook handler on a Meta form-fill lead. Idempotent per step:
  * the unique index on (personId, step) means a duplicate lead delivery for
  * the same person can't double-schedule any step.
+ *
+ * Also skips arming this sequence while the person already has an active
+ * abandoned-cart-email sequence in flight (abandoned-cart-email.service.ts)
+ * — same templates, different entry point, so a customer who's both a GHL
+ * lead and separately abandoned the Bask questionnaire shouldn't get
+ * enrolled in both. See the identical check there.
  */
 export async function scheduleMetaLeadEmailSequence(personId: string): Promise<void> {
-  const now = Date.now();
-  await db
-    .insert(metaLeadEmailTriggersTable)
-    .values(STEP_ORDER.map((step) => ({ personId, step, dueAt: new Date(now + STEP_DELAY_MS[step]) })))
-    .onConflictDoNothing({ target: [metaLeadEmailTriggersTable.personId, metaLeadEmailTriggersTable.step] });
+  await db.transaction(async (tx) => {
+    await tx.select({ id: customersTable.id }).from(customersTable).where(eq(customersTable.id, personId)).for("update");
+
+    const [existing] = await tx
+      .select({ id: metaLeadEmailTriggersTable.id })
+      .from(metaLeadEmailTriggersTable)
+      .where(and(eq(metaLeadEmailTriggersTable.personId, personId), inArray(metaLeadEmailTriggersTable.status, ["pending", "processing"])))
+      .limit(1);
+    if (existing) return;
+
+    const [existingAbandonedCart] = await tx
+      .select({ id: abandonedCartEmailTriggersTable.id })
+      .from(abandonedCartEmailTriggersTable)
+      .where(and(eq(abandonedCartEmailTriggersTable.personId, personId), inArray(abandonedCartEmailTriggersTable.status, ["pending", "processing"])))
+      .limit(1);
+    if (existingAbandonedCart) return;
+
+    const now = Date.now();
+    await tx
+      .insert(metaLeadEmailTriggersTable)
+      .values(STEP_ORDER.map((step) => ({ personId, step, dueAt: new Date(now + STEP_DELAY_MS[step]) })))
+      .onConflictDoNothing({ target: [metaLeadEmailTriggersTable.personId, metaLeadEmailTriggersTable.step] });
+  });
 }
 
 function renderStep(step: MetaLeadEmailStep, firstName: string, ctaUrl: string, unsubscribeUrl: string): RenderedEmail {

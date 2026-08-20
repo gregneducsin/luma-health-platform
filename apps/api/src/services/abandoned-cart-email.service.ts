@@ -1,5 +1,5 @@
 import { and, eq, inArray, lte, sql } from "drizzle-orm";
-import { db, abandonedCartEmailTriggersTable, customersTable, purchasesTable, questionnaireEventsTable } from "@luma/db";
+import { db, abandonedCartEmailTriggersTable, metaLeadEmailTriggersTable, customersTable, purchasesTable, questionnaireEventsTable } from "@luma/db";
 import { getOrCreateEmailConversation, appendEmailMessage, updateEmailConversationState } from "./email-conversations.service.js";
 import { createIntakeLink } from "./intake-links.service.js";
 import { sendTriggerEmail } from "../lib/email/send-trigger-email.js";
@@ -62,6 +62,19 @@ export async function scheduleAbandonedCartEmailSequence(personId: string, quest
       .where(and(eq(abandonedCartEmailTriggersTable.personId, personId), inArray(abandonedCartEmailTriggersTable.status, ["pending", "processing"])))
       .limit(1);
     if (existing) return;
+
+    // Same nurture sequence (identical templates and cadence), armed instead
+    // off a Meta lead-gen form-fill (meta-lead-email.service.ts) — a
+    // customer who both abandoned the Bask questionnaire and separately came
+    // in as a GHL/Meta lead shouldn't get enrolled in both at once, since
+    // they'd get literally the same email content on two independent
+    // schedules. See the identical check there.
+    const [existingMetaLead] = await tx
+      .select({ id: metaLeadEmailTriggersTable.id })
+      .from(metaLeadEmailTriggersTable)
+      .where(and(eq(metaLeadEmailTriggersTable.personId, personId), inArray(metaLeadEmailTriggersTable.status, ["pending", "processing"])))
+      .limit(1);
+    if (existingMetaLead) return;
 
     const now = Date.now();
     await tx

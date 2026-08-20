@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeAll } from "vitest";
 import { eq } from "drizzle-orm";
-import { db, customersTable, questionnaireEventsTable, purchasesTable, abandonedCartEmailTriggersTable } from "@luma/db";
+import { db, customersTable, questionnaireEventsTable, purchasesTable, abandonedCartEmailTriggersTable, metaLeadEmailTriggersTable } from "@luma/db";
 import { setCustomerEmailDnd } from "./dnd.service.js";
 
 beforeAll(() => {
@@ -18,6 +18,7 @@ vi.mock("../lib/email-provider.js", async () => {
 });
 
 const { scheduleAbandonedCartEmailSequence, sweepAbandonedCartEmailTriggers } = await import("./abandoned-cart-email.service.js");
+const { scheduleMetaLeadEmailSequence } = await import("./meta-lead-email.service.js");
 const { getOrCreateEmailConversation, listEmailMessages } = await import("./email-conversations.service.js");
 
 async function seedCustomer(): Promise<string> {
@@ -98,6 +99,23 @@ describe("scheduleAbandonedCartEmailSequence", () => {
     const triggers = await rows(personId);
     expect(triggers).toHaveLength(4);
     expect(triggers.every((t) => t.questionnaireEventId === firstEventId)).toBe(true);
+  });
+
+  it("does not enroll a person who already has an active meta-lead-email sequence", async () => {
+    // The reverse of the same real scenario: a customer already came in as a
+    // GHL/Meta lead (armed the identical-template meta-lead-email sequence),
+    // then separately abandons the Bask questionnaire — shouldn't get
+    // enrolled a second time in the same content on a different schedule.
+    const personId = await seedCustomer();
+    await scheduleMetaLeadEmailSequence(personId);
+
+    const questionnaireEventId = await seedAbandonedQuestionnaire(personId);
+    await scheduleAbandonedCartEmailSequence(personId, questionnaireEventId);
+
+    const abandonedCartTriggers = await rows(personId);
+    expect(abandonedCartTriggers).toHaveLength(0);
+    const metaTriggers = await db.select().from(metaLeadEmailTriggersTable).where(eq(metaLeadEmailTriggersTable.personId, personId));
+    expect(metaTriggers).toHaveLength(4);
   });
 
   it("does start a fresh sequence once the person's previous one has fully finished", async () => {

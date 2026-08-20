@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeAll } from "vitest";
 import { eq } from "drizzle-orm";
-import { db, customersTable, purchasesTable, metaLeadEmailTriggersTable } from "@luma/db";
+import { db, customersTable, purchasesTable, metaLeadEmailTriggersTable, abandonedCartEmailTriggersTable, questionnaireEventsTable } from "@luma/db";
 import { setCustomerEmailDnd } from "./dnd.service.js";
 
 beforeAll(() => {
@@ -18,6 +18,7 @@ vi.mock("../lib/email-provider.js", async () => {
 });
 
 const { scheduleMetaLeadEmailSequence, sweepMetaLeadEmailTriggers } = await import("./meta-lead-email.service.js");
+const { scheduleAbandonedCartEmailSequence } = await import("./abandoned-cart-email.service.js");
 const { getOrCreateEmailConversation, listEmailMessages } = await import("./email-conversations.service.js");
 
 async function seedCustomer(): Promise<string> {
@@ -68,6 +69,26 @@ describe("scheduleMetaLeadEmailSequence", () => {
 
     const triggers = await rows(personId);
     expect(triggers).toHaveLength(4);
+  });
+
+  it("does not enroll a person who already has an active abandoned-cart-email sequence", async () => {
+    // Real scenario this fixes: a customer abandons the Bask questionnaire
+    // AND separately comes in as a GHL/Meta lead — both entry points arm the
+    // identical 4-step template sequence, so without this cross-check
+    // they'd get every email twice on two independent schedules.
+    const personId = await seedCustomer();
+    const [event] = await db
+      .insert(questionnaireEventsTable)
+      .values({ personId, questionnaireId: `q-${crypto.randomUUID()}`, status: "abandoned", lastEventAt: new Date(), abandonedAt: new Date() })
+      .returning({ id: questionnaireEventsTable.id });
+    await scheduleAbandonedCartEmailSequence(personId, event!.id);
+
+    await scheduleMetaLeadEmailSequence(personId);
+
+    const metaTriggers = await rows(personId);
+    expect(metaTriggers).toHaveLength(0);
+    const abandonedCartTriggers = await db.select().from(abandonedCartEmailTriggersTable).where(eq(abandonedCartEmailTriggersTable.personId, personId));
+    expect(abandonedCartTriggers).toHaveLength(4);
   });
 });
 
