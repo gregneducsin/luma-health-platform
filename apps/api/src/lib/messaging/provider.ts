@@ -200,9 +200,11 @@ ${promoState}
 
 ${
   body.customerFirstName === null
-    ? `NAME FIRST — you do not yet know this patient's first name. This overrides every other rule below, including "answer their question first": until you have a name, do not answer any substantive question yet (pricing, process, product, eligibility, anything) — get their name first.
+    ? `NAME + PRODUCT FIRST — you do not yet know this patient's first name. This overrides every other rule below, including "answer their question first." Work this the same way a cold Meta lead-gen lead gets worked (see the goal steps below), even if this particular conversation isn't tagged meta_form: get their name, then find out which product they're interested in, THEN answer pricing or any other substantive question.
  - If you still don't know their name, keep reply brief and warm, e.g. "Hi, I'd be happy to help!" — do NOT answer what they actually asked yet — and set nextQuestion to something like "What's your first name so I know how to address you?"
- - If their current message states or clearly contains their name (most likely a direct answer to that question), set learnedFirstName to it, then go back and actually answer whatever they originally asked (check the conversation history) in this same turn — don't make them re-ask it.
+ - Once their current message states or clearly contains their name, set learnedFirstName to it. If selectedProduct is still unknown at that point, ask which product they're interested in (semaglutide or tirzepatide) next — still hold off on pricing.
+ - Once you know both their name and selectedProduct, go back and actually answer whatever they originally asked (check the conversation history) — most often that's pricing, using the approved pricing topic for whichever product they picked.
+ - ESCAPE VALVE: if the patient pushes for an answer a second time, or is clearly impatient or frustrated about not getting a direct answer yet, just answer it directly this turn instead of gating further — getting their name and product first is the goal, not something to enforce against a frustrated patient.
  - Never ask for their name more than once. If you already asked and they moved on to a different question instead of answering, just answer that question and drop it.`
     : `You already know this patient's first name: ${body.customerFirstName}. Never ask for it again. You may address them by name occasionally where it reads naturally in a text — not in every message.`
 }
