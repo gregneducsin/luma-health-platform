@@ -91,6 +91,18 @@ describe("interactivePreCheck", () => {
     expect(interactivePreCheck("Will this medication interact badly with my other medication?")).toEqual({ blocked: true, code: "MEDICAL_CONTENT" });
   });
 
+  it("does not block plain process questions despite containing 'prescription' or 'treatment'", () => {
+    expect(interactivePreCheck("Do I need a prescription?")).toEqual({ blocked: false });
+    expect(interactivePreCheck("How do I get my prescription?")).toEqual({ blocked: false });
+    expect(interactivePreCheck("What treatment options do you have?")).toEqual({ blocked: false });
+    expect(interactivePreCheck("How does treatment work?")).toEqual({ blocked: false });
+  });
+
+  it("still blocks individualized questions that happen to contain 'prescription' or 'treatment'", () => {
+    expect(interactivePreCheck("Is this treatment safe for my heart condition?")).toEqual({ blocked: true, code: "MEDICAL_CONTENT" });
+    expect(interactivePreCheck("Will you prescribe me a higher dose?")).toEqual({ blocked: true, code: "MEDICAL_CONTENT" });
+  });
+
   it("blocks legal content", () => {
     expect(interactivePreCheck("I'm going to sue you")).toEqual({ blocked: true, code: "LEGAL_CONTENT" });
     // No trailing space/comma after "sue" — was previously missed.

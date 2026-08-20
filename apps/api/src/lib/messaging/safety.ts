@@ -204,6 +204,38 @@ const SHIPPING_TIMING_PHRASES_LOWER = [
 ] as const;
 
 /**
+ * Plain "how does the process work" questions — these contain "prescription"
+ * or "treatment" (both in MEDICAL_WORDS_LOWER) but are asking about the
+ * enrollment/fulfillment flow, not for clinical judgment. Checked with the
+ * same priority as SHIPPING_TIMING_PHRASES_LOWER above and for the same
+ * reason: how_luma_works's own approved text already says "the prescription
+ * request is processed..." and "the prescription proceeds through the
+ * program," and product_comparison's already says "we offer two weight-loss
+ * treatment options" — both words are already freely used in Lucy's own
+ * approved content, so blocking a customer for merely asking about either
+ * word prevented Claude from using content it was already allowed to give.
+ * Deliberately narrow (process/options framing only) so a genuinely
+ * individualized question like "is this treatment safe for my heart
+ * condition" or "will you prescribe me a higher dose" still gets blocked.
+ */
+const PROCESS_QUESTION_PHRASES_LOWER = [
+  "do i need a prescription",
+  "will i need a prescription",
+  "how do i get a prescription",
+  "how do i get my prescription",
+  "how does the prescription process work",
+  "how does the prescription work",
+  "what's the prescription process",
+  "what is the prescription process",
+  "what treatment options",
+  "which treatment options",
+  "how does treatment work",
+  "how does the treatment process work",
+  "what's the treatment process",
+  "what is the treatment process",
+] as const;
+
+/**
  * Phrases that indicate a request for individualized clinical suitability
  * judgment. These must never reach the provider — route to staff review.
  */
@@ -257,7 +289,7 @@ export type InteractivePreCheckResult = { readonly blocked: false } | { readonly
  * Check the last inbound message for content that must never reach the
  * provider. Returns the block code or { blocked: false }.
  *
- * Priority order: opt_out > STOP_WORD > emergency > suitability > shipping timing > medical > legal.
+ * Priority order: opt_out > STOP_WORD > emergency > suitability > shipping timing > process questions > medical > legal.
  *
  * Opt-out (code "OPT_OUT") takes the highest priority and is terminal —
  * no objection handling, no rebuttal, no provider call.
@@ -291,6 +323,11 @@ export function interactivePreCheck(lastInbound: string): InteractivePreCheckRes
   // long will it take to get my medication?" must not be blocked just
   // because it contains "medication" — see SHIPPING_TIMING_PHRASES_LOWER.
   if (SHIPPING_TIMING_PHRASES_LOWER.some((w) => lower.includes(w))) {
+    return { blocked: false };
+  }
+  // Same reasoning for "how does the process work" questions — see
+  // PROCESS_QUESTION_PHRASES_LOWER.
+  if (PROCESS_QUESTION_PHRASES_LOWER.some((w) => lower.includes(w))) {
     return { blocked: false };
   }
   if (MEDICAL_WORDS_LOWER.some((w) => lower.includes(w))) {
