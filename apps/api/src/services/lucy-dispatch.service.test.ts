@@ -147,6 +147,23 @@ describe("processInboundMessage", () => {
     expect(conversation.needsAttention).toBe(true);
   });
 
+  it("flags the conversation for staff attention and returns ok:false, instead of throwing, when runLucyTurn itself throws unexpectedly", async () => {
+    runLucyTurnMock.mockClear();
+    sendMessageMock.mockClear();
+    runLucyTurnMock.mockRejectedValueOnce(new Error("createIntakeLink: connection terminated unexpectedly"));
+
+    const personId = await seedCustomer();
+    const result = await processInboundMessage(personId, "yes send me the link");
+
+    expect(result).toEqual({ ok: false, code: "UNEXPECTED_ERROR" });
+    expect(sendMessageMock).not.toHaveBeenCalled();
+    const conversation = await getOrCreateConversation(personId);
+    const messages = await listMessages(conversation.id);
+    expect(messages.length).toBe(1);
+    expect(messages[0].direction).toBe("inbound");
+    expect(conversation.needsAttention).toBe(true);
+  });
+
   it("flags the conversation for staff attention when the model itself flags requiresStaff (e.g. action=staff_review)", async () => {
     runLucyTurnMock.mockClear();
     sendMessageMock.mockClear();

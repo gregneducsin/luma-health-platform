@@ -121,6 +121,23 @@ describe("processInboundSupportMessage", () => {
     expect(conversation.needsAttention).toBe(true);
   });
 
+  it("flags the conversation for staff attention and returns ok:false, instead of throwing, when runSarahTurn itself throws unexpectedly", async () => {
+    runSarahTurnMock.mockClear();
+    sendMessageMock.mockClear();
+    runSarahTurnMock.mockRejectedValueOnce(new Error("unexpected failure"));
+
+    const personId = await seedCustomer();
+    const result = await processInboundSupportMessage(personId, "has my order shipped");
+
+    expect(result).toEqual({ ok: false, code: "UNEXPECTED_ERROR" });
+    expect(sendMessageMock).not.toHaveBeenCalled();
+    const conversation = await getOrCreateSupportConversation(personId);
+    const messages = await listSupportMessages(conversation.id);
+    expect(messages.length).toBe(1);
+    expect(messages[0].direction).toBe("inbound");
+    expect(conversation.needsAttention).toBe(true);
+  });
+
   it("flags the conversation for staff attention when the model itself flags requiresStaff", async () => {
     runSarahTurnMock.mockClear();
     sendMessageMock.mockClear();

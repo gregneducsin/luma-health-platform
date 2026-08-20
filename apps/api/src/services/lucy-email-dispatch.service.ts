@@ -111,7 +111,18 @@ async function processInboundEmailLocked(personId: string, subject: string, body
   const inboundMessage = await appendEmailMessage(conversation.id, "inbound", subject, bodyText, { messageId });
 
   const body = toEmailPreviewBody(conversation, [...priorMessages, inboundMessage]);
-  const result = await runLucyTurn(personId, body);
+  let result: LucyTurnResult;
+  try {
+    result = await runLucyTurn(personId, body);
+  } catch (err) {
+    // Same reasoning as lucy-dispatch.service.ts's (SMS) equivalent catch:
+    // anything that escapes runLucyTurn itself (e.g. a DB failure minting
+    // the intake link on send_form) isn't a guardrail rejection, but the
+    // customer still got silence, so it needs the same staff-visible flag.
+    logger.error({ personId, conversationId: conversation.id, reason: err instanceof Error ? err.message : String(err) }, "Lucy email turn threw unexpectedly — no outbound email sent");
+    await updateEmailConversationState(conversation.id, { needsAttention: true });
+    return { ok: false, code: "UNEXPECTED_ERROR" };
+  }
 
   if (!result.ok) {
     logger.warn({ personId, conversationId: conversation.id, code: result.code }, "Lucy email turn rejected — no outbound email sent");

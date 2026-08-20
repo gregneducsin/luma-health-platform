@@ -98,7 +98,17 @@ async function processInboundSupportEmailLocked(personId: string, subject: strin
   const inboundMessage = await appendSupportEmailMessage(conversation.id, "inbound", subject, bodyText, { messageId });
 
   const body = toSupportEmailPreviewBody(conversation, [...priorMessages, inboundMessage]);
-  const result = await runSarahTurn(body);
+  let result: SarahTurnResult;
+  try {
+    result = await runSarahTurn(body);
+  } catch (err) {
+    // Same reasoning as sarah-dispatch.service.ts's (SMS) equivalent catch:
+    // anything that escapes runSarahTurn itself isn't a guardrail rejection,
+    // but the patient still got silence, so it needs the same staff-visible flag.
+    logger.error({ personId, conversationId: conversation.id, reason: err instanceof Error ? err.message : String(err) }, "Sarah email turn threw unexpectedly — no outbound email sent");
+    await updateSupportEmailConversationState(conversation.id, { needsAttention: true });
+    return { ok: false, code: "UNEXPECTED_ERROR" };
+  }
 
   if (!result.ok) {
     logger.warn({ personId, conversationId: conversation.id, code: result.code }, "Sarah email turn rejected — no outbound email sent");

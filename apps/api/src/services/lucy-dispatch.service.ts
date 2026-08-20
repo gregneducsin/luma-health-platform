@@ -79,7 +79,20 @@ async function processInboundMessageLocked(personId: string, inboundBody: string
   const inboundMessage = await appendMessage(conversation.id, "inbound", inboundBody);
 
   const body = toBotPreviewBody(conversation, [...priorMessages, inboundMessage]);
-  const result = await runLucyTurn(personId, body);
+  let result: LucyTurnResult;
+  try {
+    result = await runLucyTurn(personId, body);
+  } catch (err) {
+    // Anything that escapes runLucyTurn itself (e.g. a DB failure minting the
+    // intake link on send_form) isn't a guardrail rejection — runLucyTurn
+    // only turns ProviderError into a result, everything else propagates.
+    // The customer still got silence, though, so this needs the same "a
+    // human should see that" treatment as the !result.ok branch below, not
+    // a log line nobody's watching.
+    logger.error({ personId, conversationId: conversation.id, reason: err instanceof Error ? err.message : String(err) }, "Lucy turn threw unexpectedly — no outbound message sent");
+    await updateConversationState(conversation.id, { needsAttention: true });
+    return { ok: false, code: "UNEXPECTED_ERROR" };
+  }
 
   if (!result.ok) {
     logger.warn({ personId, conversationId: conversation.id, code: result.code }, "Lucy turn rejected — no outbound message sent");

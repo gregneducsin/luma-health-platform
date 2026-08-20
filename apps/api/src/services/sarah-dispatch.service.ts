@@ -64,7 +64,17 @@ async function processInboundSupportMessageLocked(personId: string, inboundBody:
   const inboundMessage = await appendSupportMessage(conversation.id, "inbound", inboundBody);
 
   const body = toSarahPreviewBody(conversation, [...priorMessages, inboundMessage]);
-  const result = await runSarahTurn(body);
+  let result: SarahTurnResult;
+  try {
+    result = await runSarahTurn(body);
+  } catch (err) {
+    // Same reasoning as lucy-dispatch.service.ts's equivalent catch: anything
+    // that escapes runSarahTurn itself isn't a guardrail rejection, but the
+    // patient still got silence, so it needs the same staff-visible flag.
+    logger.error({ personId, conversationId: conversation.id, reason: err instanceof Error ? err.message : String(err) }, "Sarah turn threw unexpectedly — no outbound message sent");
+    await updateSupportConversationState(conversation.id, { needsAttention: true });
+    return { ok: false, code: "UNEXPECTED_ERROR" };
+  }
 
   if (!result.ok) {
     logger.warn({ personId, conversationId: conversation.id, code: result.code }, "Sarah turn rejected — no outbound message sent");
