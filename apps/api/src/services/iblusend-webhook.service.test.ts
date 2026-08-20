@@ -8,6 +8,9 @@ vi.mock("./lucy-dispatch.service.js", () => ({ processInboundMessage: processInb
 const processInboundSupportMessageMock = vi.fn().mockResolvedValue({ ok: true });
 vi.mock("./sarah-dispatch.service.js", () => ({ processInboundSupportMessage: processInboundSupportMessageMock }));
 
+const recordAndClassifyUnmatchedSmsMock = vi.fn().mockResolvedValue(undefined);
+vi.mock("./unmatched-inbound-sms.service.js", () => ({ recordAndClassifyUnmatchedSms: recordAndClassifyUnmatchedSmsMock }));
+
 const { handleIbluSendWebhook } = await import("./iblusend-webhook.service.js");
 
 // A fresh, collision-free phone number per call — the suite has other test
@@ -114,15 +117,29 @@ describe("handleIbluSendWebhook", () => {
     expect(processInboundMessageMock).toHaveBeenCalledWith(personId, "hi");
   });
 
-  it("does not dispatch to either bot for an unrecognized phone number", async () => {
+  it("routes an unrecognized phone number to the unmatched-SMS pipeline instead of either bot", async () => {
     processInboundMessageMock.mockClear();
     processInboundSupportMessageMock.mockClear();
+    recordAndClassifyUnmatchedSmsMock.mockClear();
 
-    const result = await handleIbluSendWebhook(envelope({ data: { phone_number: uniquePhone() } }));
+    const phone = uniquePhone();
+    const result = await handleIbluSendWebhook(envelope({ data: { phone_number: phone, content: "hi there" } }));
 
     expect(result).toEqual({ duplicate: false });
     expect(processInboundMessageMock).not.toHaveBeenCalled();
     expect(processInboundSupportMessageMock).not.toHaveBeenCalled();
+    expect(recordAndClassifyUnmatchedSmsMock).toHaveBeenCalledWith(phone, "hi there");
+  });
+
+  it("still marks the webhook event processed even when the unmatched-SMS pipeline itself throws", async () => {
+    processInboundMessageMock.mockClear();
+    processInboundSupportMessageMock.mockClear();
+    recordAndClassifyUnmatchedSmsMock.mockClear();
+    recordAndClassifyUnmatchedSmsMock.mockRejectedValueOnce(new Error("boom"));
+
+    const result = await handleIbluSendWebhook(envelope({ data: { phone_number: uniquePhone(), content: "hi" } }));
+
+    expect(result).toEqual({ duplicate: false });
   });
 
   it("routes to Lucy for a known customer's first-ever text, with no prior Lucy or Sarah conversation", async () => {

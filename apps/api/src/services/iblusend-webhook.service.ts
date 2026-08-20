@@ -4,6 +4,7 @@ import { ibluSendMessageReceivedDataSchema, type IbluSendWebhookEnvelope } from 
 import { recordWebhookEventIfNew, markWebhookEventProcessed, markWebhookEventFailed } from "./webhooks.service.js";
 import { processInboundMessage } from "./lucy-dispatch.service.js";
 import { processInboundSupportMessage } from "./sarah-dispatch.service.js";
+import { recordAndClassifyUnmatchedSms } from "./unmatched-inbound-sms.service.js";
 import { phoneMatchKey } from "../lib/phone.js";
 import { logger } from "../lib/logger.js";
 
@@ -82,10 +83,16 @@ export async function handleIbluSendWebhook(envelope: IbluSendWebhookEnvelope): 
           await markWebhookEventProcessed(recorded.id, personId);
           return { duplicate: false };
         }
-        logger.warn(
-          { phoneLastFour: data.phone_number.slice(-4) },
-          "inbound iBluSend message from an unrecognized phone number — no matching customer",
-        );
+        // No matching customer — record/classify/ack it instead of dropping
+        // it silently. See unmatched-inbound-sms.service.ts.
+        try {
+          await recordAndClassifyUnmatchedSms(data.phone_number, data.content);
+        } catch (err) {
+          logger.warn(
+            { phoneLastFour: data.phone_number.slice(-4), reason: err instanceof Error ? err.message : String(err) },
+            "recordAndClassifyUnmatchedSms failed",
+          );
+        }
       }
     }
     await markWebhookEventProcessed(recorded.id);

@@ -15,6 +15,7 @@ export * from "./schemas/sarah-conversation.js";
 export * from "./schemas/support-conversations.js";
 export * from "./schemas/needs-attention.js";
 export * from "./schemas/unmatched-emails.js";
+export * from "./schemas/unmatched-sms.js";
 export * from "./schemas/reporting.js";
 export * from "./crypto.js";
 export * from "./calc/payroll.js";

@@ -14,6 +14,7 @@ import { ConversationsPage } from "./pages/ConversationsPage";
 import { SupportPage } from "./pages/SupportPage";
 import { NeedsAttentionPage } from "./pages/NeedsAttentionPage";
 import { UnmatchedEmailsPage } from "./pages/UnmatchedEmailsPage";
+import { UnmatchedSmsPage } from "./pages/UnmatchedSmsPage";
 import { ReportingPage } from "./pages/ReportingPage";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
@@ -98,6 +99,12 @@ export default function App() {
       <Route path="/unmatched-emails">
         <ProtectedRoute>
           <UnmatchedEmailsPage />
+        </ProtectedRoute>
+      </Route>
+
+      <Route path="/unmatched-sms">
+        <ProtectedRoute>
+          <UnmatchedSmsPage />
         </ProtectedRoute>
       </Route>
 

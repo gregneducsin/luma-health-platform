@@ -227,9 +227,61 @@ export const leadCheckinTriggersTable = pgTable(
   ],
 );
 
+/**
+ * SMS twin of unmatchedEmailThreadsTable (email.ts) — one row per
+ * unrecognized SENDER phone number (not per text), grouping every inbound
+ * text from that number into one thread. Unlike email, a phone number never
+ * comes with an email address attached, and customers.email is NOT NULL —
+ * collectedEmail holds an email address gathered mid-conversation
+ * specifically so a lead can be created, distinct from linkedCustomerId
+ * (set once that lead actually exists). See recordAndClassifyUnmatchedSms
+ * in unmatched-inbound-sms.service.ts.
+ */
+export const unmatchedSmsThreadsTable = pgTable(
+  "unmatched_sms_threads",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    fromPhone: text("from_phone").notNull(),
+    fromName: text("from_name"),
+    collectedEmail: text("collected_email"),
+    aiIntent: text("ai_intent"),
+    aiSummary: text("ai_summary"),
+    suggestedMatchCustomerId: uuid("suggested_match_customer_id").references(() => customersTable.id, { onDelete: "set null" }),
+    suggestedMatchConfidence: text("suggested_match_confidence", { enum: ["high", "medium", "low"] }),
+    suggestedReply: text("suggested_reply"),
+    linkedCustomerId: uuid("linked_customer_id").references(() => customersTable.id, { onDelete: "set null" }),
+    status: text("status", { enum: ["needs_review", "replied", "dismissed"] }).notNull().default("needs_review"),
+    repliedAt: timestamp("replied_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [uniqueIndex("unmatched_sms_threads_from_phone_key").on(t.fromPhone)],
+);
+
+/** Every message in an unmatched-sender SMS thread, in order — inbound (their texts) and outbound (the auto-ack, or a staff-approved reply). */
+export const unmatchedSmsMessagesTable = pgTable(
+  "unmatched_sms_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    threadId: uuid("thread_id")
+      .notNull()
+      .references(() => unmatchedSmsThreadsTable.id, { onDelete: "cascade" }),
+    direction: text("direction", { enum: ["inbound", "outbound"] }).notNull(),
+    body: text("body").notNull(),
+    providerMessageId: text("provider_message_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("unmatched_sms_messages_thread_id_idx").on(t.threadId, t.createdAt)],
+);
+
 export type IntakeLinkToken = typeof intakeLinkTokensTable.$inferSelect;
 export type FollowUpJob = typeof followUpJobsTable.$inferSelect;
 export type Conversation = typeof conversationsTable.$inferSelect;
 export type ConversationMessage = typeof conversationMessagesTable.$inferSelect;
 export type AbandonedCartTrigger = typeof abandonedCartTriggersTable.$inferSelect;
 export type LeadCheckinTrigger = typeof leadCheckinTriggersTable.$inferSelect;
+export type UnmatchedSmsThread = typeof unmatchedSmsThreadsTable.$inferSelect;
+export type UnmatchedSmsMessage = typeof unmatchedSmsMessagesTable.$inferSelect;

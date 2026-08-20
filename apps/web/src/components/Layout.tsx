@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useCurrentUser, useLogout } from "../hooks/useAuth";
 import { useNeedsAttentionList } from "../hooks/useNeedsAttention";
 import { useUnmatchedEmailsList } from "../hooks/useUnmatchedEmails";
+import { useUnmatchedSmsList } from "../hooks/useUnmatchedSms";
 import { Button, Badge } from "./ui";
 import { AiAssistantWidget } from "./AiAssistantWidget";
 
@@ -10,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/", label: "Dashboard" },
   { href: "/needs-attention", label: "Needs Attention" },
   { href: "/unmatched-emails", label: "Unmatched Emails" },
+  { href: "/unmatched-sms", label: "Unmatched Texts" },
   { href: "/customers", label: "Leads" },
   { href: "/orders", label: "Orders" },
   { href: "/questionnaires", label: "Questionnaires" },
@@ -30,6 +32,8 @@ export function Layout({ children }: { children: ReactNode }) {
   const needsAttentionCount = needsAttentionData?.items.length ?? 0;
   const { data: unmatchedEmailsData } = useUnmatchedEmailsList(canSeeNeedsAttention);
   const unmatchedEmailsCount = unmatchedEmailsData?.items.filter((i) => i.status === "needs_review").length ?? 0;
+  const { data: unmatchedSmsData } = useUnmatchedSmsList(canSeeNeedsAttention);
+  const unmatchedSmsCount = unmatchedSmsData?.items.filter((i) => i.status === "needs_review").length ?? 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -51,6 +55,7 @@ export function Layout({ children }: { children: ReactNode }) {
                 {item.label}
                 {item.href === "/needs-attention" && needsAttentionCount > 0 && <Badge color="red">{needsAttentionCount}</Badge>}
                 {item.href === "/unmatched-emails" && unmatchedEmailsCount > 0 && <Badge color="yellow">{unmatchedEmailsCount}</Badge>}
+                {item.href === "/unmatched-sms" && unmatchedSmsCount > 0 && <Badge color="yellow">{unmatchedSmsCount}</Badge>}
               </Link>
             ))}
           </nav>
