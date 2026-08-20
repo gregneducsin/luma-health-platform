@@ -1,5 +1,5 @@
 import { eq, sql } from "drizzle-orm";
-import { db, customersTable, conversationsTable, supportConversationsTable } from "@luma/db";
+import { db, customersTable, supportConversationsTable } from "@luma/db";
 import { ibluSendMessageReceivedDataSchema, type IbluSendWebhookEnvelope } from "@luma/shared";
 import { recordWebhookEventIfNew, markWebhookEventProcessed, markWebhookEventFailed } from "./webhooks.service.js";
 import { processInboundMessage } from "./lucy-dispatch.service.js";
@@ -28,35 +28,28 @@ async function hasSupportConversation(personId: string): Promise<boolean> {
   return Boolean(row);
 }
 
-async function hasLucyConversation(personId: string): Promise<boolean> {
-  const [row] = await db.select({ id: conversationsTable.id }).from(conversationsTable).where(eq(conversationsTable.personId, personId));
-  return Boolean(row);
-}
-
 /**
  * Decides which bot owns a real inbound text. A support conversation only
  * ever gets created off a real purchase/order event (see
  * getOrCreateSupportConversation's callers in order-fulfillment.service.ts)
  * — its mere existence means this person is a customer, not just a lead, so
  * Sarah owns anything from them from that point on, even if Lucy's
- * conversation is technically still open too. Falls back to Lucy only when
- * no support conversation exists yet.
- *
- * A person with neither a Lucy nor a Sarah conversation is texting in cold,
- * outside any relationship either bot has established — deliberately not
- * guessed at. No auto-reply is drafted; it's logged for staff to pick up
- * instead.
+ * conversation is technically still open too. Falls back to Lucy otherwise,
+ * whether or not a Lucy conversation already exists — findCustomerIdByPhone
+ * (the only way personId ever gets here) already confirms this is a real,
+ * known customer/lead, not a stranger, so a first-ever inbound text from
+ * them starts a Lucy conversation the same way any other automated trigger
+ * in this codebase creates one unattended (processInboundMessage calls
+ * getOrCreateConversation itself). Staying silent here left a known
+ * customer's real message unanswered for no reason other than nobody having
+ * texted them first.
  */
 async function dispatchInboundMessage(personId: string, body: string): Promise<void> {
   if (await hasSupportConversation(personId)) {
     await processInboundSupportMessage(personId, body);
     return;
   }
-  if (await hasLucyConversation(personId)) {
-    await processInboundMessage(personId, body);
-    return;
-  }
-  logger.warn({ personId }, "inbound iBluSend message from a person with no Lucy or Sarah conversation — no auto-reply sent");
+  await processInboundMessage(personId, body);
 }
 
 /**

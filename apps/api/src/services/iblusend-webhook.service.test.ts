@@ -125,15 +125,15 @@ describe("handleIbluSendWebhook", () => {
     expect(processInboundSupportMessageMock).not.toHaveBeenCalled();
   });
 
-  it("does not dispatch for a person with neither a Lucy nor a Sarah conversation", async () => {
+  it("routes to Lucy for a known customer's first-ever text, with no prior Lucy or Sarah conversation", async () => {
     processInboundMessageMock.mockClear();
     processInboundSupportMessageMock.mockClear();
 
     const phone = uniquePhone();
-    await seedCustomer(phone);
-    await handleIbluSendWebhook(envelope({ data: { phone_number: phone } }));
+    const personId = await seedCustomer(phone);
+    await handleIbluSendWebhook(envelope({ data: { phone_number: phone, content: "hey is this luma health" } }));
 
-    expect(processInboundMessageMock).not.toHaveBeenCalled();
+    expect(processInboundMessageMock).toHaveBeenCalledWith(personId, "hey is this luma health");
     expect(processInboundSupportMessageMock).not.toHaveBeenCalled();
   });
 
