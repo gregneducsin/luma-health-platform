@@ -15,9 +15,15 @@
 
 export type FollowUpMessageStep = "provider_check_in" | "intake_questions_check_in";
 
+/**
+ * provider_check_in fires only ~2 hours after the opener (which already
+ * introduced Lucy by name and company) in the same thread — repeating the
+ * full self-introduction there read as robotic rather than as a real
+ * follow-up from someone the recipient just heard from, so it's dropped
+ * here the same way intake_questions_check_in already omits it.
+ */
 const TEMPLATES: Record<FollowUpMessageStep, (firstName: string) => string> = {
-  provider_check_in: (firstName) =>
-    `Hey ${firstName}, this is Lucy with Luma Health. Should I go ahead and let the doctors know to look out for your completed questionnaire?`,
+  provider_check_in: (firstName) => `Hey ${firstName}, should I go ahead and let the doctors know to look out for your completed questionnaire?`,
   intake_questions_check_in: (firstName) => `Hey ${firstName}, just checking in. Do you have any questions about the intake form?`,
 };
 
@@ -60,14 +66,16 @@ export function renderMetaLeadOpener(firstName: string): string {
  * as the openers above. Which variant fires depends on the conversation's
  * currentlyTaking slot at send time: still unanswered -> ask directly;
  * already answered (yes or no) -> a re-engagement question instead, since
- * asking the same thing twice would be redundant.
+ * asking the same thing twice would be redundant. No self-introduction here
+ * either — same reasoning as provider_check_in above — this is still the
+ * same phone thread Lucy already introduced herself in, even six days later.
  */
 export function renderCurrentlyTakingCheckin(firstName: string): string {
   const name = firstName.trim() || "there";
-  return `Hi ${name}, this is Lucy with Luma Health. Quick question — are you currently taking semaglutide or tirzepatide?`;
+  return `Hi ${name}, quick question — are you currently taking semaglutide or tirzepatide?`;
 }
 
 export function renderReengagementCheckin(firstName: string): string {
   const name = firstName.trim() || "there";
-  return `Hi ${name}, this is Lucy with Luma Health. Still thinking it over? What's the biggest thing holding you back from getting started?`;
+  return `Hi ${name}, still thinking it over? What's the biggest thing holding you back from getting started?`;
 }

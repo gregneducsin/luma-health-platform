@@ -75,7 +75,7 @@ describe("sweepFollowUpJobs", () => {
     const result = await sweepFollowUpJobs();
 
     expect(result.sentCount).toBe(1);
-    expect(sendMessageMock).toHaveBeenCalledWith("+15559876543", expect.stringContaining("Should I go ahead and let the doctors know"));
+    expect(sendMessageMock).toHaveBeenCalledWith("+15559876543", expect.stringContaining("should I go ahead and let the doctors know"));
 
     const [job] = await db.select().from(followUpJobsTable).where(eq(followUpJobsTable.id, jobId));
     expect(job.status).toBe("sent");

@@ -23,9 +23,9 @@ describe("renderFollowUpMessage", () => {
     });
   }
 
-  it("provider_check_in introduces Lucy by name and company", () => {
+  it("provider_check_in does not re-introduce Lucy — the opener already did, hours earlier in the same thread", () => {
     const text = renderFollowUpMessage("provider_check_in", "Jamie");
-    expect(text).toContain("this is Lucy with Luma Health");
+    expect(text).not.toContain("this is Lucy with Luma Health");
   });
 });
 
