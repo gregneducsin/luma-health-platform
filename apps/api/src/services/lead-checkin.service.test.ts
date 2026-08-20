@@ -63,7 +63,9 @@ describe("sweepLeadCheckinTriggers", () => {
 
     const result = await sweepLeadCheckinTriggers();
     expect(result.sentCount).toBe(1);
-    expect(sendMessageMock).toHaveBeenCalledWith("+15557770000", expect.stringContaining("currently taking semaglutide or tirzepatide"));
+    // Wording is randomized (see renderCurrentlyTakingCheckin's variants) —
+    // "semaglutide or tirzepatide" is the substring common to all of them.
+    expect(sendMessageMock).toHaveBeenCalledWith("+15557770000", expect.stringContaining("semaglutide or tirzepatide"));
 
     const [trigger] = await db.select().from(leadCheckinTriggersTable).where(eq(leadCheckinTriggersTable.personId, personId));
     expect(trigger.status).toBe("sent");

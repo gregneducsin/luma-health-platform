@@ -11,7 +11,19 @@
  * scheduled 1 hour after — relative to when the first one actually sent,
  * not a fixed offset from the click, so the "an hour later" promise holds
  * even if the sweep runs a few minutes late.
+ *
+ * Every template below is a small set of pre-approved variants, picked at
+ * random (see pickVariant), not one fixed string — every lead getting the
+ * exact same byte-for-byte sentence reads as templated. Every variant for a
+ * given step still satisfies the same structural rules (checked in this
+ * file's tests): one trailing question mark where a question mark is
+ * expected, none where it isn't, no em dash, same required content (the
+ * $20 offer, asking about state, etc).
  */
+
+function pickVariant(variants: readonly string[]): string {
+  return variants[Math.floor(Math.random() * variants.length)];
+}
 
 export type FollowUpMessageStep = "provider_check_in" | "intake_questions_check_in";
 
@@ -23,8 +35,16 @@ export type FollowUpMessageStep = "provider_check_in" | "intake_questions_check_
  * here the same way intake_questions_check_in already omits it.
  */
 const TEMPLATES: Record<FollowUpMessageStep, (firstName: string) => string> = {
-  provider_check_in: (firstName) => `Hey ${firstName}, should I go ahead and let the doctors know to look out for your completed questionnaire?`,
-  intake_questions_check_in: (firstName) => `Hey ${firstName}, just checking in. Do you have any questions about the intake form?`,
+  provider_check_in: (firstName) =>
+    pickVariant([
+      `Hey ${firstName}, should I go ahead and let the doctors know to look out for your completed questionnaire?`,
+      `Hey ${firstName}, want me to give the doctors a heads-up to expect your completed questionnaire?`,
+    ]),
+  intake_questions_check_in: (firstName) =>
+    pickVariant([
+      `Hey ${firstName}, just checking in. Do you have any questions about the intake form?`,
+      `Hey ${firstName}, checking back in. Any questions on the intake form so far?`,
+    ]),
 };
 
 export function renderFollowUpMessage(step: FollowUpMessageStep, firstName: string): string {
@@ -42,7 +62,10 @@ export function renderFollowUpMessage(step: FollowUpMessageStep, firstName: stri
  */
 export function renderAbandonedCartOpener(firstName: string): string {
   const name = firstName.trim() || "there";
-  return `Hi ${name}, this is Lucy with Luma Health. I noticed you started your online visit but didn't get a chance to finish it. Complete your enrollment now and get $20 off your first month. Want me to send the link to get started?`;
+  return pickVariant([
+    `Hi ${name}, this is Lucy with Luma Health. I noticed you started your online visit but didn't get a chance to finish it. Complete your enrollment now and get $20 off your first month. Want me to send the link to get started?`,
+    `Hi ${name}, this is Lucy with Luma Health. Looks like you started your online visit but didn't quite finish it. Complete your enrollment and get $20 off your first month. Want the link so you can pick back up?`,
+  ]);
 }
 
 /**
@@ -56,7 +79,10 @@ export function renderAbandonedCartOpener(firstName: string): string {
  */
 export function renderMetaLeadOpener(firstName: string): string {
   const name = firstName.trim() || "there";
-  return `Hey ${name}, this is Lucy with Luma Health. I wanted to check what state you're in to see what promotions we have running for you right now.`;
+  return pickVariant([
+    `Hey ${name}, this is Lucy with Luma Health. I wanted to check what state you're in to see what promotions we have running for you right now.`,
+    `Hey ${name}, this is Lucy with Luma Health. Wanted to check what state you're located in so I can share the promotions available for you right now.`,
+  ]);
 }
 
 /**
@@ -72,10 +98,16 @@ export function renderMetaLeadOpener(firstName: string): string {
  */
 export function renderCurrentlyTakingCheckin(firstName: string): string {
   const name = firstName.trim() || "there";
-  return `Hi ${name}, quick question — are you currently taking semaglutide or tirzepatide?`;
+  return pickVariant([
+    `Hi ${name}, quick question — are you currently taking semaglutide or tirzepatide?`,
+    `Hi ${name}, quick one for you — are you currently on semaglutide or tirzepatide?`,
+  ]);
 }
 
 export function renderReengagementCheckin(firstName: string): string {
   const name = firstName.trim() || "there";
-  return `Hi ${name}, still thinking it over? What's the biggest thing holding you back from getting started?`;
+  return pickVariant([
+    `Hi ${name}, still thinking it over? What's the biggest thing holding you back from getting started?`,
+    `Hi ${name}, still weighing it? What's the main thing holding you back from getting started?`,
+  ]);
 }

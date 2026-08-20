@@ -33,9 +33,24 @@ export type LucyTurnResult =
  * question — it's the doctor's call, made during questionnaire review, not
  * something Lucy is ever positioned to answer. Still routes to staff
  * (action: "staff_review") so a human sees it, but the customer isn't left
- * hanging in the meantime.
+ * hanging in the meantime. The actual reply text is picked at random from
+ * INDIVIDUALIZED_MEDICAL_REPLIES below (see pickVariant), not fixed here —
+ * a customer asking two different individualized questions in the same
+ * conversation shouldn't get the exact same sentence back twice.
+ *
+ * OPT_OUT and EMERGENCY_CONTENT are deliberately NOT varied — compliance
+ * and safety-critical instructions (unsubscribe confirmation, "call 911")
+ * stay exact and unambiguous every time, not paraphrased for variety.
  */
-const INDIVIDUALIZED_MEDICAL_REPLY = "That's up to the doctor to decide. Complete the questionnaire and they'll review your information to let you know what's approved for you.";
+const INDIVIDUALIZED_MEDICAL_REPLIES = [
+  "That's up to the doctor to decide. Complete the questionnaire and they'll review your information to let you know what's approved for you.",
+  "Only the doctor can make that call. Complete the questionnaire and they'll go over your info and let you know what's approved.",
+  "That one's for the doctor to review. Complete the questionnaire and they'll take a look at your info and confirm what's approved for you.",
+] as const;
+
+function pickVariant(variants: readonly string[]): string {
+  return variants[Math.floor(Math.random() * variants.length)];
+}
 
 const PRE_CHECK_RESULTS: Record<string, { action: "pause" | "staff_review"; reply: string | null }> = {
   OPT_OUT: { action: "pause", reply: "You've been unsubscribed and won't receive further messages. Reply HELP for help." },
@@ -45,8 +60,10 @@ const PRE_CHECK_RESULTS: Record<string, { action: "pause" | "staff_review"; repl
     reply:
       "If this is a medical emergency, please call 911 or go to your nearest emergency room right away. This text line isn't monitored for emergencies — our team has been notified and will follow up with you.",
   },
-  SUITABILITY_QUESTION: { action: "staff_review", reply: INDIVIDUALIZED_MEDICAL_REPLY },
-  MEDICAL_CONTENT: { action: "staff_review", reply: INDIVIDUALIZED_MEDICAL_REPLY },
+  // reply: null here is a placeholder — the real reply for these two codes
+  // is picked at send time from INDIVIDUALIZED_MEDICAL_REPLIES, see below.
+  SUITABILITY_QUESTION: { action: "staff_review", reply: null },
+  MEDICAL_CONTENT: { action: "staff_review", reply: null },
   LEGAL_CONTENT: { action: "staff_review", reply: null },
 };
 
@@ -82,10 +99,11 @@ export async function runLucyTurn(personId: string, body: BotPreviewRequestBody)
     const pre = interactivePreCheck(lastInbound.body);
     if (pre.blocked) {
       const deterministic = PRE_CHECK_RESULTS[pre.code] ?? { action: "staff_review" as const, reply: null };
+      const reply = pre.code === "SUITABILITY_QUESTION" || pre.code === "MEDICAL_CONTENT" ? pickVariant(INDIVIDUALIZED_MEDICAL_REPLIES) : deterministic.reply;
       return {
         ok: true,
         action: deterministic.action,
-        reply: deterministic.reply,
+        reply,
         nextQuestion: null,
         link: null,
         objectionStage: body.objectionStage,

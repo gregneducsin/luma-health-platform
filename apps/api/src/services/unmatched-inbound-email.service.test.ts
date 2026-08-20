@@ -253,7 +253,9 @@ describe("auto-acknowledgment", () => {
     const [to, subject, html, opts] = sendEmailMock.mock.calls[0];
     expect(to).toBe(fromAddress);
     expect(subject).toBe("Re: Hello");
-    expect(html).toContain("could you share your name");
+    // Wording is randomized (see ACK_ASKING_NAME_VARIANTS) — "your name" is
+    // the substring common to every variant that asks for a name.
+    expect(html).toContain("your name");
     expect(opts.inReplyTo).toBe("<in-ack-1@example.com>");
   });
 
@@ -271,8 +273,11 @@ describe("auto-acknowledgment", () => {
     });
 
     const [, , html] = sendEmailMock.mock.calls[0];
-    expect(html).not.toContain("share your name");
-    expect(html).toContain("Thanks for reaching out");
+    // Wording is randomized (see ACK_KNOWN_NAME_VARIANTS/ACK_ASKING_NAME_VARIANTS)
+    // — check the behavior (doesn't ask for a name, does thank them by brand),
+    // not one specific phrasing.
+    expect(html).not.toContain("your name");
+    expect(html.toLowerCase()).toMatch(/thanks for (reaching out to|getting in touch with) luma health/);
   });
 
   it("does NOT send a second acknowledgment when another message arrives on the same thread", async () => {

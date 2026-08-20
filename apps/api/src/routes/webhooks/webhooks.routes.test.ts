@@ -199,7 +199,9 @@ describe("Webhooks", () => {
       const res = await request(app).post("/api/webhooks/ghl-lead").set("x-webhook-secret", GHL_SECRET).send(payload);
       expect(res.status).toBe(200);
 
-      expect(sendMessageMock).toHaveBeenCalledWith("+15557770000", expect.stringContaining("what state you're in"));
+      // Wording is randomized (see renderMetaLeadOpener's variants) — "what
+      // state you're" is the substring common to all of them.
+      expect(sendMessageMock).toHaveBeenCalledWith("+15557770000", expect.stringContaining("what state you're"));
 
       const { db, customersTable, metaLeadEmailTriggersTable } = await import("@luma/db");
       const { eq } = await import("drizzle-orm");

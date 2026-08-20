@@ -252,9 +252,18 @@ export async function listUnmatchedEmailMessages(threadId: string): Promise<Unma
   return db.select().from(unmatchedEmailMessagesTable).where(eq(unmatchedEmailMessagesTable.threadId, threadId)).orderBy(unmatchedEmailMessagesTable.createdAt);
 }
 
-const ACK_ASKING_NAME =
-  "Thanks for reaching out to Luma Health — could you share your name so we can help you further? A member of our team will follow up shortly.";
-const ACK_KNOWN_NAME = "Thanks for reaching out to Luma Health — a member of our team will follow up shortly.";
+const ACK_ASKING_NAME_VARIANTS = [
+  "Thanks for reaching out to Luma Health — could you share your name so we can help you further? A member of our team will follow up shortly.",
+  "Thanks for getting in touch with Luma Health — could you let us know your name so we can help you out? Our team will follow up shortly.",
+] as const;
+const ACK_KNOWN_NAME_VARIANTS = [
+  "Thanks for reaching out to Luma Health — a member of our team will follow up shortly.",
+  "Thanks for getting in touch with Luma Health — our team will follow up with you shortly.",
+] as const;
+
+function pickVariant(variants: readonly string[]): string {
+  return variants[Math.floor(Math.random() * variants.length)];
+}
 
 /**
  * The one message this pipeline sends with no review at all — a fixed,
@@ -263,10 +272,13 @@ const ACK_KNOWN_NAME = "Thanks for reaching out to Luma Health — a member of o
  * it makes no claim about their actual question, so there's nothing for a
  * guardrail to get wrong. Failure here is logged and swallowed — a
  * send failure on the acknowledgment shouldn't block recording the email
- * or running classification.
+ * or running classification. Picked at random from a small set of
+ * equivalent variants (see pickVariant) rather than one fixed string, so
+ * every unmatched sender across the whole inbox doesn't get the exact same
+ * byte-for-byte sentence.
  */
 async function sendAutoAcknowledgment(threadId: string, fromAddress: string, subject: string, knownName: string | null, inReplyTo: string | null): Promise<void> {
-  const body = knownName ? ACK_KNOWN_NAME : ACK_ASKING_NAME;
+  const body = pickVariant(knownName ? ACK_KNOWN_NAME_VARIANTS : ACK_ASKING_NAME_VARIANTS);
   const replySubject = /^re:/i.test(subject.trim()) ? subject : `Re: ${subject}`;
 
   let messageId: string | null = null;

@@ -34,7 +34,9 @@ describe("sendMetaLeadOpener", () => {
     const personId = await seedCustomer({ firstName: "Jamie" });
     await sendMetaLeadOpener(personId);
 
-    expect(sendMessageMock).toHaveBeenCalledWith("+15558880000", expect.stringContaining("what state you're in"));
+    // Wording is randomized (see renderMetaLeadOpener's variants) — "what
+    // state you're" is the substring common to all of them.
+    expect(sendMessageMock).toHaveBeenCalledWith("+15558880000", expect.stringContaining("what state you're"));
 
     const conversation = await getOrCreateConversation(personId);
     expect(conversation.leadSource).toBe("meta_form");
