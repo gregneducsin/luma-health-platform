@@ -23,6 +23,7 @@ import { sendMetaLeadOpener } from "./meta-lead.service.js";
 import { scheduleMetaLeadEmailSequence } from "./meta-lead-email.service.js";
 import { sendOrderReceivedOpener, handlePrescriptionWritten, handleOrderShipped } from "./order-fulfillment.service.js";
 import { setCustomerSmsDnd, setCustomerEmailDnd } from "./dnd.service.js";
+import { logger } from "../lib/logger.js";
 
 /**
  * Case-insensitive exact email match — NOT ilike(), which treats `_` and `%`
@@ -214,6 +215,7 @@ export async function handleBaskOrderWebhook(payload: BaskOrderWebhookRequest): 
       leadReceivedDate: purchaseDate,
     });
 
+    let isFirstOrder = false;
     await db.transaction(async (tx) => {
       // Lock the customer row so two near-simultaneous order webhooks for the
       // same customer can't both read "no earlier purchase" and both classify
@@ -224,6 +226,7 @@ export async function handleBaskOrderWebhook(payload: BaskOrderWebhookRequest): 
         .select({ id: purchasesTable.id })
         .from(purchasesTable)
         .where(eq(purchasesTable.customerId, customerId));
+      isFirstOrder = !earlier;
 
       await tx.insert(purchasesTable).values({
         customerId,
@@ -240,13 +243,21 @@ export async function handleBaskOrderWebhook(payload: BaskOrderWebhookRequest): 
     // A purchase is treated as fresh consent to be messaged again, on both
     // channels independently — cleared before the opener below so a
     // previously opted-out customer's order confirmation isn't itself
-    // blocked by a now-stale DND flag.
+    // blocked by a now-stale DND flag. Applies to every order, new or
+    // recurring — a refill is exactly as much fresh consent as a first order.
     await setCustomerSmsDnd(customerId, false);
     await setCustomerEmailDnd(customerId, false);
 
-    // Sarah's opening "doctor is reviewing it" message fires the moment the
-    // order lands — instant, same as the Meta lead opener, not a scheduled sweep.
-    await sendOrderReceivedOpener(customerId);
+    // Sarah's opening "doctor is reviewing it" welcome message fires the
+    // moment the order lands — instant, same as the Meta lead opener, not a
+    // scheduled sweep. Only for a genuine first order: a recurring/refill
+    // order re-sending the same "your order was just received!" welcome
+    // message every time reads as broken, not as a real update.
+    if (isFirstOrder) {
+      await sendOrderReceivedOpener(customerId);
+    } else {
+      logger.info({ customerId }, "recurring order — welcome opener not re-sent");
+    }
 
     await markWebhookEventProcessed(recorded.id, customerId);
   } catch (err) {

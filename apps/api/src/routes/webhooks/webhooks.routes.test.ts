@@ -353,6 +353,54 @@ describe("Webhooks", () => {
       expect(messages.length).toBe(1);
     });
 
+    it("does not re-send the order-received welcome opener on a recurring (refill) order for an existing customer", async () => {
+      const { db, customersTable, externalIdentitiesTable, purchasesTable } = await import("@luma/db");
+      const { eq } = await import("drizzle-orm");
+      const [customer] = await db
+        .insert(customersTable)
+        .values({ firstName: "Refill", lastName: "Customer", email: "refill@example.com", leadReceivedDate: "2026-01-01", phone: "+15551110097" })
+        .returning();
+      await db.insert(externalIdentitiesTable).values({ personId: customer!.id, system: "bask", externalId: "bask-person-refill" });
+
+      sendMessageMock.mockClear();
+      sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_refill_first" });
+      const first = await request(app)
+        .post("/api/webhooks/bask-order")
+        .set("x-webhook-secret", ORDER_SECRET)
+        .send({
+          eventId: "bask-order-evt-refill-1",
+          externalPersonId: "bask-person-refill",
+          email: "refill@example.com",
+          orderId: "BASK-REFILL-1",
+          productName: "Program",
+          amountPaid: 120,
+          purchasedAt: "2026-02-09T09:00:00.000Z",
+        });
+      expect(first.status).toBe(200);
+      expect(sendMessageMock).toHaveBeenCalledTimes(1);
+
+      sendMessageMock.mockClear();
+      const second = await request(app)
+        .post("/api/webhooks/bask-order")
+        .set("x-webhook-secret", ORDER_SECRET)
+        .send({
+          eventId: "bask-order-evt-refill-2",
+          externalPersonId: "bask-person-refill",
+          email: "refill@example.com",
+          orderId: "BASK-REFILL-2",
+          productName: "Program",
+          amountPaid: 120,
+          purchasedAt: "2026-03-09T09:00:00.000Z",
+        });
+      expect(second.status).toBe(200);
+      expect(sendMessageMock).not.toHaveBeenCalled();
+
+      const purchases = await db.select().from(purchasesTable).where(eq(purchasesTable.customerId, customer!.id));
+      expect(purchases).toHaveLength(2);
+      expect(purchases.find((p) => p.orderNumber === "BASK-REFILL-1")!.orderClassification).toBe("first_order");
+      expect(purchases.find((p) => p.orderNumber === "BASK-REFILL-2")!.orderClassification).toBe("recurring");
+    });
+
     it("clears a previously opted-out customer's DND flag on both channels, so the order-received opener isn't itself blocked", async () => {
       sendMessageMock.mockClear();
       sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_sarah_opener_dnd" });
