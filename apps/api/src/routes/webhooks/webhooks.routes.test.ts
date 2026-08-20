@@ -272,6 +272,38 @@ describe("Webhooks", () => {
       expect(purchases[0].orderClassificationSource).toBe("bask");
     });
 
+    it("preserves fields Bask sends that we haven't modeled yet (e.g. a first-order flag) in the stored raw payload", async () => {
+      // baskOrderWebhookRequestSchema is .passthrough(), not the default
+      // strip-unknown-keys — so a field like this survives into
+      // webhook_events.raw_payload instead of being silently dropped before
+      // we ever get to see it. We don't know Bask's real field name for its
+      // first-order flag yet, so this stands in for "any field not in our
+      // schema" to prove the mechanism, not to assert the real name.
+      const res = await request(app)
+        .post("/api/webhooks/bask-order")
+        .set("x-webhook-secret", ORDER_SECRET)
+        .send({
+          eventId: "bask-order-evt-passthrough",
+          externalPersonId: "bask-person-passthrough",
+          email: "passthrough@example.com",
+          orderId: "BASK-PASSTHROUGH",
+          productName: "Program",
+          amountPaid: 199,
+          purchasedAt: "2026-02-01T10:00:00.000Z",
+          isFirstOrder: false,
+        });
+      expect(res.status).toBe(200);
+
+      const { db, webhookEventsTable } = await import("@luma/db");
+      const { eq, and } = await import("drizzle-orm");
+      const [event] = await db
+        .select()
+        .from(webhookEventsTable)
+        .where(and(eq(webhookEventsTable.source, "bask_order"), eq(webhookEventsTable.externalEventId, "bask-order-evt-passthrough")));
+      expect(event).toBeTruthy();
+      expect((event!.rawPayload as Record<string, unknown>).isFirstOrder).toBe(false);
+    });
+
     it("creates a new customer when no match exists", async () => {
       const res = await request(app)
         .post("/api/webhooks/bask-order")
