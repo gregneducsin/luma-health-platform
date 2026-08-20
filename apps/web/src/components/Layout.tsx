@@ -10,8 +10,7 @@ import { AiAssistantWidget } from "./AiAssistantWidget";
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard" },
   { href: "/needs-attention", label: "Needs Attention" },
-  { href: "/unmatched-emails", label: "Unmatched Emails" },
-  { href: "/unmatched-sms", label: "Unmatched Texts" },
+  { href: "/unmatched-contacts", label: "Unmatched Contacts" },
   { href: "/customers", label: "Leads" },
   { href: "/orders", label: "Orders" },
   { href: "/questionnaires", label: "Questionnaires" },
@@ -31,9 +30,10 @@ export function Layout({ children }: { children: ReactNode }) {
   const { data: needsAttentionData } = useNeedsAttentionList(canSeeNeedsAttention);
   const needsAttentionCount = needsAttentionData?.items.length ?? 0;
   const { data: unmatchedEmailsData } = useUnmatchedEmailsList(canSeeNeedsAttention);
-  const unmatchedEmailsCount = unmatchedEmailsData?.items.filter((i) => i.status === "needs_review").length ?? 0;
   const { data: unmatchedSmsData } = useUnmatchedSmsList(canSeeNeedsAttention);
-  const unmatchedSmsCount = unmatchedSmsData?.items.filter((i) => i.status === "needs_review").length ?? 0;
+  const unmatchedContactsCount =
+    (unmatchedEmailsData?.items.filter((i) => i.status === "needs_review").length ?? 0) +
+    (unmatchedSmsData?.items.filter((i) => i.status === "needs_review").length ?? 0);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -54,8 +54,7 @@ export function Layout({ children }: { children: ReactNode }) {
               >
                 {item.label}
                 {item.href === "/needs-attention" && needsAttentionCount > 0 && <Badge color="red">{needsAttentionCount}</Badge>}
-                {item.href === "/unmatched-emails" && unmatchedEmailsCount > 0 && <Badge color="yellow">{unmatchedEmailsCount}</Badge>}
-                {item.href === "/unmatched-sms" && unmatchedSmsCount > 0 && <Badge color="yellow">{unmatchedSmsCount}</Badge>}
+                {item.href === "/unmatched-contacts" && unmatchedContactsCount > 0 && <Badge color="yellow">{unmatchedContactsCount}</Badge>}
               </Link>
             ))}
           </nav>

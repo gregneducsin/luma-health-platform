@@ -1,6 +1,7 @@
 import { useState } from "react";
-import type { UnmatchedEmailThreadSummary } from "@luma/shared";
+import type { UnmatchedEmailThreadSummary, UnmatchedSmsThreadSummary } from "@luma/shared";
 import { useUnmatchedEmailsList, useUnmatchedEmailThread, useSendUnmatchedEmailReply, useDismissUnmatchedEmail } from "../hooks/useUnmatchedEmails";
+import { useUnmatchedSmsList, useUnmatchedSmsThread, useSendUnmatchedSmsReply, useDismissUnmatchedSms } from "../hooks/useUnmatchedSms";
 import { Badge, Card, Button } from "../components/ui";
 import { ApiError } from "../hooks/useAuth";
 import { formatDateTime } from "../lib/formatTime";
@@ -21,8 +22,69 @@ const INTENT_COLOR: Record<string, "green" | "blue" | "gray" | "yellow"> = {
 
 const CONFIDENCE_COLOR: Record<string, "green" | "yellow" | "gray"> = { high: "green", medium: "yellow", low: "gray" };
 
-function ThreadMessages({ threadId }: { threadId: string }) {
-  const { data, isLoading } = useUnmatchedEmailThread(threadId);
+/** Merges an email thread and an SMS thread into one shape the combined list renders — the two channels' underlying data (fromAddress/subject vs fromPhone/collectedEmail) stay separate below this point, keyed off `channel`. */
+type CombinedThread = {
+  readonly channel: "email" | "sms";
+  readonly id: string;
+  readonly contact: string;
+  readonly contactLabel: string;
+  readonly aiIntent: string | null;
+  readonly aiSummary: string | null;
+  readonly suggestedMatchCustomerId: string | null;
+  readonly suggestedMatchConfidence: "high" | "medium" | "low" | null;
+  readonly suggestedReply: string | null;
+  readonly linkedCustomerId: string | null;
+  readonly status: "needs_review" | "replied" | "dismissed";
+  readonly repliedAt: string | null;
+  readonly createdAt: string;
+  readonly lastMessageAt: string | null;
+  readonly lastMessagePreview: string | null;
+};
+
+function fromEmail(t: UnmatchedEmailThreadSummary): CombinedThread {
+  return {
+    channel: "email",
+    id: t.id,
+    contact: t.fromAddress,
+    contactLabel: t.fromName ? `${t.fromName} <${t.fromAddress}>` : t.fromAddress,
+    aiIntent: t.aiIntent,
+    aiSummary: t.aiSummary,
+    suggestedMatchCustomerId: t.suggestedMatchCustomerId,
+    suggestedMatchConfidence: t.suggestedMatchConfidence,
+    suggestedReply: t.suggestedReply,
+    linkedCustomerId: t.linkedCustomerId,
+    status: t.status,
+    repliedAt: t.repliedAt,
+    createdAt: t.createdAt,
+    lastMessageAt: t.lastMessageAt,
+    lastMessagePreview: t.lastMessagePreview,
+  };
+}
+
+function fromSms(t: UnmatchedSmsThreadSummary): CombinedThread {
+  return {
+    channel: "sms",
+    id: t.id,
+    contact: t.fromPhone,
+    contactLabel: [t.fromName ? `${t.fromName} (${t.fromPhone})` : t.fromPhone, t.collectedEmail].filter(Boolean).join(" · "),
+    aiIntent: t.aiIntent,
+    aiSummary: t.aiSummary,
+    suggestedMatchCustomerId: t.suggestedMatchCustomerId,
+    suggestedMatchConfidence: t.suggestedMatchConfidence,
+    suggestedReply: t.suggestedReply,
+    linkedCustomerId: t.linkedCustomerId,
+    status: t.status,
+    repliedAt: t.repliedAt,
+    createdAt: t.createdAt,
+    lastMessageAt: t.lastMessageAt,
+    lastMessagePreview: t.lastMessagePreview,
+  };
+}
+
+function ThreadMessages({ channel, threadId }: { channel: "email" | "sms"; threadId: string }) {
+  const emailDetail = useUnmatchedEmailThread(channel === "email" ? threadId : null);
+  const smsDetail = useUnmatchedSmsThread(channel === "sms" ? threadId : null);
+  const { data, isLoading } = channel === "email" ? emailDetail : smsDetail;
 
   if (isLoading || !data) return <p className="px-4 pb-3 text-xs text-gray-400">Loading messages…</p>;
 
@@ -31,7 +93,7 @@ function ThreadMessages({ threadId }: { threadId: string }) {
       {data.messages.map((m) => (
         <div key={m.id} className={m.direction === "inbound" ? "text-left" : "text-right"}>
           <div className={"inline-block max-w-[85%] rounded-lg px-3 py-2 text-left text-xs " + (m.direction === "inbound" ? "bg-gray-100 text-gray-800" : "bg-blue-600 text-white")}>
-            <p className="mb-0.5 font-semibold">{m.subject}</p>
+            {"subject" in m && <p className="mb-0.5 font-semibold">{m.subject}</p>}
             <p className="whitespace-pre-wrap">{m.body}</p>
           </div>
           <p className="mt-0.5 text-[11px] text-gray-400">{formatDateTime(m.createdAt)}</p>
@@ -41,11 +103,19 @@ function ThreadMessages({ threadId }: { threadId: string }) {
   );
 }
 
-function ThreadRow({ thread }: { thread: UnmatchedEmailThreadSummary }) {
+function ThreadRow({ thread }: { thread: CombinedThread }) {
   const [expanded, setExpanded] = useState(false);
   const [draft, setDraft] = useState(thread.suggestedReply ?? "");
-  const sendReply = useSendUnmatchedEmailReply();
-  const dismiss = useDismissUnmatchedEmail();
+
+  // Both channels' mutation hooks are called unconditionally (rules of
+  // hooks) — which one actually gets used is decided per-click below, not
+  // by conditionally calling one or the other.
+  const sendEmailReply = useSendUnmatchedEmailReply();
+  const sendSmsReply = useSendUnmatchedSmsReply();
+  const dismissEmail = useDismissUnmatchedEmail();
+  const dismissSms = useDismissUnmatchedSms();
+  const sendReply = thread.channel === "email" ? sendEmailReply : sendSmsReply;
+  const dismiss = thread.channel === "email" ? dismissEmail : dismissSms;
 
   function handleSend() {
     const body = draft.trim();
@@ -58,7 +128,8 @@ function ThreadRow({ thread }: { thread: UnmatchedEmailThreadSummary }) {
       <button onClick={() => setExpanded((e) => !e)} className="block w-full px-4 py-3 text-left hover:bg-gray-50">
         <div className="flex items-center justify-between">
           <span className="flex items-center gap-2 text-sm font-medium text-gray-900">
-            {thread.fromName || thread.fromAddress}
+            <Badge color={thread.channel === "email" ? "blue" : "green"}>{thread.channel === "email" ? "Email" : "Text"}</Badge>
+            {thread.contactLabel}
             {thread.aiIntent && <Badge color={INTENT_COLOR[thread.aiIntent] ?? "gray"}>{INTENT_LABEL[thread.aiIntent] ?? thread.aiIntent}</Badge>}
             {thread.linkedCustomerId && <Badge color="green">Lead created</Badge>}
             {thread.status !== "needs_review" && <Badge color={thread.status === "replied" ? "green" : "gray"}>{thread.status}</Badge>}
@@ -72,10 +143,10 @@ function ThreadRow({ thread }: { thread: UnmatchedEmailThreadSummary }) {
         <div className="space-y-3 border-t border-gray-100">
           <div className="px-4 pt-3">
             <p className="text-xs font-medium text-gray-400">From</p>
-            <p className="text-sm text-gray-800">{thread.fromName ? `${thread.fromName} <${thread.fromAddress}>` : thread.fromAddress}</p>
+            <p className="text-sm text-gray-800">{thread.contactLabel}</p>
           </div>
 
-          <ThreadMessages threadId={thread.id} />
+          <ThreadMessages channel={thread.channel} threadId={thread.id} />
 
           {thread.linkedCustomerId && (
             <div className="mx-4 rounded-md bg-green-50 px-3 py-2">
@@ -84,7 +155,8 @@ function ThreadRow({ thread }: { thread: UnmatchedEmailThreadSummary }) {
                 <a href={`/customers/${thread.linkedCustomerId}`} className="font-medium underline">
                   their customer record
                 </a>{" "}
-                or the Conversations tab for that reply. Every email from this address from now on routes through Lucy automatically, same as any other lead.
+                or the Conversations tab for that reply. Every {thread.channel === "email" ? "email" : "text"} from this {thread.channel === "email" ? "address" : "number"} from now on
+                routes through Lucy automatically, same as any other lead.
               </p>
             </div>
           )}
@@ -135,27 +207,34 @@ function ThreadRow({ thread }: { thread: UnmatchedEmailThreadSummary }) {
   );
 }
 
-export function UnmatchedEmailsPage() {
-  const { data, isLoading } = useUnmatchedEmailsList();
-  const needsReview = data?.items.filter((i) => i.status === "needs_review") ?? [];
-  const resolved = data?.items.filter((i) => i.status !== "needs_review") ?? [];
+export function UnmatchedContactsPage() {
+  const { data: emailData, isLoading: emailLoading } = useUnmatchedEmailsList();
+  const { data: smsData, isLoading: smsLoading } = useUnmatchedSmsList();
+  const isLoading = emailLoading || smsLoading;
+
+  const combined: CombinedThread[] = [...(emailData?.items.map(fromEmail) ?? []), ...(smsData?.items.map(fromSms) ?? [])].sort(
+    (a, b) => new Date(b.lastMessageAt ?? b.createdAt).getTime() - new Date(a.lastMessageAt ?? a.createdAt).getTime(),
+  );
+  const needsReview = combined.filter((i) => i.status === "needs_review");
+  const resolved = combined.filter((i) => i.status !== "needs_review");
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Unmatched Emails</h1>
-        {data && <p className="text-sm text-gray-500">{needsReview.length} awaiting review</p>}
+        <h1 className="text-xl font-semibold text-gray-900">Unmatched Contacts</h1>
+        {!isLoading && <p className="text-sm text-gray-500">{needsReview.length} awaiting review</p>}
       </div>
       <p className="text-xs text-gray-400">
-        Inbound email from an address that doesn't match any customer record, grouped one thread per sender. On the first message, a fixed,
-        content-free acknowledgment goes out immediately (asking for their name if we don't have it) so nobody sits in silence — that's the only
-        thing sent with no review. Beyond that, Claude drafts a classification and a suggested reply for staff to review and send or dismiss.
-        Suggested matches to an existing customer are never linked automatically. If Claude is confident it's a genuine new lead and we know their
-        name, a lead is created automatically and this message is handed straight to Lucy's real pipeline — she replies live, same as any other lead.
+        Inbound email and text messages from an address or phone number that doesn't match any customer record, one thread per sender, combined
+        here regardless of channel. On the first message, a fixed, content-free acknowledgment goes out immediately (asking for their name, and
+        for texts, their email next) so nobody sits in silence — that's the only thing sent with no review. Beyond that, Claude drafts a
+        classification and a suggested reply for staff to review and send or dismiss. Suggested matches to an existing customer are never linked
+        automatically. If Claude is confident it's a genuine new lead and we have what we need (a name, plus an email), a lead is created
+        automatically and this message is handed straight to Lucy's real pipeline — she replies live, same as any other lead.
       </p>
 
       {isLoading && <p className="text-sm text-gray-400">Loading…</p>}
-      {data && data.items.length === 0 && (
+      {!isLoading && combined.length === 0 && (
         <Card>
           <p className="text-sm text-gray-500">Nothing here right now.</p>
         </Card>
@@ -163,7 +242,7 @@ export function UnmatchedEmailsPage() {
 
       <div className="space-y-2">
         {needsReview.map((thread) => (
-          <ThreadRow key={thread.id} thread={thread} />
+          <ThreadRow key={`${thread.channel}-${thread.id}`} thread={thread} />
         ))}
       </div>
 
@@ -172,7 +251,7 @@ export function UnmatchedEmailsPage() {
           <summary className="cursor-pointer text-xs font-medium text-gray-400">{resolved.length} replied or dismissed</summary>
           <div className="mt-2 space-y-2">
             {resolved.map((thread) => (
-              <ThreadRow key={thread.id} thread={thread} />
+              <ThreadRow key={`${thread.channel}-${thread.id}`} thread={thread} />
             ))}
           </div>
         </details>
