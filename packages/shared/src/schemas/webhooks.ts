@@ -43,18 +43,18 @@ export const baskOrderWebhookRequestSchema = z
     // field isn't separately provided.
     transactionId: z.string().min(1).optional(),
     // Bask's own record of whether this is the customer's first order,
-    // relayed through the Zapier zap that reshapes Bask's native "newOrder"
-    // webhook (data.isFirstTimeOrder) into this flat payload. Optional
-    // because it requires that field to be added to the Zapier mapping —
-    // the handler falls back to its own "does a prior purchase row exist"
-    // check when it's absent. Accepts a stringified boolean too since
-    // Zapier's raw-body JSON editor can send either depending on how the
-    // field is typed in the zap — left un-transformed (no .transform()) so
-    // this stays a plain union type; a transform here breaks z.infer's
+    // relayed verbatim (same field name) through the Zapier zap that maps
+    // Bask's native "newOrder" webhook into this flat payload. Optional
+    // because our own "does a prior purchase row exist" DB check is the
+    // fallback when it's absent (older/misconfigured zaps). Accepts a
+    // string too — confirmed against a real Zapier payload that this can
+    // arrive as a capitalized Python-style "False"/"True" string rather
+    // than a JSON boolean — left un-transformed (no .transform()) so this
+    // stays a plain union type; a transform here breaks z.infer's
     // output-type computation for the surrounding .passthrough() object.
     // parseIsFirstOrder() in webhooks.service.ts does the string -> boolean
     // coercion instead.
-    isFirstOrder: z.union([z.boolean(), z.enum(["true", "false"])]).optional(),
+    isFirstTimeOrder: z.union([z.boolean(), z.string()]).optional(),
   })
   // Bask's payload may include other fields we haven't modeled yet.
   // .passthrough() (instead of the default strip-unknown-keys behavior)

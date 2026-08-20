@@ -302,7 +302,7 @@ describe("Webhooks", () => {
       expect((event!.rawPayload as Record<string, unknown>).someBaskFieldNotYetModeled).toBe("xyz");
     });
 
-    it("trusts Bask's isFirstOrder=false over our own DB check, even for a customer's first purchase row in our system", async () => {
+    it("trusts Bask's isFirstTimeOrder=false over our own DB check, even for a customer's first purchase row in our system", async () => {
       // This is the actual bug: a customer who ordered before this webhook
       // existed (or whose earlier order wasn't recorded) has no prior
       // purchase row in our DB, so our own "does an earlier row exist" check
@@ -322,7 +322,7 @@ describe("Webhooks", () => {
           productName: "Program",
           amountPaid: 199,
           purchasedAt: "2026-02-01T10:00:00.000Z",
-          isFirstOrder: false,
+          isFirstTimeOrder: false,
         });
       expect(res.status).toBe(200);
 
@@ -335,7 +335,7 @@ describe("Webhooks", () => {
       expect(sendMessageMock).not.toHaveBeenCalled();
     });
 
-    it("accepts a stringified isFirstOrder value", async () => {
+    it("accepts a capitalized Python-style string value (confirmed from a real Zapier payload)", async () => {
       sendMessageMock.mockClear();
       const res = await request(app)
         .post("/api/webhooks/bask-order")
@@ -348,7 +348,7 @@ describe("Webhooks", () => {
           productName: "Program",
           amountPaid: 199,
           purchasedAt: "2026-02-01T10:00:00.000Z",
-          isFirstOrder: "false",
+          isFirstTimeOrder: "False",
         });
       expect(res.status).toBe(200);
 
@@ -360,7 +360,7 @@ describe("Webhooks", () => {
     });
 
     it("falls back to recurring instead of violating the first-order uniqueness constraint when Bask's flag disagrees with our own purchase history", async () => {
-      // Edge case: Bask says isFirstOrder=true, but our DB already has an
+      // Edge case: Bask says isFirstTimeOrder=true, but our DB already has an
       // earlier purchase row for this customer (e.g. a mismatched
       // external-identity match). Trusting Bask blindly here would attempt a
       // second "first_order" row and crash on the partial unique index.
@@ -394,7 +394,7 @@ describe("Webhooks", () => {
           productName: "Program",
           amountPaid: 199,
           purchasedAt: "2026-02-01T10:00:00.000Z",
-          isFirstOrder: true,
+          isFirstTimeOrder: true,
         });
       expect(res.status).toBe(200);
 

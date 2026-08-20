@@ -197,12 +197,14 @@ export async function handleGhlLeadWebhook(payload: GhlLeadWebhookRequest): Prom
   return { duplicate: false };
 }
 
-// payload.isFirstOrder is `boolean | "true" | "false" | undefined` — see the
+// payload.isFirstTimeOrder is `boolean | string | undefined` — see the
 // comment on baskOrderWebhookRequestSchema for why the string variant isn't
-// coerced in the schema itself.
-function parseIsFirstOrder(value: boolean | "true" | "false" | undefined): boolean | undefined {
+// coerced in the schema itself. Confirmed against a real Zapier payload that
+// the string form can be capitalized Python-style ("False"/"True"), so this
+// compares case-insensitively rather than against a fixed "true"/"false".
+function parseIsFirstOrder(value: boolean | string | undefined): boolean | undefined {
   if (value === undefined) return undefined;
-  return typeof value === "boolean" ? value : value === "true";
+  return typeof value === "boolean" ? value : value.trim().toLowerCase() === "true";
 }
 
 export async function handleBaskOrderWebhook(payload: BaskOrderWebhookRequest): Promise<{ duplicate: boolean }> {
@@ -242,7 +244,7 @@ export async function handleBaskOrderWebhook(payload: BaskOrderWebhookRequest): 
       // our own "does an earlier purchase row exist" check even though
       // they're a real repeat customer). Fall back to that DB-derived check
       // only when Bask doesn't send the flag.
-      isFirstOrder = parseIsFirstOrder(payload.isFirstOrder) ?? !earlier;
+      isFirstOrder = parseIsFirstOrder(payload.isFirstTimeOrder) ?? !earlier;
 
       // The partial unique index (purchases_customer_first_order_key) forbids
       // a second "first_order" row for the same customer, and a customer we
