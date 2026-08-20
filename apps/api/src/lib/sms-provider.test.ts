@@ -36,13 +36,13 @@ describe("getSmsProvider", () => {
   });
 
   describe("IbluSendProvider.sendMessage", () => {
-    it("sends an instant message and returns the provider message id", async () => {
+    it("sends a message and returns the provider message id", async () => {
       process.env.SMS_PROVIDER = "iblusend";
       process.env.IBLUSEND_API_KEY = "iblu_test_abc123";
 
       const fetchMock = vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ success: true, message_id: "sim_abc123", mode: "instant", status: "sent", sandbox: true }),
+        json: async () => ({ success: true, message_id: "sim_abc123" }),
       });
       vi.stubGlobal("fetch", fetchMock);
 
@@ -50,14 +50,14 @@ describe("getSmsProvider", () => {
 
       expect(result).toEqual({ providerMessageId: "sim_abc123" });
       expect(fetchMock).toHaveBeenCalledWith(
-        "https://api.iblusend.com/functions/v1/agent-api/messages",
+        "https://api.iblusend.com/functions/v1/send-message",
         expect.objectContaining({
           method: "POST",
           headers: expect.objectContaining({ Authorization: "Bearer iblu_test_abc123" }),
         }),
       );
       const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-      expect(body).toEqual({ phone_number: "+15551234567", content: "Hello there", send_mode: "instant" });
+      expect(body).toEqual({ phone_number: "+15551234567", content: "Hello there" });
     });
 
     it("throws when iBluSend responds with a non-2xx status", async () => {

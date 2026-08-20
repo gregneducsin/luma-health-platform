@@ -22,28 +22,22 @@ export class SmsProviderNotConfiguredError extends Error {
 }
 
 /**
- * iBluSend — iMessage-first send with SMS fallback, via the dedicated AI
- * Agent API (/agent-api/messages), not the generic /send-message endpoint —
- * iBluSend's own docs recommend the Agent API specifically for AI-bot
- * traffic ("safer than pointing an agent at raw iMessage"), and it's the
- * only one of the two with the pacing behavior send_mode controls.
+ * iBluSend — sends via the plain /send-message endpoint, not the AI Agent
+ * API (/agent-api/messages). The Agent API is the endpoint iBluSend's docs
+ * recommend for third-party AI/bot traffic and offers pacing controls
+ * (send_mode) the plain endpoint doesn't, but it requires an "AI Agent API"
+ * account-level add-on to be separately enabled (Settings → Developer → AI
+ * Agent tab) — confirmed against a real 403 agent_api_disabled response in
+ * production 2026-08-20. Deliberately not enabling that add-on: Lucy/Sarah's
+ * replies are already fully drafted by our own Claude integration before
+ * this function is ever called, so there's nothing for iBluSend's AI
+ * feature to add. /send-message has no pacing option, but every caller here
+ * is a live conversational reply, not paced bulk outreach, so that's not a
+ * loss in practice.
  *
- * send_mode "instant" is used unconditionally here (not the default "drip"
- * paced queue): every caller of SmsProvider.sendMessage is a conversational
- * reply to an inbound message Lucy/Sarah just processed, not cold outreach,
- * so it should go out now, not be paced over the next ~10 minutes.
- *
- * Field names (phone_number/content, not to/message) and the path itself
- * (agent-api/messages, no /v1/) were corrected 2026-08-21 against iBluSend's
- * current docs — the previous values didn't match any endpoint shown there
- * and would have failed against the real API. The exact instant-send rate
- * limit (previously noted here as 10/min, 75/day) isn't confirmed against
- * the current docs, which only publish the general per-plan API rate limit
- * (Starter 60/min, Pro 150/min, Agency 500/min) and defer pacing specifics
- * to a separate "AI Agent Guide" not yet reviewed — a caller exceeding
- * whatever the real limit is gets a thrown error either way, same as any
- * other send failure; the dispatch pipeline (sendAndLog) already
- * logs-and-continues rather than blocking on a transport failure.
+ * Field names (phone_number/content) and the path (send-message, no
+ * agent-api prefix, no /v1/) are taken directly from iBluSend's
+ * "Send-Message API Reference" docs, confirmed 2026-08-20.
  */
 class IbluSendProvider implements SmsProvider {
   constructor(
@@ -52,13 +46,13 @@ class IbluSendProvider implements SmsProvider {
   ) {}
 
   async sendMessage(to: string, body: string): Promise<SmsSendResult> {
-    const res = await fetch(`${this.baseUrl}/agent-api/messages`, {
+    const res = await fetch(`${this.baseUrl}/send-message`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ phone_number: to, content: body, send_mode: "instant" }),
+      body: JSON.stringify({ phone_number: to, content: body }),
     });
 
     if (!res.ok) {
