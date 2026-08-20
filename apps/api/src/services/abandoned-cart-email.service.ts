@@ -1,4 +1,4 @@
-import { and, eq, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, lte, sql } from "drizzle-orm";
 import { db, abandonedCartEmailTriggersTable, customersTable, purchasesTable, questionnaireEventsTable } from "@luma/db";
 import { getOrCreateEmailConversation, appendEmailMessage, updateEmailConversationState } from "./email-conversations.service.js";
 import { createIntakeLink } from "./intake-links.service.js";
@@ -35,14 +35,40 @@ const STEP_DELAY_MS: Record<AbandonedCartEmailStep, number> = {
  * `abandoned` questionnaire event — same trigger point as the SMS opener
  * (scheduleAbandonedCartOpener), called alongside it. Idempotent per step:
  * the unique index on (questionnaireEventId, step) means a duplicate
- * `abandoned` webhook delivery can't double-schedule any step.
+ * `abandoned` webhook delivery for the *same* questionnaire event can't
+ * double-schedule any step.
+ *
+ * That index alone doesn't cover a second, distinct questionnaire event for
+ * the same person (e.g. Bask assigns a new questionnaireId when someone
+ * restarts/resubmits the intake questionnaire) — without this check, that
+ * would arm a whole second independent 4-step sequence stacked on top of
+ * one already in flight, so the same step from each sequence can land
+ * within minutes of each other and read as the same email sent twice. Skip
+ * arming a new sequence while the person already has one in progress; a
+ * later, genuinely new abandonment is still free to start its own sequence
+ * once the first one has fully finished (every step sent/cancelled/failed).
  */
 export async function scheduleAbandonedCartEmailSequence(personId: string, questionnaireEventId: string): Promise<void> {
-  const now = Date.now();
-  await db
-    .insert(abandonedCartEmailTriggersTable)
-    .values(STEP_ORDER.map((step) => ({ personId, questionnaireEventId, step, dueAt: new Date(now + STEP_DELAY_MS[step]) })))
-    .onConflictDoNothing({ target: [abandonedCartEmailTriggersTable.questionnaireEventId, abandonedCartEmailTriggersTable.step] });
+  await db.transaction(async (tx) => {
+    // Lock the customer row so two near-simultaneous "abandoned" events for
+    // the same person can't both see "no active sequence yet" and both arm
+    // one — see the identical per-customer lock pattern in
+    // handleBaskOrderWebhook.
+    await tx.select({ id: customersTable.id }).from(customersTable).where(eq(customersTable.id, personId)).for("update");
+
+    const [existing] = await tx
+      .select({ id: abandonedCartEmailTriggersTable.id })
+      .from(abandonedCartEmailTriggersTable)
+      .where(and(eq(abandonedCartEmailTriggersTable.personId, personId), inArray(abandonedCartEmailTriggersTable.status, ["pending", "processing"])))
+      .limit(1);
+    if (existing) return;
+
+    const now = Date.now();
+    await tx
+      .insert(abandonedCartEmailTriggersTable)
+      .values(STEP_ORDER.map((step) => ({ personId, questionnaireEventId, step, dueAt: new Date(now + STEP_DELAY_MS[step]) })))
+      .onConflictDoNothing({ target: [abandonedCartEmailTriggersTable.questionnaireEventId, abandonedCartEmailTriggersTable.step] });
+  });
 }
 
 function renderStep(step: AbandonedCartEmailStep, firstName: string, ctaUrl: string, unsubscribeUrl: string): RenderedEmail {

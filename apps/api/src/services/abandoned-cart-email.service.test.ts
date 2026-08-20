@@ -79,6 +79,43 @@ describe("scheduleAbandonedCartEmailSequence", () => {
     const triggers = await rows(personId);
     expect(triggers).toHaveLength(4);
   });
+
+  it("does not arm a second overlapping sequence for a distinct questionnaire event on the same person", async () => {
+    // Simulates a restarted/resubmitted questionnaire attempt getting a new
+    // Bask questionnaireId — a genuinely different questionnaireEventId, so
+    // the (questionnaireEventId, step) unique index alone wouldn't catch
+    // this. This is the real bug: without the person-level guard, the
+    // customer would end up with 8 pending rows (two full sequences) instead
+    // of 4, and the same step from each could fire minutes apart — reading
+    // as the same email sent twice.
+    const personId = await seedCustomer();
+    const firstEventId = await seedAbandonedQuestionnaire(personId);
+    const secondEventId = await seedAbandonedQuestionnaire(personId);
+
+    await scheduleAbandonedCartEmailSequence(personId, firstEventId);
+    await scheduleAbandonedCartEmailSequence(personId, secondEventId);
+
+    const triggers = await rows(personId);
+    expect(triggers).toHaveLength(4);
+    expect(triggers.every((t) => t.questionnaireEventId === firstEventId)).toBe(true);
+  });
+
+  it("does start a fresh sequence once the person's previous one has fully finished", async () => {
+    const personId = await seedCustomer();
+    const firstEventId = await seedAbandonedQuestionnaire(personId);
+    await scheduleAbandonedCartEmailSequence(personId, firstEventId);
+
+    // All 4 steps reach a terminal state (simulating the first sequence
+    // having fully run its course, sent or cancelled).
+    await db.update(abandonedCartEmailTriggersTable).set({ status: "sent" }).where(eq(abandonedCartEmailTriggersTable.personId, personId));
+
+    const secondEventId = await seedAbandonedQuestionnaire(personId);
+    await scheduleAbandonedCartEmailSequence(personId, secondEventId);
+
+    const triggers = await rows(personId);
+    expect(triggers).toHaveLength(8);
+    expect(triggers.filter((t) => t.questionnaireEventId === secondEventId && t.status === "pending")).toHaveLength(4);
+  });
 });
 
 describe("sweepAbandonedCartEmailTriggers", () => {

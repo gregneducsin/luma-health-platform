@@ -60,6 +60,23 @@ describe("scheduleAbandonedCartOpener", () => {
     const triggers = await db.select().from(abandonedCartTriggersTable).where(eq(abandonedCartTriggersTable.personId, personId));
     expect(triggers.length).toBe(1);
   });
+
+  it("does not arm a second opener for a distinct questionnaire event on the same person while one is still pending", async () => {
+    // Same bug as the email sequence: a restarted questionnaire attempt gets
+    // a new questionnaireEventId, which the per-event unique index alone
+    // wouldn't catch — without this guard the person would get two opener
+    // texts instead of one.
+    const personId = await seedCustomer();
+    const firstEventId = await seedAbandonedQuestionnaire(personId);
+    const secondEventId = await seedAbandonedQuestionnaire(personId);
+
+    await scheduleAbandonedCartOpener(personId, firstEventId);
+    await scheduleAbandonedCartOpener(personId, secondEventId);
+
+    const triggers = await db.select().from(abandonedCartTriggersTable).where(eq(abandonedCartTriggersTable.personId, personId));
+    expect(triggers).toHaveLength(1);
+    expect(triggers[0].questionnaireEventId).toBe(firstEventId);
+  });
 });
 
 describe("sweepAbandonedCartTriggers", () => {

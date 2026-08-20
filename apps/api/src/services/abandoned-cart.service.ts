@@ -1,4 +1,4 @@
-import { and, eq, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, lte, sql } from "drizzle-orm";
 import { db, abandonedCartTriggersTable, customersTable, purchasesTable, questionnaireEventsTable } from "@luma/db";
 import { getOrCreateConversation, appendMessage, updateConversationState } from "./conversations.service.js";
 import { scheduleLeadCheckin } from "./lead-checkin.service.js";
@@ -20,13 +20,30 @@ export interface AbandonedCartSweepResult {
  * fires an `abandoned` questionnaire event — fully automated, 24/7, no
  * monitored-hours window. Idempotent: the unique index on
  * questionnaireEventId means a duplicate `abandoned` webhook delivery for
- * the same questionnaire can't schedule (or send) a second opener.
+ * the *same* questionnaire event can't schedule (or send) a second opener.
+ *
+ * That alone doesn't cover a second, distinct questionnaire event for the
+ * same person (e.g. a restarted/resubmitted questionnaire gets a new Bask
+ * questionnaireId) — same gap as scheduleAbandonedCartEmailSequence, fixed
+ * the same way: skip arming a second opener while one is already pending
+ * for this person.
  */
 export async function scheduleAbandonedCartOpener(personId: string, questionnaireEventId: string): Promise<void> {
-  await db
-    .insert(abandonedCartTriggersTable)
-    .values({ personId, questionnaireEventId, dueAt: new Date(Date.now() + OPENER_DELAY_MS) })
-    .onConflictDoNothing({ target: abandonedCartTriggersTable.questionnaireEventId });
+  await db.transaction(async (tx) => {
+    await tx.select({ id: customersTable.id }).from(customersTable).where(eq(customersTable.id, personId)).for("update");
+
+    const [existing] = await tx
+      .select({ id: abandonedCartTriggersTable.id })
+      .from(abandonedCartTriggersTable)
+      .where(and(eq(abandonedCartTriggersTable.personId, personId), inArray(abandonedCartTriggersTable.status, ["pending", "processing"])))
+      .limit(1);
+    if (existing) return;
+
+    await tx
+      .insert(abandonedCartTriggersTable)
+      .values({ personId, questionnaireEventId, dueAt: new Date(Date.now() + OPENER_DELAY_MS) })
+      .onConflictDoNothing({ target: abandonedCartTriggersTable.questionnaireEventId });
+  });
 }
 
 /**
