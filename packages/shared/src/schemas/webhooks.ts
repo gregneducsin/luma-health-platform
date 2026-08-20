@@ -42,12 +42,23 @@ export const baskOrderWebhookRequestSchema = z
     // Bask's own transaction identifier — used as ecommerceOrderId when that
     // field isn't separately provided.
     transactionId: z.string().min(1).optional(),
+    // Bask's own record of whether this is the customer's first order,
+    // relayed through the Zapier zap that reshapes Bask's native "newOrder"
+    // webhook (data.isFirstTimeOrder) into this flat payload. Optional
+    // because it requires that field to be added to the Zapier mapping —
+    // the handler falls back to its own "does a prior purchase row exist"
+    // check when it's absent. Accepts a stringified boolean too since
+    // Zapier's raw-body JSON editor can send either depending on how the
+    // field is typed in the zap — left un-transformed (no .transform()) so
+    // this stays a plain union type; a transform here breaks z.infer's
+    // output-type computation for the surrounding .passthrough() object.
+    // parseIsFirstOrder() in webhooks.service.ts does the string -> boolean
+    // coercion instead.
+    isFirstOrder: z.union([z.boolean(), z.enum(["true", "false"])]).optional(),
   })
-  // Bask's payload reportedly includes a first-order true/false flag we
-  // haven't modeled yet (our own DB-derived "does a prior purchase row
-  // exist" check has been shown to disagree with it for real customers).
+  // Bask's payload may include other fields we haven't modeled yet.
   // .passthrough() (instead of the default strip-unknown-keys behavior)
-  // keeps that field — and anything else we haven't modeled — alive in
+  // keeps them alive in
   // parsed.data, so the raw payload stored in webhook_events.raw_payload by
   // recordWebhookEventIfNew captures it on the next real delivery instead of
   // silently discarding it before we ever get to look.
