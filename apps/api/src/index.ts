@@ -7,6 +7,7 @@ import { sweepAbandonedCartEmailTriggers } from "./services/abandoned-cart-email
 import { sweepMetaLeadEmailTriggers } from "./services/meta-lead-email.service.js";
 import { sweepReviewRequestTriggers } from "./services/order-fulfillment.service.js";
 import { sweepLeadCheckinTriggers } from "./services/lead-checkin.service.js";
+import { sweepObjectionReengagementTriggers } from "./services/objection-reengagement.service.js";
 import { sweepInboundEmail } from "./services/email-inbound.service.js";
 
 // Migrations are applied as a discrete step before this process starts (see
@@ -79,6 +80,15 @@ setInterval(() => {
     logger.error({ err }, "lead check-in sweep failed");
   });
 }, LEAD_CHECKIN_SWEEP_INTERVAL_MS);
+
+// Objection re-engagement is due 2 weeks out — same coarse tick as the
+// lead-checkin sweep above is plenty precise for a delay measured in weeks.
+const OBJECTION_REENGAGEMENT_SWEEP_INTERVAL_MS = 30 * 60 * 1000;
+setInterval(() => {
+  sweepObjectionReengagementTriggers().catch((err) => {
+    logger.error({ err }, "objection re-engagement sweep failed");
+  });
+}, OBJECTION_REENGAGEMENT_SWEEP_INTERVAL_MS);
 
 // Inbound-email IMAP poll — same in-process interval pattern as the sweeps
 // above, just polling a mailbox instead of due DB rows (see

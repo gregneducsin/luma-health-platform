@@ -43,6 +43,7 @@ function okResult(overrides: Partial<Extract<LucyTurnResult, { ok: true }>> = {}
     nextQuestion: "Which plan are you considering?",
     link: null,
     objectionStage: 0,
+    objectionKey: null,
     linkProvided: false,
     promoOffered: false,
     inboundSentiment: "neutral",
@@ -79,6 +80,22 @@ describe("processInboundEmail", () => {
     expect(messages.map((m) => m.direction)).toEqual(["inbound", "outbound"]);
     expect(messages[1].messageId).toBe("<reply-1@example.com>");
     expect(messages[1].inReplyTo).toBe("<inbound-1@example.com>");
+  });
+
+  it("schedules a 2-week re-engagement text once think_about_it reaches stand-down over email too", async () => {
+    runLucyTurnMock.mockClear();
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<reply-standdown@example.com>" });
+    runLucyTurnMock.mockResolvedValueOnce(okResult({ objectionKey: "think_about_it", objectionStage: 2, nextQuestion: null }));
+
+    const personId = await seedCustomer();
+    await processInboundEmail(personId, "Question about pricing", "not sure I'm ready yet", "<inbound-standdown@example.com>");
+
+    const { db, objectionReengagementTriggersTable } = await import("@luma/db");
+    const { eq } = await import("drizzle-orm");
+    const [trigger] = await db.select().from(objectionReengagementTriggersTable).where(eq(objectionReengagementTriggersTable.personId, personId));
+    expect(trigger).toBeDefined();
+    expect(trigger.status).toBe("pending");
   });
 
   it("greets the customer by first name and signs off as Lucy — Claude's draft is only the substantive reply, not a full email", async () => {

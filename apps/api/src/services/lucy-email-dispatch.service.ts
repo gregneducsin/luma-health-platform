@@ -17,6 +17,7 @@ import { buildUnsubscribeUrl } from "../lib/email/unsubscribe.js";
 import { logger } from "../lib/logger.js";
 import { withPersonLock } from "../lib/db-lock.js";
 import { isCustomerEmailDnd, setCustomerEmailDnd } from "./dnd.service.js";
+import { scheduleObjectionReengagement } from "./objection-reengagement.service.js";
 
 async function getCustomerContact(personId: string): Promise<{ firstName: string; email: string } | undefined> {
   const [row] = await db.select({ firstName: customersTable.firstName, email: customersTable.email }).from(customersTable).where(eq(customersTable.id, personId));
@@ -177,10 +178,17 @@ async function processInboundEmailLocked(
     lastQuestion: result.nextQuestion,
     lastDraft: result.reply,
     objectionStage: result.objectionStage,
+    objectionKey: result.objectionKey,
     linkProvided: result.linkProvided,
     promoOffered: result.promoOffered,
     ...(result.requiresStaff ? { needsAttention: true } : {}),
   });
+
+  // Same follow-through as the SMS side — see the identical comment in
+  // lucy-dispatch.service.ts.
+  if (result.objectionKey === "think_about_it" && result.objectionStage === 2) {
+    await scheduleObjectionReengagement(personId, conversation.leadSource);
+  }
 
   return result;
 }

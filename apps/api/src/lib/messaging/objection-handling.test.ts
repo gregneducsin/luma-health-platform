@@ -21,6 +21,7 @@ function baseResult(overrides: Partial<ClaudeInteractiveResult> = {}): ClaudeInt
     nextQuestion: null,
     linkProvided: false,
     objectionStage: 0,
+    objectionKey: null,
     promoOffered: false,
     inboundSentiment: null,
     learnedFirstName: null,

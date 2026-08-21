@@ -116,6 +116,20 @@ export const conversationsTable = pgTable(
     pendingTopic: text("pending_topic"),
     lastDraft: text("last_draft"),
     objectionStage: integer("objection_stage").notNull().default(0),
+    /**
+     * Which objection objectionStage belongs to — null when none is
+     * currently in play. Without this, a single shared stage number can't
+     * tell "still pushing back on the same objection" apart from "a
+     * different objection just came up," letting an earlier objection's
+     * stand-down silently apply to an unrelated one — see
+     * lib/messaging/provider.ts's buildObjectionSection. Kept as a plain
+     * enum (duplicated from ObjectionKey in apps/api rather than imported —
+     * this package doesn't depend on apps/api) rather than a foreign key:
+     * these are fixed script identifiers, not referenced rows.
+     */
+    objectionKey: text("objection_key", {
+      enum: ["price", "think_about_it", "not_qualified", "is_legit", "no_time", "found_cheaper", "side_effects"],
+    }),
     linkProvided: boolean("link_provided").notNull().default(false),
     promoOffered: boolean("promo_offered").notNull().default(false),
     /**
@@ -241,6 +255,53 @@ export const leadCheckinTriggersTable = pgTable(
 );
 
 /**
+ * A one-time, 2-weeks-out re-engagement text, armed the moment a lead's
+ * "not ready yet" hesitation (the think_about_it objection) reaches
+ * STAND_DOWN — see objection-reengagement.service.ts and the standDown
+ * comment on think_about_it in lib/messaging/objection-handling.ts.
+ * Deliberately its own table rather than reusing leadCheckinTriggersTable:
+ * that one is keyed to a lead's very first outbound message and already has
+ * its own one-per-person meaning, whereas this arms (or doesn't) based on
+ * something that happens mid-conversation and may never happen at all.
+ * Same shape and sweep pattern as leadCheckinTriggersTable and
+ * followUpJobsTable on purpose — nothing new to design here, just the
+ * established pattern applied again.
+ */
+export const objectionReengagementTriggersTable = pgTable(
+  "objection_reengagement_triggers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => customersTable.id, { onDelete: "cascade" }),
+    /**
+     * Captured at arm time from whichever conversation (SMS or email) hit
+     * the stand-down — this can be the very first SMS conversation row for
+     * a lead who only ever engaged by email before this, so the sweep can't
+     * rely on getOrCreateConversation's "abandoned_cart" default being
+     * right. Same reasoning as leadSource on intakeLinkTokensTable.
+     */
+    leadSource: text("lead_source", { enum: ["abandoned_cart", "meta_form"] }).notNull().default("abandoned_cart"),
+    dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
+    status: text("status", { enum: ["pending", "processing", "sent", "cancelled", "failed"] }).notNull().default("pending"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    providerMessageId: text("provider_message_id"),
+    cancelledReason: text("cancelled_reason"),
+    failureReason: text("failure_reason"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex("objection_reengagement_triggers_person_id_key").on(t.personId),
+    index("objection_reengagement_triggers_status_due_at_idx").on(t.status, t.dueAt),
+  ],
+);
+
+/**
  * SMS twin of unmatchedEmailThreadsTable (email.ts) — one row per
  * unrecognized SENDER phone number (not per text), grouping every inbound
  * text from that number into one thread. Unlike email, a phone number never
@@ -296,5 +357,6 @@ export type Conversation = typeof conversationsTable.$inferSelect;
 export type ConversationMessage = typeof conversationMessagesTable.$inferSelect;
 export type AbandonedCartTrigger = typeof abandonedCartTriggersTable.$inferSelect;
 export type LeadCheckinTrigger = typeof leadCheckinTriggersTable.$inferSelect;
+export type ObjectionReengagementTrigger = typeof objectionReengagementTriggersTable.$inferSelect;
 export type UnmatchedSmsThread = typeof unmatchedSmsThreadsTable.$inferSelect;
 export type UnmatchedSmsMessage = typeof unmatchedSmsMessagesTable.$inferSelect;

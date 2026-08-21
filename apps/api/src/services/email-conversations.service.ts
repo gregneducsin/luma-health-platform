@@ -1,6 +1,7 @@
 import { desc, eq, sql } from "drizzle-orm";
 import { db, emailConversationsTable, emailConversationMessagesTable, customersTable, type EmailConversation, type EmailConversationMessage } from "@luma/db";
 import type { BotPreviewRequestBody } from "../lib/messaging/types.js";
+import type { ObjectionKey } from "../lib/messaging/objection-handling.js";
 
 const MAX_HISTORY_MESSAGES = 20;
 
@@ -16,6 +17,7 @@ export interface EmailConversationStatePatch {
   readonly pendingTopic?: string | null;
   readonly lastDraft?: string | null;
   readonly objectionStage?: 0 | 1 | 2;
+  readonly objectionKey?: ObjectionKey | null;
   readonly linkProvided?: boolean;
   readonly promoOffered?: boolean;
   readonly needsAttention?: boolean;
@@ -110,6 +112,7 @@ export function toEmailPreviewBody(conversation: EmailConversation, history: rea
     pendingTopic: conversation.pendingTopic,
     lastDraft: conversation.lastDraft,
     objectionStage: conversation.objectionStage as 0 | 1 | 2,
+    objectionKey: conversation.objectionKey,
     linkProvided: conversation.linkProvided,
     promoOffered: conversation.promoOffered,
     customerFirstName,

@@ -33,6 +33,9 @@ export type ObjectionKey =
   | "found_cheaper"
   | "side_effects";
 
+/** Runtime list of the keys above, for building a zod enum / db enum from a single source of truth. */
+export const OBJECTION_KEYS = ["price", "think_about_it", "not_qualified", "is_legit", "no_time", "found_cheaper", "side_effects"] as const satisfies readonly ObjectionKey[];
+
 export interface ObjectionStageScript {
   readonly reply: string;
   /** Present for the rebuttal and secondAttempt stages; absent for standDown. */
@@ -68,16 +71,28 @@ export const OBJECTION_LIBRARY: readonly ObjectionScript[] = [
   },
   {
     key: "think_about_it",
+    // Rebuttal is deliberately a question, not a claim — "not ready yet" on
+    // its own isn't something to argue with, it's a prompt to find out what
+    // it actually means. A concrete answer here ("it's the cost", "I have a
+    // question about X") surfaces as its own, different objection at its own
+    // stage 0 — see the per-objection stage tracking in provider.ts's
+    // buildObjectionSection — so this step doubles as routing, not just
+    // stalling for time.
     rebuttal: {
-      reply: "Of course. Just so you know, filling out the questionnaire doesn't commit you to anything, a provider still has to review it first.",
-      nextQuestion: "Want to go ahead and get started?",
-      requiredTopics: ["how_luma_works"],
+      reply: "Totally fine, no rush.",
+      nextQuestion: "Is there anything specific holding you back, or any questions I can help answer?",
+      requiredTopics: [],
     },
     secondAttempt: {
-      reply: "Totally fine.",
-      nextQuestion: "How about we get the questionnaire started now, no obligation until a provider reviews it?",
+      reply: "No worries at all. No obligation until a provider reviews it.",
+      nextQuestion: "Want to just get the questionnaire started now?",
       requiredTopics: ["how_luma_works"],
     },
+    // Terminal for THIS conversation, but not the end of outreach — reaching
+    // stand-down on this specific objection arms a one-time re-engagement
+    // text 2 weeks out (see objection-reengagement.service.ts), the same way
+    // "no problem" from a real salesperson doesn't mean "never follow up
+    // again."
     standDown: {
       reply: "No problem, I'll leave it here for whenever you're ready.",
       requiredTopics: [],

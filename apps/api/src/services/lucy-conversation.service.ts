@@ -2,6 +2,7 @@ import { interactivePreCheck, interactivePostCheck } from "../lib/messaging/safe
 import { callClaudeInteractive, ProviderError } from "../lib/messaging/provider.js";
 import { getPreviewEnabledTopics } from "../lib/messaging/knowledge-catalog.js";
 import type { BotPreviewRequestBody, ClaudeInteractiveResult } from "../lib/messaging/types.js";
+import type { ObjectionKey } from "../lib/messaging/objection-handling.js";
 import { createIntakeLink } from "./intake-links.service.js";
 import { logger } from "../lib/logger.js";
 
@@ -13,6 +14,7 @@ export type LucyTurnResult =
       nextQuestion: string | null;
       link: string | null;
       objectionStage: 0 | 1 | 2;
+      objectionKey: ObjectionKey | null;
       linkProvided: boolean;
       promoOffered: boolean;
       inboundSentiment: "positive" | "neutral" | "negative" | null;
@@ -108,6 +110,7 @@ export async function runLucyTurn(personId: string, body: BotPreviewRequestBody)
         nextQuestion: null,
         link: null,
         objectionStage: body.objectionStage,
+        objectionKey: body.objectionKey,
         linkProvided: body.linkProvided,
         promoOffered: body.promoOffered,
         inboundSentiment: null,
@@ -191,6 +194,7 @@ export async function runLucyTurn(personId: string, body: BotPreviewRequestBody)
     nextQuestion: result.nextQuestion,
     link,
     objectionStage: result.objectionStage,
+    objectionKey: result.objectionKey,
     linkProvided: link !== null ? true : result.linkProvided,
     promoOffered: result.promoOffered,
     inboundSentiment: result.inboundSentiment,

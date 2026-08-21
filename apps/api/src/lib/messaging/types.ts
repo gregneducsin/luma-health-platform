@@ -8,6 +8,8 @@
  * No database imports. No outbound messaging SDK imports.
  */
 
+import type { ObjectionKey } from "./objection-handling.js";
+
 export type ClaudeInteractiveAction =
   | "reply"
   | "send_form"
@@ -56,6 +58,15 @@ export interface ClaudeInteractiveResult {
    * to select which stage's script applies to the next matching objection.
    */
   readonly objectionStage: 0 | 1 | 2;
+  /**
+   * Which objection (if any) this reply's objectionStage applies to — null
+   * when no objection is in play this turn. Lets the caller tell a brand-new
+   * objection apart from a continuation of the same one: without this, a
+   * single shared stage number can't distinguish "still pushing back on
+   * price, second attempt" from "now raising a completely different
+   * objection" (see BotPreviewRequestBody.objectionKey).
+   */
+  readonly objectionKey: ObjectionKey | null;
   /**
    * True when Claude used the first_month_offer knowledge topic at any point
    * in this session. Determines which signup link variant gets minted on
@@ -117,6 +128,14 @@ export interface BotPreviewRequestBody {
    *       must get the stage-3 stand-down (a plain close, no further asks)
    */
   readonly objectionStage: 0 | 1 | 2;
+  /**
+   * Which objection the stage above belongs to — null when none has been
+   * raised, or when the last one raised was a different objection than
+   * whatever comes up this turn (in which case the prompt treats it as a
+   * fresh objection at stage 0, regardless of the number above). See
+   * ClaudeInteractiveResult.objectionKey.
+   */
+  readonly objectionKey: ObjectionKey | null;
   /**
    * True when the approved intake link was already provided in a previous turn.
    * Claude should not repeat the link unless the customer explicitly asks again.

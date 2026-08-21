@@ -29,6 +29,10 @@ export const emailConversationsTable = pgTable(
     pendingTopic: text("pending_topic"),
     lastDraft: text("last_draft"),
     objectionStage: integer("objection_stage").notNull().default(0),
+    /** Which objection objectionStage belongs to — see the identical field on conversationsTable in messaging.ts. */
+    objectionKey: text("objection_key", {
+      enum: ["price", "think_about_it", "not_qualified", "is_legit", "no_time", "found_cheaper", "side_effects"],
+    }),
     linkProvided: boolean("link_provided").notNull().default(false),
     promoOffered: boolean("promo_offered").notNull().default(false),
     needsAttention: boolean("needs_attention").notNull().default(false),

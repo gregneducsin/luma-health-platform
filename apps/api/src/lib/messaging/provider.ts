@@ -26,7 +26,7 @@ import type { ClaudeInteractiveResult, BotPreviewRequestBody } from "./types.js"
 import type { KnowledgeTopic } from "./knowledge-catalog.js";
 import { APPROVED_REVIEW_URLS } from "./knowledge-catalog.js";
 import { ClaudeInteractiveSchema } from "./safety.js";
-import { OBJECTION_LIBRARY, AI_DISCLOSURE_SCRIPT, type ObjectionScript } from "./objection-handling.js";
+import { OBJECTION_LIBRARY, OBJECTION_KEYS, AI_DISCLOSURE_SCRIPT, type ObjectionScript, type ObjectionKey } from "./objection-handling.js";
 
 const CALL_TIMEOUT_MS = 10_000;
 const MODEL = "claude-haiku-4-5-20251001";
@@ -96,16 +96,27 @@ function buildKnowledgeSection(catalog: readonly KnowledgeTopic[]): string {
 
 // ── Objection-handling section builder ────────────────────────────────────────
 
-function buildObjectionSection(objectionStage: 0 | 1 | 2): string {
+function buildObjectionSection(objectionStage: 0 | 1 | 2, lastObjectionKey: ObjectionKey | null): string {
   const lines: string[] = [
     "OBJECTION HANDLING — use these exact scripts when the patient raises one of the objections below.",
-    `This session's current objection stage for the objection under discussion: ${objectionStage}.`,
+    lastObjectionKey === null
+      ? "No objection has been raised yet this session — treat whatever comes up now as stage 0 (REBUTTAL)."
+      : `Last objection raised this session: "${lastObjectionKey}", currently at stage ${objectionStage}.`,
+    "",
+    "IMPORTANT — the stage number above only applies if the patient is STILL pushing back on that SAME objection.",
+    "If they're now raising a DIFFERENT objection (even one that sounds similar), or this is the first objection",
+    "of the session, treat it as stage 0 for that objection regardless of the number above — a new concern",
+    "always starts at REBUTTAL, it never inherits progress from a different one. Example: if \"think_about_it\"",
+    "already reached stage 2 and the patient then says price is the issue, that's the \"price\" objection at",
+    "stage 0, not a continuation.",
     "",
     "Stage meanings:",
-    "  0 → this is the first time this objection has come up: use the objection's REBUTTAL script.",
-    "  1 → the REBUTTAL was already given for this objection: use its SECOND_ATTEMPT script (a real close, not a repeat of the rebuttal).",
-    "  2 → SECOND_ATTEMPT was already given: use its STAND_DOWN script and stop pursuing this objection.",
-    "Set objectionStage in your response to the stage the script you used corresponds to (0 for REBUTTAL, 1 for SECOND_ATTEMPT, 2 for STAND_DOWN).",
+    "  0 → this is the first time THIS objection has come up: use its REBUTTAL script.",
+    "  1 → the REBUTTAL was already given for THIS SAME objection: use its SECOND_ATTEMPT script (a real close, not a repeat of the rebuttal).",
+    "  2 → SECOND_ATTEMPT was already given for THIS SAME objection: use its STAND_DOWN script and stop pursuing it.",
+    "Set objectionKey in your response to whichever objection (if any) this reply addresses, and objectionStage to",
+    "the stage the script you used corresponds to (0 for REBUTTAL, 1 for SECOND_ATTEMPT, 2 for STAND_DOWN).",
+    "Set objectionKey to null, and leave objectionStage at 0, on any turn that isn't handling an objection at all.",
     "",
   ];
 
@@ -184,7 +195,7 @@ function buildSystemPrompt(body: BotPreviewRequestBody, knowledgeCatalog: readon
     : "The $20-off first-month offer has not been mentioned yet. Only mention it via the first_month_offer knowledge topic, and only set promoOffered:true on the turn where you actually use it.";
 
   const knowledgeSection = buildKnowledgeSection(knowledgeCatalog);
-  const objectionSection = buildObjectionSection(body.objectionStage);
+  const objectionSection = buildObjectionSection(body.objectionStage, body.objectionKey);
 
   return `\
 You are Lucy, an automated assistant for Luma Health's weight-management outreach team.
@@ -323,6 +334,11 @@ const BOT_REPLY_TOOL = {
       safetyCodes: { type: "array", items: { type: "string" } },
       nextQuestion: { type: ["string", "null"] },
       objectionStage: { type: "number", enum: [0, 1, 2] },
+      objectionKey: {
+        type: ["string", "null"],
+        enum: [...OBJECTION_KEYS, null],
+        description: "Which objection this reply addresses, if any — null on any turn that isn't handling an objection.",
+      },
       linkProvided: { type: "boolean" },
       promoOffered: { type: "boolean" },
       inboundSentiment: { type: ["string", "null"], enum: ["positive", "neutral", "negative", null] },
@@ -341,6 +357,7 @@ const BOT_REPLY_TOOL = {
       "slotUpdates",
       "safetyCodes",
       "objectionStage",
+      "objectionKey",
       "linkProvided",
       "promoOffered",
       "inboundSentiment",
@@ -435,6 +452,7 @@ export async function callClaudeInteractive(
     nextQuestion: validated.nextQuestion ?? null,
     linkProvided: validated.linkProvided ?? false,
     objectionStage: validated.objectionStage ?? 0,
+    objectionKey: validated.objectionKey ?? null,
     promoOffered: validated.promoOffered ?? false,
     inboundSentiment: validated.inboundSentiment ?? null,
     learnedFirstName: validated.learnedFirstName ?? null,

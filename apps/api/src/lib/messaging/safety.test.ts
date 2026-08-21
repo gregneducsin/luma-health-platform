@@ -18,6 +18,7 @@ function reply(overrides: Partial<ClaudeInteractiveResult> = {}): ClaudeInteract
     nextQuestion: "Would you like to go over the pricing?",
     linkProvided: false,
     objectionStage: 0,
+    objectionKey: null,
     promoOffered: false,
     inboundSentiment: null,
     learnedFirstName: null,

@@ -21,6 +21,7 @@
 import { z } from "zod";
 import type { ClaudeInteractiveResult } from "./types.js";
 import { APPROVED_REVIEW_URLS, APPROVED_PRICING_TOPIC_KEYS, PRODUCT_PRICING_TOPIC_KEYS } from "./knowledge-catalog.js";
+import { OBJECTION_KEYS } from "./objection-handling.js";
 
 // ── Zod schema for structured provider output ─────────────────────────────────
 
@@ -67,6 +68,8 @@ export const ClaudeInteractiveSchema = z
      * ClaudeInteractiveResult.objectionStage in types.ts for the stage meanings.
      */
     objectionStage: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional().default(0),
+    /** Which objection objectionStage belongs to — null when none is in play this turn. See ClaudeInteractiveResult.objectionKey in types.ts. */
+    objectionKey: z.enum(OBJECTION_KEYS).nullable().optional().default(null),
     /** True once the first_month_offer topic has been used at any point this session. */
     promoOffered: z.boolean().optional().default(false),
     /** Sentiment of the customer's most recent inbound message. Null with no inbound to react to. */

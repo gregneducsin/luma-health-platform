@@ -14,6 +14,7 @@ import { getSmsProvider } from "../lib/sms-provider.js";
 import { logger } from "../lib/logger.js";
 import { withPersonLock } from "../lib/db-lock.js";
 import { isCustomerSmsDnd, setCustomerSmsDnd } from "./dnd.service.js";
+import { scheduleObjectionReengagement } from "./objection-reengagement.service.js";
 
 async function getCustomerContact(personId: string): Promise<{ firstName: string; phone: string | null } | undefined> {
   const [row] = await db.select({ firstName: customersTable.firstName, phone: customersTable.phone }).from(customersTable).where(eq(customersTable.id, personId));
@@ -143,10 +144,18 @@ async function processInboundMessageLocked(personId: string, inboundBody: string
     lastQuestion: result.nextQuestion,
     lastDraft: result.reply,
     objectionStage: result.objectionStage,
+    objectionKey: result.objectionKey,
     linkProvided: result.linkProvided,
     promoOffered: result.promoOffered,
     ...(result.requiresStaff ? { needsAttention: true } : {}),
   });
+
+  // "No problem, I'll leave it here for whenever you're ready" is a
+  // stand-down for THIS conversation, not the end of outreach — see
+  // objection-reengagement.service.ts.
+  if (result.objectionKey === "think_about_it" && result.objectionStage === 2) {
+    await scheduleObjectionReengagement(personId, conversation.leadSource);
+  }
 
   return result;
 }
