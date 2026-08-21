@@ -136,7 +136,17 @@ const OPT_OUT_PHRASES_LOWER = [
  */
 const STOP_WORDS_UPPER = ["END", "QUIT"] as const;
 
-const EMERGENCY_WORDS_LOWER = ["emergency", "crisis", "suicide", "self-harm", "self harm", "911"] as const;
+const EMERGENCY_WORDS_LOWER = ["emergency", "crisis", "suicide", "self-harm", "self harm"] as const;
+
+/**
+ * "911" as a standalone token — split out from EMERGENCY_WORDS_LOWER because a
+ * plain substring check matches inside any digit string that happens to
+ * contain it: an order number ("78911"), a zip code, or a phone number all
+ * false-positived into a full emergency escalation. \b anchors don't work
+ * between two digits (both are word characters), so this checks that "911"
+ * is not immediately adjacent to another digit on either side.
+ */
+const EMERGENCY_911_RE = /(?<!\d)911(?!\d)/;
 
 const MEDICAL_WORDS_LOWER = [
   "symptom",
@@ -216,6 +226,17 @@ const SHIPPING_TIMING_PHRASES_LOWER = [
   "when is my order arriving",
   "how long does shipping take",
   "how long does delivery take",
+  // "When will/do I get/receive my prescription/medication/order" — the same
+  // shipping-question shape as the "how long ... to get my" phrases above,
+  // just asked with "when" instead of "how long." Same narrow "I get/receive
+  // my" framing (not "my medication starts working") so an efficacy/onset
+  // question stays routed to MEDICAL_CONTENT as before — see the file-level
+  // reasoning above about medication_onset_timeline being Sarah-only.
+  "when will i get my",
+  "when do i get my",
+  "when am i getting my",
+  "when will i receive my",
+  "when do i receive my",
 ] as const;
 
 /**
@@ -339,10 +360,20 @@ export function interactivePreCheck(lastInbound: string): InteractivePreCheckRes
     return { blocked: true, code: "OPT_OUT" };
   }
 
-  if (STOP_WORDS_UPPER.some((w) => tokens.includes(w))) {
+  // "END" is a common English word ("when does this end?", "does the plan
+  // ever end?") that isn't an opt-out signal when it's the tail of a
+  // question about something else. A genuine stop request ("END", "please
+  // end this", "I quit") is phrased as a statement/command, never as a
+  // question — so a message ending in "?" is excluded from this check.
+  // OPT_OUT (STOP/UNSUBSCRIBE, checked above) is intentionally NOT guarded
+  // this way: it's terminal (sets do-not-disturb) and the team has chosen to
+  // err toward never missing a real opt-out even at the cost of some false
+  // positives, whereas STOP_WORD only pauses the auto-reply for staff to
+  // look at, so the asymmetry doesn't apply here.
+  if (!lastInbound.trim().endsWith("?") && STOP_WORDS_UPPER.some((w) => tokens.includes(w))) {
     return { blocked: true, code: "STOP_WORD" };
   }
-  if (EMERGENCY_WORDS_LOWER.some((w) => lower.includes(w))) {
+  if (EMERGENCY_WORDS_LOWER.some((w) => lower.includes(w)) || EMERGENCY_911_RE.test(lower)) {
     return { blocked: true, code: "EMERGENCY_CONTENT" };
   }
   // Suitability is checked before medical so that phrases like

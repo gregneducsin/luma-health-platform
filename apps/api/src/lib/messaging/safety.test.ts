@@ -145,6 +145,31 @@ describe("interactivePreCheck", () => {
   it("prioritizes OPT_OUT over other categories", () => {
     expect(interactivePreCheck("STOP, this is an emergency")).toEqual({ blocked: true, code: "OPT_OUT" });
   });
+
+  it("does not treat '911' embedded in an unrelated number as an emergency", () => {
+    expect(interactivePreCheck("My order number is 78911, when will it ship?")).toEqual({ blocked: false });
+    expect(interactivePreCheck("I live at 91123 in California")).toEqual({ blocked: false });
+  });
+
+  it("still blocks a real 911 mention", () => {
+    expect(interactivePreCheck("This is a 911 emergency, please call me")).toEqual({ blocked: true, code: "EMERGENCY_CONTENT" });
+  });
+
+  it("does not block 'when will/do I get my prescription/medication' despite no 'arrive'/'ship' wording", () => {
+    expect(interactivePreCheck("When will I get my prescription?")).toEqual({ blocked: false });
+    expect(interactivePreCheck("When am I getting my medication?")).toEqual({ blocked: false });
+  });
+
+  it("does not treat 'end'/'quit' as a stop word when it's the tail of an unrelated question", () => {
+    expect(interactivePreCheck("When does this program end?")).toEqual({ blocked: false });
+    expect(interactivePreCheck("Does the plan ever end?")).toEqual({ blocked: false });
+    expect(interactivePreCheck("Can I quit anytime if it's not working?")).toEqual({ blocked: false });
+  });
+
+  it("still blocks a bare END/QUIT stop request", () => {
+    expect(interactivePreCheck("quit")).toEqual({ blocked: true, code: "STOP_WORD" });
+    expect(interactivePreCheck("END")).toEqual({ blocked: true, code: "STOP_WORD" });
+  });
 });
 
 // ── Post-check: URL allowlisting ──────────────────────────────────────────────

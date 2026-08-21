@@ -66,7 +66,10 @@ const OPT_OUT_PHRASES_LOWER = [
   "stop contacting me",
 ] as const;
 const STOP_WORDS_UPPER = ["END", "QUIT"] as const;
-const EMERGENCY_WORDS_LOWER = ["emergency", "crisis", "suicide", "self-harm", "self harm", "911"] as const;
+const EMERGENCY_WORDS_LOWER = ["emergency", "crisis", "suicide", "self-harm", "self harm"] as const;
+
+/** "911" as a standalone token — see the matching comment in messaging/safety.ts for why a plain substring check false-positives on order numbers, zip codes, and phone numbers. */
+const EMERGENCY_911_RE = /(?<!\d)911(?!\d)/;
 const LEGAL_WORDS_LOWER = ["attorney", "lawyer", "lawsuit", "litigation", "legal action"] as const;
 /**
  * "sue"/"sues"/"sued"/"suing" as a standalone word — split out from
@@ -100,7 +103,6 @@ const PRESCRIPTION_QUESTION_PHRASES_LOWER = [
   "doses",
   "dosage",
   "dosing",
-  "mg",
   "side effect",
   "diagnosis",
   "diagnose",
@@ -118,11 +120,30 @@ const PRESCRIPTION_QUESTION_PHRASES_LOWER = [
   "switch my medication",
   "change the medication",
   "refill early",
-  "is it safe",
+  // "is it safe" narrowed to medication-context tails, not the bare phrase —
+  // a bare substring also matched non-clinical questions like "is it safe to
+  // leave the package on my porch," silently routing an ordinary delivery
+  // question to staff instead of letting Sarah answer it.
+  "is it safe for me",
+  "is it safe to take",
+  "is it safe to combine",
+  "is it safe to mix",
+  "is it safe with",
   "interact with",
   "allergic",
   "contraindicat",
 ] as const;
+
+/**
+ * "mg" as a dosage unit — split out from the phrase list above because a
+ * bare substring check also matches inside "omg," an extremely common
+ * casual expression ("OMG thank you so much!!") that has nothing to do with
+ * dosage. Matches a standalone "mg" word (surrounded by non-word characters,
+ * e.g. "how many mg do I take") or a digit immediately followed by "mg"
+ * ("5mg", "2.5mg") — real dosage mentions always take one of these two
+ * shapes, "omg" takes neither.
+ */
+const MG_DOSAGE_RE = /\bmg\b|\d\s?mg\b/i;
 
 export type SupportPreCheckResult = { readonly blocked: false } | { readonly blocked: true; readonly code: string };
 
@@ -136,9 +157,12 @@ export function supportPreCheck(lastInbound: string): SupportPreCheckResult {
 
   if (OPT_OUT_WORDS_UPPER.some((w) => tokens.includes(w))) return { blocked: true, code: "OPT_OUT" };
   if (OPT_OUT_PHRASES_LOWER.some((w) => lower.includes(w))) return { blocked: true, code: "OPT_OUT" };
-  if (STOP_WORDS_UPPER.some((w) => tokens.includes(w))) return { blocked: true, code: "STOP_WORD" };
-  if (EMERGENCY_WORDS_LOWER.some((w) => lower.includes(w))) return { blocked: true, code: "EMERGENCY_CONTENT" };
-  if (PRESCRIPTION_QUESTION_PHRASES_LOWER.some((w) => lower.includes(w))) return { blocked: true, code: "PRESCRIPTION_QUESTION" };
+  // See the matching comment in messaging/safety.ts's interactivePreCheck: a
+  // message ending in "?" is excluded because "END"/"QUIT" as a bare word is
+  // routinely just the tail of an unrelated question ("when does this end?").
+  if (!lastInbound.trim().endsWith("?") && STOP_WORDS_UPPER.some((w) => tokens.includes(w))) return { blocked: true, code: "STOP_WORD" };
+  if (EMERGENCY_WORDS_LOWER.some((w) => lower.includes(w)) || EMERGENCY_911_RE.test(lower)) return { blocked: true, code: "EMERGENCY_CONTENT" };
+  if (PRESCRIPTION_QUESTION_PHRASES_LOWER.some((w) => lower.includes(w)) || MG_DOSAGE_RE.test(lower)) return { blocked: true, code: "PRESCRIPTION_QUESTION" };
   if (LEGAL_WORDS_LOWER.some((w) => lower.includes(w)) || LEGAL_SUE_RE.test(lower)) return { blocked: true, code: "LEGAL_CONTENT" };
 
   return { blocked: false };

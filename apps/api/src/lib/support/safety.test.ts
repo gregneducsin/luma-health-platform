@@ -68,6 +68,40 @@ describe("supportPreCheck", () => {
     expect(supportPreCheck("I want to pursue this further")).toEqual({ blocked: false });
     expect(supportPreCheck("this is an issue with my order")).toEqual({ blocked: false });
   });
+
+  it("does not treat '911' embedded in an unrelated number as an emergency", () => {
+    expect(supportPreCheck("My tracking number is 78911, any updates?")).toEqual({ blocked: false });
+  });
+
+  it("still blocks a real 911 mention", () => {
+    expect(supportPreCheck("This is a 911 emergency, please call me")).toEqual({ blocked: true, code: "EMERGENCY_CONTENT" });
+  });
+
+  it("does not treat 'omg' as a dosage ('mg') mention", () => {
+    expect(supportPreCheck("OMG thank you so much!!")).toEqual({ blocked: false });
+  });
+
+  it("still blocks a real dosage-in-digits mention", () => {
+    expect(supportPreCheck("I take 5mg right now")).toEqual({ blocked: true, code: "PRESCRIPTION_QUESTION" });
+  });
+
+  it("does not treat a non-medical safety question as a prescription question", () => {
+    expect(supportPreCheck("Is it safe to leave the package on my porch?")).toEqual({ blocked: false });
+  });
+
+  it("still blocks medication-safety questions phrased as 'is it safe'", () => {
+    expect(supportPreCheck("Is it safe to take this with my other meds?")).toEqual({ blocked: true, code: "PRESCRIPTION_QUESTION" });
+    expect(supportPreCheck("Is it safe for me to double up this week?")).toEqual({ blocked: true, code: "PRESCRIPTION_QUESTION" });
+  });
+
+  it("does not treat 'end'/'quit' as a stop word when it's the tail of an unrelated question", () => {
+    expect(supportPreCheck("When does this program end?")).toEqual({ blocked: false });
+    expect(supportPreCheck("Can I quit anytime if it's not working?")).toEqual({ blocked: false });
+  });
+
+  it("still blocks a bare END/QUIT stop request", () => {
+    expect(supportPreCheck("quit")).toEqual({ blocked: true, code: "STOP_WORD" });
+  });
 });
 
 function check(raw: SarahInteractiveResult, lastDraft: string | null = null, permittedTopicKeys?: ReadonlySet<string>) {
