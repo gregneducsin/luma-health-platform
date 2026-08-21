@@ -126,6 +126,7 @@ interface Classification {
   readonly matchCandidateIndex: number | null;
   readonly matchConfidence: "high" | "medium" | "low" | null;
   readonly needsHumanReview: boolean;
+  readonly confirmsExistingCustomer: boolean;
 }
 
 const CLASSIFY_TOOL: Anthropic.Tool = {
@@ -159,8 +160,23 @@ const CLASSIFY_TOOL: Anthropic.Tool = {
         description:
           "True when you genuinely can't confidently draft a safe reply yourself — real confusion about what they want, or anything needing individualized medical/clinical judgment (e.g. 'is this safe for my condition') — false for the ordinary cases you're equipped to handle (asking for a name or email, a plain informational question you can answer within the rules above). When true, suggestedReply is still your best-effort draft, but it's held for a person to review instead of sent automatically.",
       },
+      confirmsExistingCustomer: {
+        type: "boolean",
+        description:
+          "Only meaningful when told below that a prior message already asked this sender to confirm they're an existing customer under a different name. True only if their latest reply clearly confirms that (e.g. 'yes', 'that's me', gives the other name). False otherwise — including whenever that situation hasn't come up, an unclear reply, or a clear denial.",
+      },
     },
-    required: ["intent", "summary", "suggestedReply", "senderName", "senderEmail", "matchCandidateIndex", "matchConfidence", "needsHumanReview"],
+    required: [
+      "intent",
+      "summary",
+      "suggestedReply",
+      "senderName",
+      "senderEmail",
+      "matchCandidateIndex",
+      "matchConfidence",
+      "needsHumanReview",
+      "confirmsExistingCustomer",
+    ],
   },
 };
 
@@ -174,12 +190,17 @@ function buildTranscript(messages: readonly UnmatchedSmsMessage[]): string {
   return text;
 }
 
-function systemPrompt(candidates: readonly MatchCandidate[], knownName: string | null, knownEmail: string | null): string {
+function systemPrompt(candidates: readonly MatchCandidate[], knownName: string | null, knownEmail: string | null, pendingConfirmation: boolean): string {
   const candidateList = candidates.length
     ? candidates.map((c, i) => `${i}: ${c.firstName} ${c.lastName} (${c.email})`).join("\n")
     : "(no plausible candidates found)";
 
+  const pendingConfirmationNote = pendingConfirmation
+    ? `\nIMPORTANT: on a prior turn, we already asked this sender to confirm whether they go by a different name, because the email they gave matches an existing account under a different name. Read their latest reply in the thread below: if it clearly confirms that's them (e.g. "yes", "that's me", they give the other name), set confirmsExistingCustomer to true and draft a brief reply acknowledging you've found their account — do not restate or guess the name on file. If the reply is unclear or denies it, set confirmsExistingCustomer to false and continue normally (treat them as a new contact, asking for whatever's still needed).\n`
+    : "";
+
   return `You triage inbound SMS at Luma Health, a healthcare company, for a phone number that doesn't match any customer record in the CRM. You're seeing the full text thread so far with this sender, not just one message.
+${pendingConfirmationNote}
 
 Classify the message and draft a reply. Unless you set needsHumanReview:true, this reply is sent automatically — no one reviews it first. Take that seriously: stay inside the rules below, and set needsHumanReview:true the moment you're genuinely unsure rather than guessing.
 
@@ -213,6 +234,7 @@ async function classifyAndDraft(
   collectedEmail: string | null,
   messages: readonly UnmatchedSmsMessage[],
   candidates: readonly MatchCandidate[],
+  pendingConfirmation: boolean,
 ): Promise<Classification> {
   const client = getClient();
   const transcript = buildTranscript(messages);
@@ -220,7 +242,7 @@ async function classifyAndDraft(
   const createPromise = client.messages.create({
     model: MODEL,
     max_tokens: 500,
-    system: systemPrompt(candidates, fromName, collectedEmail),
+    system: systemPrompt(candidates, fromName, collectedEmail, pendingConfirmation),
     tools: [CLASSIFY_TOOL],
     tool_choice: { type: "tool", name: "classify_unmatched_sms" },
     messages: [{ role: "user", content: `From: ${fromPhone}\n\nThread so far:\n${transcript}` }],
@@ -299,13 +321,19 @@ async function maybeCreateLead(
 
 /**
  * Auto-connects to an existing customer with NO human review — the one
- * exception to "any match stays human-gated" above. Deliberately narrow:
- * only fires when the texted name AND the collected email both point at
- * the exact same existing customer, not either signal alone (a name match
- * alone could be a common-name coincidence; an email match alone doesn't
- * confirm this is really the same person texting, just that the email
- * exists somewhere). Both agreeing on the same row is unambiguous enough
- * that requiring a person to rubber-stamp it is friction, not safety.
+ * exception to "any match stays human-gated" above. Two ways in:
+ *   1. The texted name AND the collected email both point at the exact same
+ *      existing customer — neither signal alone (a name match could be a
+ *      common-name coincidence; an email match alone doesn't confirm this
+ *      is really the same person texting) is enough, but both agreeing is
+ *      unambiguous enough that a rubber-stamp step is friction, not safety.
+ *   2. The email matches but the name doesn't (or isn't known), and the
+ *      sender has since explicitly confirmed in the conversation that it's
+ *      them under a different name (see the pendingConfirmation flow in
+ *      recordAndClassifyUnmatchedSms and systemPrompt) — a person, not a
+ *      string match, vouched for the identity, which is exactly what the
+ *      "held for a person to double check" case above is protecting
+ *      against, just answered by the sender themselves instead of staff.
  *
  * Updates the customer's phone to this number so every message after this
  * one routes through the normal known-customer path (findCustomerIdByPhone
@@ -313,10 +341,16 @@ async function maybeCreateLead(
  * sender flow every time — otherwise "rolls into the conversation" would
  * only be true for this one message, not an ongoing state.
  */
-async function findAutoConnectCustomerId(nameMatch: MatchCandidate | undefined, emailMatch: MatchCandidate | undefined, phone: string): Promise<string | null> {
-  if (!nameMatch || !emailMatch || nameMatch.id !== emailMatch.id) return null;
-  await db.update(customersTable).set({ phone }).where(eq(customersTable.id, nameMatch.id));
-  return nameMatch.id;
+async function findAutoConnectCustomerId(
+  nameMatch: MatchCandidate | undefined,
+  emailMatch: MatchCandidate | undefined,
+  emailMatchConfirmed: boolean,
+  phone: string,
+): Promise<string | null> {
+  const matchedId = nameMatch && emailMatch && nameMatch.id === emailMatch.id ? nameMatch.id : emailMatch && emailMatchConfirmed ? emailMatch.id : null;
+  if (!matchedId) return null;
+  await db.update(customersTable).set({ phone }).where(eq(customersTable.id, matchedId));
+  return matchedId;
 }
 
 /**
@@ -340,6 +374,21 @@ export async function listUnmatchedSmsMessages(threadId: string): Promise<Unmatc
 const ACK_VARIANTS = [
   "Hey! Thanks for reaching out to Luma Health — could you share your name so I know who I'm chatting with? Our team will follow up shortly.",
   "Hi there, thanks for texting Luma Health! What's your name so I know who I'm talking to? We'll follow up with you shortly.",
+] as const;
+
+/**
+ * Sent instead of Claude's drafted reply the first time an email this
+ * sender gives turns out to match an existing customer under a different
+ * name — fixed and deterministic rather than Claude-drafted because this
+ * exact turn is the one where the match is discovered, before Claude ever
+ * had a chance to be told about it (see the pendingConfirmation flow one
+ * turn later). Deliberately doesn't name the account on file — asking
+ * generically avoids handing account details to whoever is actually
+ * texting, in case it isn't really that person.
+ */
+const EMAIL_MATCH_CONFIRM_VARIANTS = [
+  "Thanks! Quick check on my end — that email's already on file with us under a different name. Do you go by another name too, or should I double check the email?",
+  "Got it! One thing — we've got that email on file under a different name already. Is that you going by another name, or want to double check the email you gave me?",
 ] as const;
 
 function pickVariant(variants: readonly string[]): string {
@@ -399,9 +448,25 @@ export async function recordAndClassifyUnmatchedSms(fromPhone: string, body: str
     return [];
   });
 
+  // Pre-classification check: does the email we already collected on a
+  // PRIOR turn match an existing customer whose name doesn't (yet) agree?
+  // If so, we already sent the fixed confirmation question below on that
+  // earlier turn, so this turn's classification needs to know it's likely
+  // reading the sender's answer to it (see pendingConfirmationNote in
+  // systemPrompt). Only looks at thread.collectedEmail — a brand-new email
+  // given THIS turn can't have been asked about yet, so that case is
+  // handled separately below, after classification runs.
+  const preEmailMatch = thread.collectedEmail
+    ? await findExistingCustomerByEmail(thread.collectedEmail).catch((err) => {
+        logger.warn({ reason: err instanceof Error ? err.message : String(err) }, "unmatched-sms pending-confirmation email lookup failed");
+        return undefined;
+      })
+    : undefined;
+  const pendingConfirmation = Boolean(preEmailMatch) && !thread.linkedCustomerId && !candidates.some((c) => c.id === preEmailMatch!.id);
+
   let classification: Classification | null = null;
   try {
-    classification = await classifyAndDraft(normalizedPhone, thread.fromName, thread.collectedEmail, messages, candidates);
+    classification = await classifyAndDraft(normalizedPhone, thread.fromName, thread.collectedEmail, messages, candidates, pendingConfirmation);
   } catch (err) {
     logger.warn({ reason: err instanceof Error ? err.message : String(err) }, "unmatched-sms classification failed");
   }
@@ -427,13 +492,28 @@ export async function recordAndClassifyUnmatchedSms(fromPhone: string, body: str
   // customer (never auto-linked — see maybeCreateLead) or someone claiming
   // to already be a customer both need a person to confirm identity before
   // anything goes out, regardless of Claude's own confidence. Does not
-  // apply when both signals agree on the same person — see
-  // findAutoConnectCustomerId.
+  // apply when the match resolves on its own — either signal agrees (see
+  // findAutoConnectCustomerId) or the sender is about to be asked to
+  // confirm it themselves (see isFirstEncounterWithEmailMatch below).
   const needsHumanReview = Boolean(classification?.needsHumanReview || matchCandidate || classification?.intent === "existing_customer_support");
 
-  const autoConnectCustomerId = thread.linkedCustomerId ? null : await findAutoConnectCustomerId(nameMatch, emailMatch, normalizedPhone);
+  const autoConnectCustomerId = thread.linkedCustomerId
+    ? null
+    : await findAutoConnectCustomerId(nameMatch, emailMatch, Boolean(classification?.confirmsExistingCustomer), normalizedPhone);
 
   const leadResult = classification && !autoConnectCustomerId ? await maybeCreateLead(thread, classification, Boolean(matchCandidate)) : null;
+
+  // The email just given THIS turn (not previously on file) turns out to
+  // match an existing customer, and the texted name doesn't already agree
+  // — rather than immediately parking for a person to double-check (the
+  // matchCandidate override above would otherwise do exactly that), ask
+  // the sender a generic, account-detail-free confirmation question and
+  // let their next reply resolve it via pendingConfirmation above. Only
+  // the FIRST time we see this (thread.collectedEmail was empty coming
+  // into this turn) — once asked, later turns fall through to the normal
+  // needsHumanReview handling if the reply doesn't clearly resolve it.
+  const isFirstEncounterWithEmailMatch =
+    Boolean(emailMatch) && !autoConnectCustomerId && !thread.linkedCustomerId && !thread.collectedEmail && !(nameMatch && emailMatch && nameMatch.id === emailMatch.id);
 
   let autoSent = false;
   if (autoConnectCustomerId) {
@@ -459,6 +539,12 @@ export async function recordAndClassifyUnmatchedSms(fromPhone: string, body: str
     } catch (err) {
       logger.warn({ threadId: thread.id, reason: err instanceof Error ? err.message : String(err) }, "handoff to Lucy after lead creation failed");
     }
+  } else if (isFirstEncounterWithEmailMatch && classification?.intent !== "spam_or_irrelevant") {
+    // Ask instead of park — see isFirstEncounterWithEmailMatch's comment
+    // above. Fixed wording, not Claude-drafted: this turn is the one where
+    // the match is discovered, before Claude could ever have been told
+    // about it to draft an informed question.
+    autoSent = await sendSmsAndLog(thread.id, normalizedPhone, pickVariant(EMAIL_MATCH_CONFIRM_VARIANTS));
   } else if (isFirstMessage && classification?.intent !== "spam_or_irrelevant") {
     // One immediate, fixed, content-free acknowledgment per thread — see
     // sendAutoAcknowledgment's docstring. Only on the thread's first-ever
