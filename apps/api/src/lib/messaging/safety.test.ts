@@ -115,6 +115,12 @@ describe("interactivePreCheck", () => {
     expect(interactivePreCheck("Will you prescribe me a higher dose?")).toEqual({ blocked: true, code: "MEDICAL_CONTENT" });
   });
 
+  it("does not block 'how long does the prescription/approval take' — the review-process duration, not a treatment-duration question", () => {
+    expect(interactivePreCheck("How long does the prescription take.")).toEqual({ blocked: false });
+    expect(interactivePreCheck("How long does it take to get approved?")).toEqual({ blocked: false });
+    expect(interactivePreCheck("How long until I get prescribed?")).toEqual({ blocked: false });
+  });
+
   it("blocks legal content", () => {
     expect(interactivePreCheck("I'm going to sue you")).toEqual({ blocked: true, code: "LEGAL_CONTENT" });
     // No trailing space/comma after "sue" — was previously missed.

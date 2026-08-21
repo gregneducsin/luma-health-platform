@@ -242,6 +242,23 @@ const PROCESS_QUESTION_PHRASES_LOWER = [
   "how does the prescription work",
   "what's the prescription process",
   "what is the prescription process",
+  // "How long does the prescription take" — how long the REVIEW/APPROVAL
+  // process takes, same "process" framing as the phrases above, just asked
+  // as a duration instead of a mechanism. Deliberately still narrow (needs
+  // "prescription"/"approval"/"approved" — not a bare "how long does it
+  // take") so a real treatment-duration question ("how long do I need to
+  // take this") still falls through to MEDICAL_CONTENT below.
+  "how long does the prescription take",
+  "how long does prescription take",
+  "how long does it take to get a prescription",
+  "how long does it take to get prescribed",
+  "how long does it take to get approved",
+  "how long until i get prescribed",
+  "how long until i'm approved",
+  "how long until i am approved",
+  "how long does approval take",
+  "how long does the approval take",
+  "how long does the approval process take",
   "what treatment options",
   "which treatment options",
   "how does treatment work",
