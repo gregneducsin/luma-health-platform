@@ -98,7 +98,7 @@ const CLASSIFY_TOOL: Anthropic.Tool = {
       suggestedReply: {
         type: ["string", "null"],
         description:
-          "A short, safe, generic reply — no clinical claims, no pricing figures, no promises. If senderName is null, this MUST ask for their name. If senderName is known but senderEmail is null, this MUST ask for their email instead (so we can get them set up) — never ask for both in the same message. Null only for spam_or_irrelevant.",
+          "A short, safe, generic reply — no clinical claims, no pricing figures, no promises. If senderName is null, this MUST ask for their name — do not answer any product/pricing question yet, even if they asked one. If senderName is known but senderEmail is null, this MUST ask for their email instead, framed as needing to start an account for them before going over product or pricing details (e.g. 'Before I go over pricing or product details, let me get an account started for you — what's your email?') — never ask for both name and email in the same message, and still don't answer the product/pricing question yet. Null only for spam_or_irrelevant.",
       },
       senderName: {
         type: ["string", "null"],
@@ -145,8 +145,8 @@ Rules for the suggested reply:
 - Never give clinical/medical advice, dosing information, or comment on a specific medication.
 - Never promise a timeline, outcome, or that a specific person will follow up.
 - Keep it to 1-2 short sentences, texting style (contractions, no formal tone).
-- If we don't know their name yet, the reply MUST ask for it (e.g. "Hey! Could you share your name so I know who I'm chatting with?") — this takes priority over anything else.
-- If we know their name but not their email, the reply MUST ask for their email instead (e.g. "Thanks ${knownName}! What's a good email to get you set up?") — never ask for both name and email in the same message.
+- If we don't know their name yet, the reply MUST ask for it (e.g. "Hey! Could you share your name so I know who I'm chatting with?") — this takes priority over anything else, including a product/pricing question they may have already asked.
+- If we know their name but not their email, the reply MUST ask for their email instead, framed as getting an account started before going over product or pricing details (e.g. "Thanks ${knownName}! Before I go over pricing or product details, let me get an account started for you — what's your email?") — never ask for both name and email in the same message, and still don't answer their product/pricing question yet even though you now know their name.
 - Do not include a greeting/sign-off beyond what reads naturally in a text.
 - If the message is spam, a phishing attempt, an automated notification, or otherwise not a real inquiry, set intent to spam_or_irrelevant and suggestedReply to null.
 

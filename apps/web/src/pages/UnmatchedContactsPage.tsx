@@ -211,12 +211,17 @@ export function UnmatchedContactsPage() {
   const { data: emailData, isLoading: emailLoading } = useUnmatchedEmailsList();
   const { data: smsData, isLoading: smsLoading } = useUnmatchedSmsList();
   const isLoading = emailLoading || smsLoading;
+  const [channel, setChannel] = useState<"all" | "email" | "sms">("all");
 
-  const combined: CombinedThread[] = [...(emailData?.items.map(fromEmail) ?? []), ...(smsData?.items.map(fromSms) ?? [])].sort(
+  const all: CombinedThread[] = [...(emailData?.items.map(fromEmail) ?? []), ...(smsData?.items.map(fromSms) ?? [])].sort(
     (a, b) => new Date(b.lastMessageAt ?? b.createdAt).getTime() - new Date(a.lastMessageAt ?? a.createdAt).getTime(),
   );
+  const combined = channel === "all" ? all : all.filter((t) => t.channel === channel);
   const needsReview = combined.filter((i) => i.status === "needs_review");
   const resolved = combined.filter((i) => i.status !== "needs_review");
+  const allNeedsReviewCount = all.filter((i) => i.status === "needs_review").length;
+  const emailNeedsReviewCount = all.filter((i) => i.channel === "email" && i.status === "needs_review").length;
+  const smsNeedsReviewCount = all.filter((i) => i.channel === "sms" && i.status === "needs_review").length;
 
   return (
     <div className="space-y-4">
@@ -224,6 +229,29 @@ export function UnmatchedContactsPage() {
         <h1 className="text-xl font-semibold text-gray-900">Unmatched Contacts</h1>
         {!isLoading && <p className="text-sm text-gray-500">{needsReview.length} awaiting review</p>}
       </div>
+
+      <div className="flex items-center gap-1 rounded-md border border-gray-200 bg-white p-1 text-sm w-fit">
+        {(
+          [
+            { value: "all", label: "All", count: allNeedsReviewCount },
+            { value: "email", label: "Email", count: emailNeedsReviewCount },
+            { value: "sms", label: "Text", count: smsNeedsReviewCount },
+          ] as const
+        ).map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => setChannel(opt.value)}
+            className={
+              "flex items-center gap-1.5 rounded px-3 py-1 font-medium " +
+              (channel === opt.value ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-50")
+            }
+          >
+            {opt.label}
+            {opt.count > 0 && <Badge color={channel === opt.value ? "gray" : "yellow"}>{opt.count}</Badge>}
+          </button>
+        ))}
+      </div>
+
       <p className="text-xs text-gray-400">
         Inbound email and text messages from an address or phone number that doesn't match any customer record, one thread per sender, combined
         here regardless of channel. On the first message, a fixed, content-free acknowledgment goes out immediately (asking for their name, and
