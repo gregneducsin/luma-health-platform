@@ -186,6 +186,33 @@ describe("recordAndClassifyUnmatchedEmail", () => {
     expect(thread.repliedAt).not.toBeNull();
   });
 
+  it("seeds the new Lucy conversation with everything said before the triggering message, not just that one message", async () => {
+    const fromAddress = uniqueAddress("seedhistory");
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<ack-seed@example.com>" });
+    createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "First contact." })));
+    await recordAndClassifyUnmatchedEmail({ fromAddress, fromName: null, subject: "Hi", body: "hello", messageId: null }); // consumes the fixed ack
+
+    createMock.mockResolvedValueOnce(
+      toolResponse(classification({ intent: "new_lead_interest", senderName: "Taylor Morgan", senderPhone: "555-222-3333" })),
+    );
+    const thread = await recordAndClassifyUnmatchedEmail({
+      fromAddress,
+      fromName: "Taylor Morgan",
+      subject: "Interested",
+      body: "555-222-3333",
+      messageId: null,
+    });
+
+    const { getOrCreateEmailConversation, listEmailMessages } = await import("./email-conversations.service.js");
+    const conversation = await getOrCreateEmailConversation(thread.linkedCustomerId as string);
+    const seeded = await listEmailMessages(conversation.id);
+    // The final triggering message ("555-222-3333") is added by the real
+    // processInboundEmail (mocked out in this test file), so what's
+    // asserted here is everything that came BEFORE it: "hello" and the
+    // fixed ack that answered it.
+    expect(seeded.map((m) => m.body)).toEqual(["hello", expect.any(String)]);
+  });
+
   it("does NOT create a lead from a known name alone — auto-sends a request for a phone number instead", async () => {
     const fromAddress = uniqueAddress("noPhone");
     createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "First contact.", senderName: "Alex Rivera" })));

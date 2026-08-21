@@ -190,6 +190,32 @@ describe("recordAndClassifyUnmatchedSms", () => {
     expect(thread.repliedAt).not.toBeNull();
   });
 
+  it("seeds the new Lucy conversation with everything said before the triggering message, not just that one message", async () => {
+    const phone = uniquePhone();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_ack_seed" });
+    createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "First contact." })));
+    await recordAndClassifyUnmatchedSms(phone, "hi"); // consumes the fixed ack — this + the ack become "prior history"
+
+    createMock.mockResolvedValueOnce(
+      toolResponse(
+        classification({
+          intent: "new_lead_interest",
+          senderName: "Taylor Morgan",
+          senderEmail: "taylor.morgan-seed@example.com",
+        }),
+      ),
+    );
+    const thread = await recordAndClassifyUnmatchedSms(phone, "I'm Taylor Morgan, taylor.morgan-seed@example.com");
+
+    const { getOrCreateConversation, listMessages } = await import("./conversations.service.js");
+    const conversation = await getOrCreateConversation(thread.linkedCustomerId as string);
+    const seeded = await listMessages(conversation.id);
+    // The final triggering message is added by the real processInboundMessage
+    // (mocked out in this test file), so what's asserted here is everything
+    // that came BEFORE it: the "hi" and the fixed ack that answered it.
+    expect(seeded.map((m) => m.body)).toEqual(["hi", expect.stringContaining("name")]);
+  });
+
   it("does not create a lead when the extracted email doesn't look like a real email address", async () => {
     createMock.mockResolvedValueOnce(
       toolResponse(classification({ intent: "new_lead_interest", senderName: "Taylor", senderEmail: "not an email" })),
@@ -382,6 +408,43 @@ describe("recordAndClassifyUnmatchedSms", () => {
 
     const allWithEmail = await db.select().from(customersTable).where(eq(customersTable.email, existingEmail));
     expect(allWithEmail).toHaveLength(1); // no duplicate created
+  });
+
+  it("seeds the existing customer's conversation with everything said before auto-connecting — a bare trigger message like just an email address left Lucy nothing to react to and produced total silence in production", async () => {
+    const existingEmail = `jack-${crypto.randomUUID()}@example.com`;
+    const [existing] = await db
+      .insert(customersTable)
+      .values({ firstName: "Jack", lastName: "Woodards", email: existingEmail, leadReceivedDate: "2026-08-15" })
+      .returning({ id: customersTable.id });
+
+    const phone = uniquePhone();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_ack_seed2" });
+    createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "First contact." })));
+    await recordAndClassifyUnmatchedSms(phone, "hi");
+
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_reply_seed2" });
+    createMock.mockResolvedValueOnce(toolResponse(classification({ intent: "other", senderName: "Jack Woodards" })));
+    await recordAndClassifyUnmatchedSms(phone, "Hi I saw your promotions online");
+
+    sendMessageMock.mockClear();
+    processInboundMessageMock.mockClear();
+    createMock.mockResolvedValueOnce(
+      toolResponse(classification({ intent: "new_lead_interest", senderName: "Jack Woodards", senderEmail: existingEmail, matchCandidateIndex: 0, matchConfidence: "high" })),
+    );
+    // The kind of bare trigger message that only makes sense in context —
+    // exactly the real case this test is modeled on.
+    await recordAndClassifyUnmatchedSms(phone, existingEmail);
+
+    const { getOrCreateConversation, listMessages } = await import("./conversations.service.js");
+    const conversation = await getOrCreateConversation(existing.id);
+    const seeded = await listMessages(conversation.id);
+    expect(seeded.map((m) => m.body)).toEqual([
+      "hi",
+      expect.stringContaining("name"), // the fixed ack
+      "Hi I saw your promotions online",
+      expect.any(String), // Claude's drafted reply to that turn
+    ]);
   });
 
   it("does not auto-connect, create a lead, or reveal a match when the collected email belongs to more than one existing customer", async () => {

@@ -10,6 +10,7 @@ import {
 } from "@luma/db";
 import { getEmailProvider } from "../lib/email-provider.js";
 import { processInboundEmail } from "./lucy-email-dispatch.service.js";
+import { getOrCreateEmailConversation, appendEmailMessage } from "./email-conversations.service.js";
 import { normalizePhone } from "../lib/phone.js";
 import { logger } from "../lib/logger.js";
 
@@ -416,6 +417,16 @@ export async function recordAndClassifyUnmatchedEmail(input: {
     // started a Bask questionnaire, they're cold inbound outreach, exactly
     // like a Meta lead.
     try {
+      // Seed the new Lucy conversation with everything said in this thread
+      // before this final triggering message — without it, Lucy starts
+      // from nothing but a bare final message with no context for what
+      // this person already asked about or said, which can leave her with
+      // nothing coherent to react to (confirmed against a real case of
+      // this producing total silence on the equivalent SMS path).
+      const emailConversation = await getOrCreateEmailConversation(leadResult.customerId, "meta_form");
+      for (const m of messages.slice(0, -1)) {
+        await appendEmailMessage(emailConversation.id, m.direction, m.subject, m.body);
+      }
       await processInboundEmail(leadResult.customerId, input.subject, input.body, input.messageId, "meta_form");
     } catch (err) {
       logger.warn({ threadId: thread.id, reason: err instanceof Error ? err.message : String(err) }, "handoff to Lucy after lead creation failed");

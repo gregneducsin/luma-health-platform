@@ -5,6 +5,8 @@ import { getSmsProvider } from "../lib/sms-provider.js";
 import { normalizePhone } from "../lib/phone.js";
 import { processInboundMessage } from "./lucy-dispatch.service.js";
 import { processInboundSupportMessage } from "./sarah-dispatch.service.js";
+import { getOrCreateConversation, appendMessage } from "./conversations.service.js";
+import { getOrCreateSupportConversation, appendSupportMessage } from "./support-conversations.service.js";
 import { logger } from "../lib/logger.js";
 
 /**
@@ -370,16 +372,40 @@ async function findAutoConnectCustomerId(
 }
 
 /**
+ * Everything said in this thread before the hand-off, minus the final
+ * message — that one gets re-added by processInboundMessage/
+ * processInboundSupportMessage themselves as the actual inbound turn, so
+ * including it here would double it up.
+ *
+ * Without this, the guardrailed pipeline a lead or auto-connect gets handed
+ * to starts a brand-new conversation with NOTHING in it but that one final
+ * message — no name, no "why do you need my email", no context for what
+ * they're even asking about. A trigger message that only made sense as an
+ * answer to a question this pipeline never saw (e.g. a bare email address
+ * on its own) can leave Claude with nothing coherent to react to, which is
+ * exactly the kind of input that trips the guardrail loop into silence —
+ * confirmed against a real conversation where this happened.
+ */
+async function seedPriorHistory(append: (direction: "inbound" | "outbound", body: string) => Promise<unknown>, priorMessages: readonly UnmatchedSmsMessage[]): Promise<void> {
+  for (const m of priorMessages.slice(0, -1)) {
+    await append(m.direction, m.body);
+  }
+}
+
+/**
  * Same support-vs-lead routing as dispatchInboundMessage in
  * iblusend-webhook.service.ts — duplicated rather than imported since that
  * one isn't exported and this is a small, self-contained check.
  */
-async function dispatchToExistingCustomer(customerId: string, body: string): Promise<void> {
+async function dispatchToExistingCustomer(customerId: string, body: string, priorMessages: readonly UnmatchedSmsMessage[]): Promise<void> {
   const [supportConversation] = await db.select({ id: supportConversationsTable.id }).from(supportConversationsTable).where(eq(supportConversationsTable.personId, customerId));
   if (supportConversation) {
+    await seedPriorHistory((direction, msgBody) => appendSupportMessage(supportConversation.id, direction, msgBody), priorMessages);
     await processInboundSupportMessage(customerId, body);
     return;
   }
+  const conversation = await getOrCreateConversation(customerId, "meta_form");
+  await seedPriorHistory((direction, msgBody) => appendMessage(conversation.id, direction, msgBody), priorMessages);
   await processInboundMessage(customerId, body, "meta_form");
 }
 
@@ -551,7 +577,7 @@ export async function recordAndClassifyUnmatchedSms(fromPhone: string, body: str
     // one after it, via the phone-number update in
     // findAutoConnectCustomerId) into their real conversation.
     try {
-      await dispatchToExistingCustomer(autoConnectCustomerId, body);
+      await dispatchToExistingCustomer(autoConnectCustomerId, body, messages);
     } catch (err) {
       logger.warn({ threadId: thread.id, reason: err instanceof Error ? err.message : String(err) }, "auto-connect handoff failed");
     }
@@ -564,6 +590,8 @@ export async function recordAndClassifyUnmatchedSms(fromPhone: string, body: str
     // an abandoned-cart lead — this person never started a Bask
     // questionnaire, they're cold inbound outreach, exactly like a Meta lead.
     try {
+      const conversation = await getOrCreateConversation(leadResult.customerId, "meta_form");
+      await seedPriorHistory((direction, msgBody) => appendMessage(conversation.id, direction, msgBody), messages);
       await processInboundMessage(leadResult.customerId, body, "meta_form");
     } catch (err) {
       logger.warn({ threadId: thread.id, reason: err instanceof Error ? err.message : String(err) }, "handoff to Lucy after lead creation failed");
