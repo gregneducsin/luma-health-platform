@@ -1,9 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { eq, sql } from "drizzle-orm";
-import { db, customersTable, unmatchedSmsThreadsTable, unmatchedSmsMessagesTable, type UnmatchedSmsThread, type UnmatchedSmsMessage } from "@luma/db";
+import { db, customersTable, supportConversationsTable, unmatchedSmsThreadsTable, unmatchedSmsMessagesTable, type UnmatchedSmsThread, type UnmatchedSmsMessage } from "@luma/db";
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { normalizePhone } from "../lib/phone.js";
 import { processInboundMessage } from "./lucy-dispatch.service.js";
+import { processInboundSupportMessage } from "./sarah-dispatch.service.js";
 import { logger } from "../lib/logger.js";
 
 /**
@@ -21,7 +22,11 @@ import { logger } from "../lib/logger.js";
  * question) plus two hard overrides this file applies regardless of what
  * Claude reports: a plausible match to an existing customer, or a sender
  * claiming to already have an account. Only those cases sit in the
- * dashboard queue for a person to review before anything sends.
+ * dashboard queue for a person to review before anything sends — except
+ * one: when the texted name AND the collected email both point at the
+ * exact same existing customer (see findAutoConnectCustomerId), that's
+ * unambiguous enough to skip review entirely and route straight into
+ * their real conversation, no lead created.
  *
  * The one real difference from the email version: a text never comes with
  * an email address attached, and customers.email is NOT NULL, so a lead
@@ -292,6 +297,42 @@ async function maybeCreateLead(
   return { customerId: created.id, justCreated: true };
 }
 
+/**
+ * Auto-connects to an existing customer with NO human review — the one
+ * exception to "any match stays human-gated" above. Deliberately narrow:
+ * only fires when the texted name AND the collected email both point at
+ * the exact same existing customer, not either signal alone (a name match
+ * alone could be a common-name coincidence; an email match alone doesn't
+ * confirm this is really the same person texting, just that the email
+ * exists somewhere). Both agreeing on the same row is unambiguous enough
+ * that requiring a person to rubber-stamp it is friction, not safety.
+ *
+ * Updates the customer's phone to this number so every message after this
+ * one routes through the normal known-customer path (findCustomerIdByPhone
+ * in iblusend-webhook.service.ts) instead of re-running this unmatched-
+ * sender flow every time — otherwise "rolls into the conversation" would
+ * only be true for this one message, not an ongoing state.
+ */
+async function findAutoConnectCustomerId(nameMatch: MatchCandidate | undefined, emailMatch: MatchCandidate | undefined, phone: string): Promise<string | null> {
+  if (!nameMatch || !emailMatch || nameMatch.id !== emailMatch.id) return null;
+  await db.update(customersTable).set({ phone }).where(eq(customersTable.id, nameMatch.id));
+  return nameMatch.id;
+}
+
+/**
+ * Same support-vs-lead routing as dispatchInboundMessage in
+ * iblusend-webhook.service.ts — duplicated rather than imported since that
+ * one isn't exported and this is a small, self-contained check.
+ */
+async function dispatchToExistingCustomer(customerId: string, body: string): Promise<void> {
+  const [supportConversation] = await db.select({ id: supportConversationsTable.id }).from(supportConversationsTable).where(eq(supportConversationsTable.personId, customerId));
+  if (supportConversation) {
+    await processInboundSupportMessage(customerId, body);
+    return;
+  }
+  await processInboundMessage(customerId, body, "meta_form");
+}
+
 export async function listUnmatchedSmsMessages(threadId: string): Promise<UnmatchedSmsMessage[]> {
   return db.select().from(unmatchedSmsMessagesTable).where(eq(unmatchedSmsMessagesTable.threadId, threadId)).orderBy(unmatchedSmsMessagesTable.createdAt);
 }
@@ -385,13 +426,27 @@ export async function recordAndClassifyUnmatchedSms(fromPhone: string, body: str
   // wrong, not just "Claude wasn't sure": a plausible match to an existing
   // customer (never auto-linked — see maybeCreateLead) or someone claiming
   // to already be a customer both need a person to confirm identity before
-  // anything goes out, regardless of Claude's own confidence.
+  // anything goes out, regardless of Claude's own confidence. Does not
+  // apply when both signals agree on the same person — see
+  // findAutoConnectCustomerId.
   const needsHumanReview = Boolean(classification?.needsHumanReview || matchCandidate || classification?.intent === "existing_customer_support");
 
-  const leadResult = classification ? await maybeCreateLead(thread, classification, Boolean(matchCandidate)) : null;
+  const autoConnectCustomerId = thread.linkedCustomerId ? null : await findAutoConnectCustomerId(nameMatch, emailMatch, normalizedPhone);
+
+  const leadResult = classification && !autoConnectCustomerId ? await maybeCreateLead(thread, classification, Boolean(matchCandidate)) : null;
 
   let autoSent = false;
-  if (leadResult?.justCreated) {
+  if (autoConnectCustomerId) {
+    // Name and email both matched the same existing customer — no review
+    // needed, no new lead to create, just route this message (and every
+    // one after it, via the phone-number update in
+    // findAutoConnectCustomerId) into their real conversation.
+    try {
+      await dispatchToExistingCustomer(autoConnectCustomerId, body);
+    } catch (err) {
+      logger.warn({ threadId: thread.id, reason: err instanceof Error ? err.message : String(err) }, "auto-connect handoff failed");
+    }
+  } else if (leadResult?.justCreated) {
     // Confident enough to create the lead means confident enough to hand
     // THIS message straight to Lucy's real, guardrailed pipeline — not the
     // generic staff queue. Same trust level Lucy already operates at
@@ -430,15 +485,18 @@ export async function recordAndClassifyUnmatchedSms(fromPhone: string, body: str
       collectedEmail: thread.collectedEmail ?? classification?.senderEmail ?? undefined,
       aiIntent: classification?.intent ?? thread.aiIntent,
       aiSummary: classification?.summary ?? thread.aiSummary,
-      suggestedReply: leadResult?.justCreated || autoSent ? null : (classification?.suggestedReply ?? thread.suggestedReply),
-      suggestedMatchCustomerId: matchCandidate?.id ?? thread.suggestedMatchCustomerId,
+      suggestedReply: autoConnectCustomerId || leadResult?.justCreated || autoSent ? null : (classification?.suggestedReply ?? thread.suggestedReply),
+      // Auto-connect means the match was confirmed, not just suggested —
+      // clear the "possible match" fields rather than leaving them set
+      // alongside an already-linked thread.
+      suggestedMatchCustomerId: autoConnectCustomerId ? null : (matchCandidate?.id ?? thread.suggestedMatchCustomerId),
       // An exact email match is unambiguous — always "high", regardless of
       // (or even absent) Claude's own matchConfidence, which only ever
       // covers the name-based candidate list it was shown.
-      suggestedMatchConfidence: emailMatch ? "high" : matchCandidate ? (classification?.matchConfidence ?? null) : thread.suggestedMatchConfidence,
-      linkedCustomerId: leadResult?.customerId ?? thread.linkedCustomerId,
-      status: leadResult?.justCreated || autoSent ? "replied" : "needs_review",
-      repliedAt: leadResult?.justCreated || autoSent ? new Date() : thread.repliedAt,
+      suggestedMatchConfidence: autoConnectCustomerId ? null : emailMatch ? "high" : matchCandidate ? (classification?.matchConfidence ?? null) : thread.suggestedMatchConfidence,
+      linkedCustomerId: autoConnectCustomerId ?? leadResult?.customerId ?? thread.linkedCustomerId,
+      status: autoConnectCustomerId || leadResult?.justCreated || autoSent ? "replied" : "needs_review",
+      repliedAt: autoConnectCustomerId || leadResult?.justCreated || autoSent ? new Date() : thread.repliedAt,
     })
     .where(eq(unmatchedSmsThreadsTable.id, thread.id))
     .returning();
