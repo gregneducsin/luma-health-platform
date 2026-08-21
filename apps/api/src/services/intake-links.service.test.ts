@@ -158,5 +158,42 @@ describe("intake-links.service", () => {
       const { redirectUrl } = await handleIntakeLinkClick(rawToken);
       expect(redirectUrl).toBe("https://bask.example.com/questionnaire?promo=Get20");
     });
+
+    it("clicking a newer link cancels a still-pending follow-up job from an earlier click, so the same person isn't left on two parallel nudge chains", async () => {
+      const { createIntakeLink, handleIntakeLinkClick } = await import("./intake-links.service.js");
+      const personId = await seedCustomer();
+
+      const first = await createIntakeLink(personId);
+      await handleIntakeLinkClick(first.url.split("/go/")[1]);
+      const [firstJob] = await db.select().from(followUpJobsTable).where(eq(followUpJobsTable.personId, personId));
+      expect(firstJob.status).toBe("pending");
+
+      const second = await createIntakeLink(personId);
+      await handleIntakeLinkClick(second.url.split("/go/")[1]);
+
+      const jobs = await db.select().from(followUpJobsTable).where(eq(followUpJobsTable.personId, personId));
+      expect(jobs).toHaveLength(2);
+      const resolvedFirstJob = jobs.find((j) => j.id === firstJob.id);
+      expect(resolvedFirstJob?.status).toBe("cancelled");
+      expect(resolvedFirstJob?.cancelledReason).toBe("superseded_by_newer_click");
+      const newJob = jobs.find((j) => j.id !== firstJob.id);
+      expect(newJob?.status).toBe("pending");
+    });
+
+    it("does not touch another person's pending follow-up job", async () => {
+      const { createIntakeLink, handleIntakeLinkClick } = await import("./intake-links.service.js");
+      const personId = await seedCustomer();
+      const otherPersonId = await seedCustomer();
+
+      const otherLink = await createIntakeLink(otherPersonId);
+      await handleIntakeLinkClick(otherLink.url.split("/go/")[1]);
+      const [otherJob] = await db.select().from(followUpJobsTable).where(eq(followUpJobsTable.personId, otherPersonId));
+
+      const link = await createIntakeLink(personId);
+      await handleIntakeLinkClick(link.url.split("/go/")[1]);
+
+      const [stillPending] = await db.select().from(followUpJobsTable).where(eq(followUpJobsTable.id, otherJob.id));
+      expect(stillPending.status).toBe("pending");
+    });
   });
 });

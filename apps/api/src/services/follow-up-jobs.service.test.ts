@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { db, customersTable, intakeLinkTokensTable, followUpJobsTable, questionnaireEventsTable, purchasesTable } from "@luma/db";
+import { db, customersTable, intakeLinkTokensTable, followUpJobsTable, questionnaireEventsTable, purchasesTable, conversationsTable, conversationMessagesTable } from "@luma/db";
 import { hashToken } from "../lib/crypto.js";
 
 const sendMessageMock = vi.fn();
@@ -235,6 +235,24 @@ describe("sweepFollowUpJobs", () => {
     expect(sendMessageMock).toHaveBeenCalledTimes(1);
     const [job] = await db.select().from(followUpJobsTable).where(eq(followUpJobsTable.id, jobId));
     expect(job.status).toBe("sent");
+  });
+
+  it("logs a successfully-sent follow-up into the person's conversation history, same as any other proactive SMS", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_logged" });
+    const personId = await seedCustomer({ phone: "+15551112222" });
+    await seedPendingJob(personId, new Date(Date.now() - 3 * 60 * 60 * 1000), new Date(Date.now() - 60_000));
+
+    await sweepFollowUpJobs();
+
+    const [conversation] = await db.select().from(conversationsTable).where(eq(conversationsTable.personId, personId));
+    expect(conversation).toBeDefined();
+
+    const messages = await db.select().from(conversationMessagesTable).where(eq(conversationMessagesTable.conversationId, conversation.id));
+    expect(messages).toHaveLength(1);
+    expect(messages[0].direction).toBe("outbound");
+    expect(messages[0].providerMessageId).toBe("msg_logged");
+    expect(messages[0].body).toContain("completed questionnaire");
   });
 
   it("does not reprocess a job that already resolved", async () => {

@@ -2,6 +2,7 @@ import { and, eq, lte, sql } from "drizzle-orm";
 import { db, followUpJobsTable, intakeLinkTokensTable, questionnaireEventsTable, purchasesTable, customersTable } from "@luma/db";
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { renderFollowUpMessage } from "../lib/messaging/follow-up-templates.js";
+import { getOrCreateConversation, appendMessage } from "./conversations.service.js";
 import { logger } from "../lib/logger.js";
 
 const SECOND_STEP_DELAY_MS = 60 * 60 * 1000;
@@ -72,6 +73,19 @@ export async function sweepFollowUpJobs(): Promise<FollowUpSweepResult> {
       .where(eq(followUpJobsTable.id, job.jobId));
     sentCount++;
 
+    // Same logging convention every other proactive SMS send already
+    // follows (the abandoned-cart opener, the 6-day check-in) — without
+    // this, a follow-up nudge is a real text the customer receives that
+    // never shows up in their conversation history, leaving the dashboard's
+    // last-message stuck on whatever Lucy sent before the follow-up chain
+    // took over.
+    try {
+      const conversation = await getOrCreateConversation(job.personId);
+      await appendMessage(conversation.id, "outbound", sendResult.body, { providerMessageId: sendResult.providerMessageId });
+    } catch (err) {
+      logger.warn({ personId: job.personId, reason: err instanceof Error ? err.message : String(err) }, "failed to log follow-up SMS into the conversation");
+    }
+
     if (job.messageStep === "provider_check_in") {
       await db.insert(followUpJobsTable).values({
         personId: job.personId,
@@ -89,7 +103,7 @@ export async function sweepFollowUpJobs(): Promise<FollowUpSweepResult> {
   return { sentCount, cancelledCount, failedCount };
 }
 
-type SendResult = { ok: true; providerMessageId: string } | { ok: false; reason: string };
+type SendResult = { ok: true; providerMessageId: string; body: string } | { ok: false; reason: string };
 
 async function attemptSend(personId: string, messageStep: "provider_check_in" | "intake_questions_check_in"): Promise<SendResult> {
   const [customer] = await db
@@ -106,7 +120,7 @@ async function attemptSend(personId: string, messageStep: "provider_check_in" | 
   try {
     const provider = getSmsProvider();
     const result = await provider.sendMessage(customer.phone, body);
-    return { ok: true, providerMessageId: result.providerMessageId };
+    return { ok: true, providerMessageId: result.providerMessageId, body };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     logger.warn({ personId, messageStep, reason }, "follow-up SMS send failed");

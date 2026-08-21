@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import { db, intakeLinkTokensTable, followUpJobsTable, type IntakeLinkToken } from "@luma/db";
 import { generateRawToken, hashToken } from "../lib/crypto.js";
 
@@ -78,6 +78,28 @@ export async function handleIntakeLinkClick(rawToken: string): Promise<{ redirec
 
     if (!alreadyClicked && !expired) {
       await tx.update(intakeLinkTokensTable).set({ clickedAt: sql`now()` }).where(eq(intakeLinkTokensTable.id, token.id));
+
+      // A person can have more than one intake link minted for them over
+      // time (a new one goes out every time an abandoned-cart/meta-lead
+      // trigger fires again, or Lucy sends another one mid-conversation) —
+      // nothing stops an earlier link, from a previous nudge, from still
+      // being clickable when a newer one goes out. If they click an old one
+      // after already having a newer chain armed (or click two different
+      // links close together), each click was arming its own independent
+      // 2-hour-later/3-hour-later follow-up pair with no awareness of the
+      // other, so the person could end up getting the same nudge twice.
+      // This click is the most recent signal of intent, so it supersedes
+      // any follow-up chain still in flight from an earlier click.
+      await tx
+        .update(followUpJobsTable)
+        .set({ status: "cancelled", cancelledReason: "superseded_by_newer_click" })
+        .where(
+          and(
+            eq(followUpJobsTable.personId, token.personId),
+            or(eq(followUpJobsTable.status, "pending"), eq(followUpJobsTable.status, "processing")),
+          ),
+        );
+
       await tx.insert(followUpJobsTable).values({
         personId: token.personId,
         intakeLinkTokenId: token.id,
