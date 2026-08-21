@@ -69,12 +69,16 @@ async function sendAndLog(personId: string, conversationId: string, phone: strin
  * sends, and state write) before it starts, so it always builds its turn on
  * top of what the first one actually did.
  */
-export async function processInboundMessage(personId: string, inboundBody: string): Promise<LucyTurnResult> {
-  return withPersonLock(personId, () => processInboundMessageLocked(personId, inboundBody));
+export async function processInboundMessage(
+  personId: string,
+  inboundBody: string,
+  initialLeadSource?: "abandoned_cart" | "meta_form",
+): Promise<LucyTurnResult> {
+  return withPersonLock(personId, () => processInboundMessageLocked(personId, inboundBody, initialLeadSource));
 }
 
-async function processInboundMessageLocked(personId: string, inboundBody: string): Promise<LucyTurnResult> {
-  const conversation = await getOrCreateConversation(personId);
+async function processInboundMessageLocked(personId: string, inboundBody: string, initialLeadSource?: "abandoned_cart" | "meta_form"): Promise<LucyTurnResult> {
+  const conversation = initialLeadSource ? await getOrCreateConversation(personId, initialLeadSource) : await getOrCreateConversation(personId);
   const priorMessages = await listMessages(conversation.id);
   const inboundMessage = await appendMessage(conversation.id, "inbound", inboundBody);
 

@@ -101,12 +101,24 @@ async function sendAndLog(
  * two-email reply to a single inbound email reads as broken, not as two
  * conversational beats the way two quick texts do.
  */
-export async function processInboundEmail(personId: string, subject: string, bodyText: string, messageId: string | null): Promise<LucyTurnResult> {
-  return withPersonLock(personId, () => processInboundEmailLocked(personId, subject, bodyText, messageId));
+export async function processInboundEmail(
+  personId: string,
+  subject: string,
+  bodyText: string,
+  messageId: string | null,
+  initialLeadSource?: "abandoned_cart" | "meta_form",
+): Promise<LucyTurnResult> {
+  return withPersonLock(personId, () => processInboundEmailLocked(personId, subject, bodyText, messageId, initialLeadSource));
 }
 
-async function processInboundEmailLocked(personId: string, subject: string, bodyText: string, messageId: string | null): Promise<LucyTurnResult> {
-  const conversation = await getOrCreateEmailConversation(personId);
+async function processInboundEmailLocked(
+  personId: string,
+  subject: string,
+  bodyText: string,
+  messageId: string | null,
+  initialLeadSource?: "abandoned_cart" | "meta_form",
+): Promise<LucyTurnResult> {
+  const conversation = initialLeadSource ? await getOrCreateEmailConversation(personId, initialLeadSource) : await getOrCreateEmailConversation(personId);
   const priorMessages = await listEmailMessages(conversation.id);
   const inboundMessage = await appendEmailMessage(conversation.id, "inbound", subject, bodyText, { messageId });
 

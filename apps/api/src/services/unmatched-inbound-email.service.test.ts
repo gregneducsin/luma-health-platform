@@ -52,6 +52,7 @@ function classification(overrides: Record<string, unknown> = {}) {
     senderName: null,
     matchCandidateIndex: null,
     matchConfidence: null,
+    needsHumanReview: false,
     ...overrides,
   };
 }
@@ -167,24 +168,56 @@ describe("recordAndClassifyUnmatchedEmail", () => {
 
     // The triggering message is handed straight to Lucy's real pipeline —
     // not left as a generic staff-reviewed draft, and no redundant generic
-    // acknowledgment sent alongside it.
-    expect(processInboundEmailMock).toHaveBeenCalledWith(thread.linkedCustomerId, "Interested", "I'd like to learn more about your program.", null);
+    // acknowledgment sent alongside it. Handed off as a Meta-lead-style
+    // conversation, not abandoned_cart.
+    expect(processInboundEmailMock).toHaveBeenCalledWith(thread.linkedCustomerId, "Interested", "I'd like to learn more about your program.", null, "meta_form");
     expect(sendEmailMock).not.toHaveBeenCalled();
     expect(thread.status).toBe("replied");
     expect(thread.suggestedReply).toBeNull();
     expect(thread.repliedAt).not.toBeNull();
   });
 
-  it("does not create a lead when intent is existing_customer_support, even with a known name — that path is human-gated via matchCandidateIndex instead", async () => {
-    createMock.mockResolvedValueOnce(toolResponse(classification({ intent: "existing_customer_support", summary: "Asking about an order." })));
+  it("does not create a lead when intent is existing_customer_support, even with a known name — that path is human-gated via matchCandidateIndex instead — and holds the reply for review instead of auto-sending it", async () => {
+    const fromAddress = uniqueAddress("support");
+    createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "First contact." })));
+    await recordAndClassifyUnmatchedEmail({ fromAddress, fromName: "Jordan Lee", subject: "Hi", body: "hello", messageId: null }); // first message — consumes the fixed ack
+
+    sendEmailMock.mockClear();
+    createMock.mockResolvedValueOnce(
+      toolResponse(classification({ intent: "existing_customer_support", summary: "Asking about an order.", suggestedReply: "A team member will look into your order." })),
+    );
     const thread = await recordAndClassifyUnmatchedEmail({
-      fromAddress: uniqueAddress("support"),
+      fromAddress,
       fromName: "Jordan Lee",
       subject: "Order",
       body: "Where is my order?",
       messageId: null,
     });
     expect(thread.linkedCustomerId).toBeNull();
+    expect(thread.status).toBe("needs_review");
+    expect(thread.suggestedReply).toBe("A team member will look into your order.");
+    expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
+  it("holds the reply for human review when Claude sets needsHumanReview, even for an otherwise-ordinary reply", async () => {
+    const fromAddress = uniqueAddress("uncertain");
+    createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "First contact." })));
+    await recordAndClassifyUnmatchedEmail({ fromAddress, fromName: "Sam", subject: "Hi", body: "hello", messageId: null }); // first message — consumes the fixed ack
+
+    sendEmailMock.mockClear();
+    createMock.mockResolvedValueOnce(
+      toolResponse(classification({ intent: "other", suggestedReply: "Not sure I can answer that safely.", needsHumanReview: true })),
+    );
+    const thread = await recordAndClassifyUnmatchedEmail({
+      fromAddress,
+      fromName: "Sam",
+      subject: "Question",
+      body: "is this safe with my heart condition?",
+      messageId: null,
+    });
+    expect(thread.status).toBe("needs_review");
+    expect(thread.suggestedReply).toBe("Not sure I can answer that safely.");
+    expect(sendEmailMock).not.toHaveBeenCalled();
   });
 
   it("does not create a lead for spam_or_irrelevant even with a known name", async () => {
@@ -280,7 +313,7 @@ describe("auto-acknowledgment", () => {
     expect(html.toLowerCase()).toMatch(/thanks for (reaching out to|getting in touch with) luma health/);
   });
 
-  it("does NOT send a second acknowledgment when another message arrives on the same thread", async () => {
+  it("sends Claude's own drafted reply (not a repeat of the fixed ack) on a second message, since replies are auto-sent by default now", async () => {
     const fromAddress = uniqueAddress("no-double-ack");
 
     createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "First." })));
@@ -289,10 +322,16 @@ describe("auto-acknowledgment", () => {
     await recordAndClassifyUnmatchedEmail({ fromAddress, fromName: null, subject: "Hi", body: "First message.", messageId: null });
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
 
-    createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "Second." })));
+    createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "Second.", senderName: "Jordan", suggestedReply: "Thanks Jordan! What's your email?" })));
     sendEmailMock.mockClear();
-    await recordAndClassifyUnmatchedEmail({ fromAddress, fromName: null, subject: "Following up", body: "Second message.", messageId: null });
-    expect(sendEmailMock).not.toHaveBeenCalled();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<reply-2@example.com>" });
+    const thread = await recordAndClassifyUnmatchedEmail({ fromAddress, fromName: null, subject: "Following up", body: "Second message.", messageId: null });
+
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    const [, , html] = sendEmailMock.mock.calls[0];
+    expect(html).toContain("Thanks Jordan! What's your email?");
+    expect(thread.status).toBe("replied");
+    expect(thread.suggestedReply).toBeNull();
   });
 
   it("still records the inbound message and runs classification even when the acknowledgment send fails", async () => {
