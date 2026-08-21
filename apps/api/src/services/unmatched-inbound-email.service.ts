@@ -10,6 +10,7 @@ import {
 } from "@luma/db";
 import { getEmailProvider } from "../lib/email-provider.js";
 import { processInboundEmail } from "./lucy-email-dispatch.service.js";
+import { normalizePhone } from "../lib/phone.js";
 import { logger } from "../lib/logger.js";
 
 /**
@@ -35,12 +36,18 @@ import { logger } from "../lib/logger.js";
  * The one thing this pipeline does automatically that creates data — a new
  * lead — is a deliberately different risk category: it only ever adds a
  * new, clearly-sourced customer row (never touches or links to an existing
- * person's record), and only once we actually know the sender's name and
- * Claude is confident this is a genuine prospective customer. That's the
- * same trust level every other unattended lead-capture path in this app
- * already operates at (the GHL/Meta webhooks create customers with no
- * human review either) — it's the "guess which existing person this is"
- * action that stays human-gated, not "add a new row for someone new."
+ * person's record), and only once we actually know the sender's name AND a
+ * phone number, and Claude is confident this is a genuine prospective
+ * customer. The phone requirement mirrors the SMS pipeline's requirement
+ * for a name AND an email before it creates anything: an email inquiry
+ * always comes with a working email address (that's how the sender is
+ * reaching us), but never a phone, so collectedPhone on the thread plays
+ * the same role collectedEmail plays for unmatched SMS senders — gathered
+ * mid-conversation, not guessed. That's the same trust level every other
+ * unattended lead-capture path in this app already operates at (the
+ * GHL/Meta webhooks create customers with no human review either) — it's
+ * the "guess which existing person this is" action that stays human-gated,
+ * not "add a new row for someone new."
  *
  * The moment a lead is created, the triggering message itself is handed
  * off to Lucy's real, guardrailed pipeline (lucy-email-dispatch.service.ts's
@@ -102,6 +109,7 @@ interface Classification {
   readonly summary: string;
   readonly suggestedReply: string | null;
   readonly senderName: string | null;
+  readonly senderPhone: string | null;
   readonly matchCandidateIndex: number | null;
   readonly matchConfidence: "high" | "medium" | "low" | null;
   readonly needsHumanReview: boolean;
@@ -118,11 +126,15 @@ const CLASSIFY_TOOL: Anthropic.Tool = {
       suggestedReply: {
         type: ["string", "null"],
         description:
-          "A short, safe, generic reply body — no greeting/sign-off (added separately), no clinical claims, no pricing figures, no promises. If senderName is null, this MUST include asking for their name so we can help them properly. Null only for spam_or_irrelevant.",
+          "A short, safe, generic reply body — no greeting/sign-off (added separately), no clinical claims, no pricing figures, no promises. If senderName is null, this MUST include asking for their name so we can help them properly. If senderName is known but senderPhone is null, this MUST ask for their phone number instead, framed as needing it to start an account/look into things for them before going over product or pricing details — never ask for both name and phone in the same message, and don't answer their product/pricing question yet even though you know their name. Null only for spam_or_irrelevant.",
       },
       senderName: {
         type: ["string", "null"],
         description: "The sender's full name, if known — from the From header display name (given separately) or signed/stated anywhere in the thread. Null if genuinely unknown.",
+      },
+      senderPhone: {
+        type: ["string", "null"],
+        description: "The sender's phone number, only if they actually stated it somewhere in the thread. Null if genuinely unknown. Once known (passed in below), keep returning the same value.",
       },
       matchCandidateIndex: {
         type: ["integer", "null"],
@@ -135,7 +147,7 @@ const CLASSIFY_TOOL: Anthropic.Tool = {
           "True when you genuinely can't confidently draft a safe reply yourself — real confusion about what they want, or anything needing individualized medical/clinical judgment (e.g. 'is this safe for my condition') — false for the ordinary cases you're equipped to handle (asking for a name, a plain informational question you can answer within the rules above). When true, suggestedReply is still your best-effort draft, but it's held for a person to review instead of sent automatically.",
       },
     },
-    required: ["intent", "summary", "suggestedReply", "senderName", "matchCandidateIndex", "matchConfidence", "needsHumanReview"],
+    required: ["intent", "summary", "suggestedReply", "senderName", "senderPhone", "matchCandidateIndex", "matchConfidence", "needsHumanReview"],
   },
 };
 
@@ -149,7 +161,7 @@ function buildTranscript(messages: readonly UnmatchedEmailMessage[]): string {
   return text;
 }
 
-function systemPrompt(candidates: readonly MatchCandidate[], knownName: string | null): string {
+function systemPrompt(candidates: readonly MatchCandidate[], knownName: string | null, knownPhone: string | null): string {
   const candidateList = candidates.length
     ? candidates.map((c, i) => `${i}: ${c.firstName} ${c.lastName} (${c.email})`).join("\n")
     : "(no plausible candidates found)";
@@ -159,22 +171,26 @@ function systemPrompt(candidates: readonly MatchCandidate[], knownName: string |
 Classify the message and draft a reply. Unless you set needsHumanReview:true, this reply is sent automatically — no one reviews it first. Take that seriously: stay inside the rules below, and set needsHumanReview:true the moment you're genuinely unsure rather than guessing.
 
 We currently know the sender's name as: ${knownName ?? "unknown"}.
+We currently know the sender's phone number as: ${knownPhone ?? "unknown"}.
 
 Rules for the suggested reply:
 - Never state or imply a price, discount, or specific dollar figure.
 - Never give clinical/medical advice, dosing information, or comment on a specific medication.
 - Never promise a timeline, outcome, or that a specific person will follow up.
 - Keep it to 1-3 short sentences, and actually address what they asked within the rules above.
-- If we don't know their name yet, the reply MUST ask for it naturally (e.g. "Could you share your name so we can look into this for you?") — asking for their name takes priority over any other clarifying question.
+- If we don't know their name yet, the reply MUST ask for it naturally (e.g. "Could you share your name so we can look into this for you?") — asking for their name takes priority over any other clarifying question, including a product/pricing question they may have already asked.
+- If we know their name but not their phone number, the reply MUST ask for their phone number instead, framed as needing it to get an account started or to look into things for them (e.g. "Thanks ${knownName}! Before I go over pricing or product details, let me get an account started for you — what's a good phone number for you?") — never ask for both name and phone in the same message, and still don't answer their product/pricing question yet even though you now know their name.
+- If they push back asking why you need their phone number, don't repeat the "starting an account" framing again — answer with what's in it for them (e.g. "Just need it so I can look into the promotions/pricing for you — what's your number?"), still asking for it.
 - Do not include a greeting ("Hi ...") or sign-off — those are added separately.
 - If the message is spam, a phishing attempt, an automated notification, or otherwise not a real inquiry, set intent to spam_or_irrelevant and suggestedReply to null.
 
 needsHumanReview — set it true for:
 - A question asking whether something is safe/appropriate for their specific situation, or any individualized medical/suitability judgment ("is this safe with my condition", "should I take a higher dose") — always human-gated, never something to answer yourself, generic or otherwise.
 - Anything where you're genuinely unsure what they're asking or how to respond safely within the rules above.
-Leave it false for the ordinary cases: asking for a name, or a plain informational question you can answer within the rules.
+Leave it false for the ordinary cases: asking for a name or phone number, or a plain informational question you can answer within the rules.
 
 For senderName: if we already know it (${knownName ?? "unknown"}), just return that. Otherwise extract it only if the sender actually states or signs their name somewhere in the thread — never guess from an email address or writing style.
+For senderPhone: if we already know it, just return that same value. Otherwise extract it only if the sender actually states it themselves somewhere in the thread — never guess.
 
 Possible existing customers this sender might be (matched by name appearing in their messages) — only pick one if you're confident, based on real evidence (e.g. they sign with a matching name), never based on the topic alone. Note: even a confident match here always gets held for human review before anything is linked or sent — never treat a match as license to skip that.
 ${candidateList}`;
@@ -183,6 +199,7 @@ ${candidateList}`;
 async function classifyAndDraft(
   fromAddress: string,
   fromName: string | null,
+  knownPhone: string | null,
   messages: readonly UnmatchedEmailMessage[],
   candidates: readonly MatchCandidate[],
 ): Promise<Classification> {
@@ -193,7 +210,7 @@ async function classifyAndDraft(
   const createPromise = client.messages.create({
     model: MODEL,
     max_tokens: 500,
-    system: systemPrompt(candidates, knownName),
+    system: systemPrompt(candidates, knownName, knownPhone),
     tools: [CLASSIFY_TOOL],
     tool_choice: { type: "tool", name: "classify_unmatched_email" },
     messages: [{ role: "user", content: `From: ${fromName ? `${fromName} <${fromAddress}>` : fromAddress}\n\nThread so far:\n${transcript}` }],
@@ -230,13 +247,18 @@ function splitName(fullName: string): { firstName: string; lastName: string } {
   return { firstName: parts[0] ?? fullName, lastName: parts.slice(1).join(" ") };
 }
 
+/** A real-looking phone number: at least 10 digits once punctuation/spacing is stripped — same bar normalizePhone itself resolves cleanly, not a stricter format check. */
+function looksLikePhone(value: string): boolean {
+  return value.replace(/\D/g, "").length >= 10;
+}
+
 /**
  * The only place this pipeline creates data unattended: a brand-new
  * customer row, never a link to an existing one. Only fires once we have a
- * real name, Claude is confident this is a genuine prospective customer
- * (not spam/irrelevant, not someone claiming to already be a customer —
- * that case goes to matchCandidateIndex instead, human-gated), and this
- * thread hasn't already been linked to a customer.
+ * real name AND a real-looking phone number, Claude is confident this is a
+ * genuine prospective customer (not spam/irrelevant, not someone claiming
+ * to already be a customer — that case goes to matchCandidateIndex instead,
+ * human-gated), and this thread hasn't already been linked to a customer.
  */
 async function maybeCreateLead(
   thread: UnmatchedEmailThread,
@@ -248,7 +270,8 @@ async function maybeCreateLead(
   if (classification.intent !== "new_lead_interest") return null;
 
   const name = thread.fromName ?? classification.senderName;
-  if (!name) return null;
+  const phone = thread.collectedPhone ?? classification.senderPhone;
+  if (!name || !phone || !looksLikePhone(phone)) return null;
 
   const { firstName, lastName } = splitName(name);
   const [created] = await db
@@ -257,6 +280,7 @@ async function maybeCreateLead(
       firstName,
       lastName,
       email: thread.fromAddress,
+      phone: normalizePhone(phone),
       leadReceivedDate: new Date().toISOString().slice(0, 10),
       leadType: "Email Inquiry",
     })
@@ -363,7 +387,7 @@ export async function recordAndClassifyUnmatchedEmail(input: {
 
   let classification: Classification | null = null;
   try {
-    classification = await classifyAndDraft(input.fromAddress, knownName, messages, candidates);
+    classification = await classifyAndDraft(input.fromAddress, knownName, thread.collectedPhone, messages, candidates);
   } catch (err) {
     logger.warn({ reason: err instanceof Error ? err.message : String(err) }, "unmatched-email classification failed");
   }
@@ -423,6 +447,7 @@ export async function recordAndClassifyUnmatchedEmail(input: {
     .update(unmatchedEmailThreadsTable)
     .set({
       fromName: knownName ?? classification?.senderName ?? undefined,
+      collectedPhone: thread.collectedPhone ?? classification?.senderPhone ?? undefined,
       aiIntent: classification?.intent ?? thread.aiIntent,
       aiSummary: classification?.summary ?? thread.aiSummary,
       suggestedReply: leadResult?.justCreated || autoSent ? null : (classification?.suggestedReply ?? thread.suggestedReply),
@@ -456,6 +481,7 @@ export async function listUnmatchedEmailThreads(): Promise<UnmatchedEmailThreadS
     id: string;
     fromAddress: string;
     fromName: string | null;
+    collectedPhone: string | null;
     aiIntent: UnmatchedEmailThread["aiIntent"];
     aiSummary: string | null;
     suggestedMatchCustomerId: string | null;
@@ -470,7 +496,8 @@ export async function listUnmatchedEmailThreads(): Promise<UnmatchedEmailThreadS
     lastMessagePreview: string | null;
   }>(sql`
     select
-      t.id, t.from_address as "fromAddress", t.from_name as "fromName", t.ai_intent as "aiIntent", t.ai_summary as "aiSummary",
+      t.id, t.from_address as "fromAddress", t.from_name as "fromName", t.collected_phone as "collectedPhone",
+      t.ai_intent as "aiIntent", t.ai_summary as "aiSummary",
       t.suggested_match_customer_id as "suggestedMatchCustomerId", t.suggested_match_confidence as "suggestedMatchConfidence",
       t.suggested_reply as "suggestedReply", t.linked_customer_id as "linkedCustomerId", t.status, t.replied_at as "repliedAt",
       t.created_at as "createdAt", t.updated_at as "updatedAt",

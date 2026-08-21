@@ -50,6 +50,7 @@ function classification(overrides: Record<string, unknown> = {}) {
     summary: "Unclear intent.",
     suggestedReply: "Could you tell us more?",
     senderName: null,
+    senderPhone: null,
     matchCandidateIndex: null,
     matchConfidence: null,
     needsHumanReview: false,
@@ -147,15 +148,22 @@ describe("recordAndClassifyUnmatchedEmail", () => {
     expect(thread.suggestedReply).toContain("name");
   });
 
-  it("creates a new lead once the sender's name is known and Claude classifies genuine new-lead interest", async () => {
+  it("creates a new lead once the sender's name AND phone number are known and Claude classifies genuine new-lead interest", async () => {
     createMock.mockResolvedValueOnce(
-      toolResponse(classification({ intent: "new_lead_interest", summary: "Wants to start a program.", suggestedReply: "A team member will follow up." })),
+      toolResponse(
+        classification({
+          intent: "new_lead_interest",
+          summary: "Wants to start a program.",
+          suggestedReply: "A team member will follow up.",
+          senderPhone: "555-123-9876",
+        }),
+      ),
     );
     const thread = await recordAndClassifyUnmatchedEmail({
       fromAddress: uniqueAddress("newlead"),
       fromName: "Taylor Morgan",
       subject: "Interested",
-      body: "I'd like to learn more about your program.",
+      body: "I'd like to learn more about your program, my number is 555-123-9876.",
       messageId: null,
     });
 
@@ -164,17 +172,68 @@ describe("recordAndClassifyUnmatchedEmail", () => {
     expect(customer.firstName).toBe("Taylor");
     expect(customer.lastName).toBe("Morgan");
     expect(customer.email).toBe(thread.fromAddress);
+    expect(customer.phone).toBe("+15551239876"); // normalized
     expect(customer.leadType).toBe("Email Inquiry");
 
     // The triggering message is handed straight to Lucy's real pipeline —
     // not left as a generic staff-reviewed draft, and no redundant generic
     // acknowledgment sent alongside it. Handed off as a Meta-lead-style
     // conversation, not abandoned_cart.
-    expect(processInboundEmailMock).toHaveBeenCalledWith(thread.linkedCustomerId, "Interested", "I'd like to learn more about your program.", null, "meta_form");
+    expect(processInboundEmailMock).toHaveBeenCalledWith(thread.linkedCustomerId, "Interested", "I'd like to learn more about your program, my number is 555-123-9876.", null, "meta_form");
     expect(sendEmailMock).not.toHaveBeenCalled();
     expect(thread.status).toBe("replied");
     expect(thread.suggestedReply).toBeNull();
     expect(thread.repliedAt).not.toBeNull();
+  });
+
+  it("does NOT create a lead from a known name alone — auto-sends a request for a phone number instead", async () => {
+    const fromAddress = uniqueAddress("noPhone");
+    createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "First contact.", senderName: "Alex Rivera" })));
+    await recordAndClassifyUnmatchedEmail({ fromAddress, fromName: "Alex Rivera", subject: "Hi", body: "hello", messageId: null }); // first message — consumes the fixed ack
+
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<phone-ask@example.com>" });
+    createMock.mockResolvedValueOnce(
+      toolResponse(
+        classification({
+          intent: "new_lead_interest",
+          summary: "Wants to start a program.",
+          suggestedReply: "Before I go over pricing or product details, let me get an account started for you — what's a good phone number for you?",
+          senderName: "Alex Rivera",
+        }),
+      ),
+    );
+    const thread = await recordAndClassifyUnmatchedEmail({
+      fromAddress,
+      fromName: "Alex Rivera",
+      subject: "Interested",
+      body: "How much does the program cost?",
+      messageId: null,
+    });
+
+    expect(thread.linkedCustomerId).toBeNull();
+    expect(thread.suggestedReply).toBeNull(); // auto-sent, nothing left pending review
+    expect(thread.status).toBe("replied");
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    expect(sendEmailMock.mock.calls[0][2]).toContain("phone number");
+    expect(processInboundEmailMock).not.toHaveBeenCalled();
+
+    const allWithAddress = await db.select().from(customersTable).where(eq(customersTable.email, fromAddress));
+    expect(allWithAddress).toHaveLength(0);
+  });
+
+  it("does not create a lead when the extracted phone number doesn't look like a real one", async () => {
+    createMock.mockResolvedValueOnce(
+      toolResponse(classification({ intent: "new_lead_interest", senderName: "Jamie Lee", senderPhone: "call me" })),
+    );
+    const thread = await recordAndClassifyUnmatchedEmail({
+      fromAddress: uniqueAddress("badphone"),
+      fromName: "Jamie Lee",
+      subject: "Hi",
+      body: "just call me",
+      messageId: null,
+    });
+    expect(thread.linkedCustomerId).toBeNull();
   });
 
   it("does not create a lead when intent is existing_customer_support, even with a known name — that path is human-gated via matchCandidateIndex instead — and holds the reply for review instead of auto-sending it", async () => {

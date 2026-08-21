@@ -215,6 +215,16 @@ export const unmatchedEmailThreadsTable = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     fromAddress: text("from_address").notNull(),
     fromName: text("from_name"),
+    /**
+     * A phone number gathered mid-thread specifically so a lead can be
+     * created — customers.phone is nullable, so unlike email (already known
+     * here, it's who's writing in) this isn't automatic. Mirrors
+     * collectedEmail on unmatchedSmsThreadsTable (messaging.ts): both
+     * pipelines require gathering the OTHER contact channel before creating
+     * a customer row, so support staff always has more than one way to
+     * reach a brand-new lead.
+     */
+    collectedPhone: text("collected_phone"),
     aiIntent: text("ai_intent"),
     aiSummary: text("ai_summary"),
     suggestedMatchCustomerId: uuid("suggested_match_customer_id").references(() => customersTable.id, { onDelete: "set null" }),

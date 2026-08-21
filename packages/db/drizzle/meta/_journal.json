@@ -176,6 +176,13 @@
       "when": 1787323804642,
       "tag": "0024_curved_riptide",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1787324995862,
+      "tag": "0025_amazing_thanos",
+      "breakpoints": true
     }
   ]
 }
