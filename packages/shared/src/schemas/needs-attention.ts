@@ -15,6 +15,7 @@ export const needsAttentionItemSchema = z.object({
   lastName: z.string(),
   lastMessagePreview: z.string().nullable(),
   lastMessageAt: z.string().nullable(),
+  reason: z.string().nullable(),
 });
 export type NeedsAttentionItem = z.infer<typeof needsAttentionItemSchema>;
 

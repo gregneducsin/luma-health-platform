@@ -59,6 +59,7 @@ function NeedsAttentionRow({ item }: { item: NeedsAttentionItem }) {
           <span className="text-xs text-gray-400">{relativeTime(item.lastMessageAt)}</span>
         </div>
         <p className="mt-1 truncate text-xs text-gray-500">{item.lastMessagePreview ?? "No messages yet"}</p>
+        {item.reason && <p className="mt-0.5 truncate text-xs font-medium text-red-600">{item.reason}</p>}
       </button>
       {expanded && (
         <div className="border-t border-gray-100">

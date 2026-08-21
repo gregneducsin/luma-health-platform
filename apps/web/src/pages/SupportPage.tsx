@@ -221,7 +221,9 @@ function SupportConversationDetailPanel({ conversationId, channel }: { conversat
         {conversation.needsAttention && (
           <div className="mt-2 rounded-md bg-red-50 px-3 py-2">
             <div className="flex items-center justify-between">
-              <p className="text-xs text-red-700">This conversation needs staff attention.</p>
+              <p className="text-xs text-red-700">
+                {conversation.needsAttentionReason ?? "This conversation needs staff attention."}
+              </p>
               <Button
                 variant="secondary"
                 onClick={() => clearAttention.mutate({ conversationId: conversation.id, channel })}

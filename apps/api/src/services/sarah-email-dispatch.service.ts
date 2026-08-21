@@ -17,6 +17,7 @@ import { buildUnsubscribeUrl } from "../lib/email/unsubscribe.js";
 import { logger } from "../lib/logger.js";
 import { withPersonLock } from "../lib/db-lock.js";
 import { isCustomerEmailDnd, setCustomerEmailDnd } from "./dnd.service.js";
+import { describeNeedsAttentionReason } from "../lib/messaging/needs-attention-reason.js";
 
 async function getCustomerContact(personId: string): Promise<{ firstName: string; email: string } | undefined> {
   const [row] = await db.select({ firstName: customersTable.firstName, email: customersTable.email }).from(customersTable).where(eq(customersTable.id, personId));
@@ -106,13 +107,13 @@ async function processInboundSupportEmailLocked(personId: string, subject: strin
     // anything that escapes runSarahTurn itself isn't a guardrail rejection,
     // but the patient still got silence, so it needs the same staff-visible flag.
     logger.error({ personId, conversationId: conversation.id, reason: err instanceof Error ? err.message : String(err) }, "Sarah email turn threw unexpectedly — no outbound email sent");
-    await updateSupportEmailConversationState(conversation.id, { needsAttention: true });
+    await updateSupportEmailConversationState(conversation.id, { needsAttention: true, needsAttentionReason: describeNeedsAttentionReason({ kind: "exception" }) });
     return { ok: false, code: "UNEXPECTED_ERROR" };
   }
 
   if (!result.ok) {
     logger.warn({ personId, conversationId: conversation.id, code: result.code }, "Sarah email turn rejected — no outbound email sent");
-    await updateSupportEmailConversationState(conversation.id, { needsAttention: true });
+    await updateSupportEmailConversationState(conversation.id, { needsAttention: true, needsAttentionReason: describeNeedsAttentionReason({ kind: "rejected", code: result.code }) });
     return result;
   }
 
@@ -131,7 +132,9 @@ async function processInboundSupportEmailLocked(personId: string, subject: strin
   const statePatch: SupportEmailConversationStatePatch = {
     lastQuestion: result.nextQuestion,
     lastDraft: result.reply,
-    ...(result.requiresStaff ? { needsAttention: true } : {}),
+    ...(result.requiresStaff
+      ? { needsAttention: true, needsAttentionReason: describeNeedsAttentionReason({ kind: "staff_flagged", preCheckCode: result.preCheckCode }) }
+      : {}),
     ...(conversation.reviewRequested && result.inboundSentiment !== null ? { reviewSentiment: result.inboundSentiment } : {}),
   };
   await updateSupportEmailConversationState(conversation.id, statePatch);
@@ -176,6 +179,6 @@ export async function sendEmailStaffReply(conversationId: string, body: string):
   await appendSupportEmailMessage(conversationId, "outbound", subject, signedBody, { messageId, inReplyTo: lastMessage?.messageId ?? null });
   if (sendFailed) return { sent: false, reason: "send_failed" };
 
-  await updateSupportEmailConversationState(conversationId, { needsAttention: false });
+  await updateSupportEmailConversationState(conversationId, { needsAttention: false, needsAttentionReason: null });
   return { sent: true };
 }

@@ -44,6 +44,7 @@ export const conversationDetailSchema = z.object({
     linkProvided: z.boolean(),
     promoOffered: z.boolean(),
     needsAttention: z.boolean(),
+    needsAttentionReason: z.string().nullable(),
   }),
   /** email is only populated on the email-channel response — optional so the SMS response shape (no email field at all) still matches. */
   customer: z.object({ firstName: z.string(), lastName: z.string(), phone: z.string().nullable(), email: z.string().optional() }),

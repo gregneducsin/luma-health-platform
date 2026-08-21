@@ -36,6 +36,8 @@ export const emailConversationsTable = pgTable(
     linkProvided: boolean("link_provided").notNull().default(false),
     promoOffered: boolean("promo_offered").notNull().default(false),
     needsAttention: boolean("needs_attention").notNull().default(false),
+    /** Human-readable explanation of why needsAttention is set — see needs-attention-reason.ts. Null whenever needsAttention is false. */
+    needsAttentionReason: text("needs_attention_reason"),
     status: text("status", { enum: ["active", "closed"] }).notNull().default("active"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
@@ -90,6 +92,8 @@ export const supportEmailConversationsTable = pgTable(
     pendingTopic: text("pending_topic"),
     lastDraft: text("last_draft"),
     needsAttention: boolean("needs_attention").notNull().default(false),
+    /** Human-readable explanation of why needsAttention is set — see needs-attention-reason.ts. Null whenever needsAttention is false. */
+    needsAttentionReason: text("needs_attention_reason"),
     status: text("status", { enum: ["active", "closed"] }).notNull().default("active"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })

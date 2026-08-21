@@ -18,6 +18,7 @@ export interface SupportConversationStatePatch {
   readonly pendingTopic?: string | null;
   readonly lastDraft?: string | null;
   readonly needsAttention?: boolean;
+  readonly needsAttentionReason?: string | null;
 }
 
 /** One support conversation per customer. Creates it on first use (order-received opener or inbound reply). */
@@ -41,7 +42,7 @@ export async function updateSupportConversationState(conversationId: string, pat
 }
 
 export async function clearSupportNeedsAttention(conversationId: string): Promise<void> {
-  await db.update(supportConversationsTable).set({ needsAttention: false }).where(eq(supportConversationsTable.id, conversationId));
+  await db.update(supportConversationsTable).set({ needsAttention: false, needsAttentionReason: null }).where(eq(supportConversationsTable.id, conversationId));
 }
 
 export type StaffReplyResult = { readonly sent: true } | { readonly sent: false; readonly reason: "not_found" | "no_phone" | "send_failed" };

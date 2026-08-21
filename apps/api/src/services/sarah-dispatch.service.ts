@@ -14,6 +14,7 @@ import { getSmsProvider } from "../lib/sms-provider.js";
 import { logger } from "../lib/logger.js";
 import { withPersonLock } from "../lib/db-lock.js";
 import { isCustomerSmsDnd, setCustomerSmsDnd } from "./dnd.service.js";
+import { describeNeedsAttentionReason } from "../lib/messaging/needs-attention-reason.js";
 
 async function getCustomerContact(personId: string): Promise<{ firstName: string; phone: string | null } | undefined> {
   const [row] = await db.select({ firstName: customersTable.firstName, phone: customersTable.phone }).from(customersTable).where(eq(customersTable.id, personId));
@@ -72,13 +73,13 @@ async function processInboundSupportMessageLocked(personId: string, inboundBody:
     // that escapes runSarahTurn itself isn't a guardrail rejection, but the
     // patient still got silence, so it needs the same staff-visible flag.
     logger.error({ personId, conversationId: conversation.id, reason: err instanceof Error ? err.message : String(err) }, "Sarah turn threw unexpectedly — no outbound message sent");
-    await updateSupportConversationState(conversation.id, { needsAttention: true });
+    await updateSupportConversationState(conversation.id, { needsAttention: true, needsAttentionReason: describeNeedsAttentionReason({ kind: "exception" }) });
     return { ok: false, code: "UNEXPECTED_ERROR" };
   }
 
   if (!result.ok) {
     logger.warn({ personId, conversationId: conversation.id, code: result.code }, "Sarah turn rejected — no outbound message sent");
-    await updateSupportConversationState(conversation.id, { needsAttention: true });
+    await updateSupportConversationState(conversation.id, { needsAttention: true, needsAttentionReason: describeNeedsAttentionReason({ kind: "rejected", code: result.code }) });
     return result;
   }
 
@@ -99,7 +100,9 @@ async function processInboundSupportMessageLocked(personId: string, inboundBody:
   const statePatch: SupportConversationStatePatch = {
     lastQuestion: result.nextQuestion,
     lastDraft: result.reply,
-    ...(result.requiresStaff ? { needsAttention: true } : {}),
+    ...(result.requiresStaff
+      ? { needsAttention: true, needsAttentionReason: describeNeedsAttentionReason({ kind: "staff_flagged", preCheckCode: result.preCheckCode }) }
+      : {}),
     ...(conversation.reviewRequested && result.inboundSentiment !== null ? { reviewSentiment: result.inboundSentiment } : {}),
   };
   await updateSupportConversationState(conversation.id, statePatch);

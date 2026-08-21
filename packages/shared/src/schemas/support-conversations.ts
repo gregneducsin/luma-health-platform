@@ -35,6 +35,7 @@ export const supportConversationDetailSchema = z.object({
     reviewRequested: z.boolean(),
     reviewSentiment: z.enum(["positive", "neutral", "negative"]).nullable(),
     needsAttention: z.boolean(),
+    needsAttentionReason: z.string().nullable(),
   }),
   /** email is only populated on the email-channel response — optional so the SMS response shape (no email field at all) still matches. */
   customer: z.object({ firstName: z.string(), lastName: z.string(), phone: z.string().nullable(), email: z.string().optional() }),

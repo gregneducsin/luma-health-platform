@@ -35,6 +35,7 @@ export interface NeedsAttentionItem {
   readonly lastName: string;
   readonly lastMessagePreview: string | null;
   readonly lastMessageAt: string | null;
+  readonly reason: string | null;
 }
 
 async function listLucySms(): Promise<NeedsAttentionItem[]> {
@@ -46,6 +47,7 @@ async function listLucySms(): Promise<NeedsAttentionItem[]> {
       lastName: customersTable.lastName,
       lastMessageAt: sql<string | null>`(select max(${conversationMessagesTable.createdAt}) from ${conversationMessagesTable} where ${conversationMessagesTable.conversationId} = ${conversationsTable.id})`,
       lastMessagePreview: sql<string | null>`(select ${conversationMessagesTable.body} from ${conversationMessagesTable} where ${conversationMessagesTable.conversationId} = ${conversationsTable.id} order by ${conversationMessagesTable.createdAt} desc limit 1)`,
+      reason: conversationsTable.needsAttentionReason,
     })
     .from(conversationsTable)
     .innerJoin(customersTable, eq(customersTable.id, conversationsTable.personId))
@@ -62,6 +64,7 @@ async function listSarahSms(): Promise<NeedsAttentionItem[]> {
       lastName: customersTable.lastName,
       lastMessageAt: sql<string | null>`(select max(${supportConversationMessagesTable.createdAt}) from ${supportConversationMessagesTable} where ${supportConversationMessagesTable.conversationId} = ${supportConversationsTable.id})`,
       lastMessagePreview: sql<string | null>`(select ${supportConversationMessagesTable.body} from ${supportConversationMessagesTable} where ${supportConversationMessagesTable.conversationId} = ${supportConversationsTable.id} order by ${supportConversationMessagesTable.createdAt} desc limit 1)`,
+      reason: supportConversationsTable.needsAttentionReason,
     })
     .from(supportConversationsTable)
     .innerJoin(customersTable, eq(customersTable.id, supportConversationsTable.personId))
@@ -78,6 +81,7 @@ async function listLucyEmail(): Promise<NeedsAttentionItem[]> {
       lastName: customersTable.lastName,
       lastMessageAt: sql<string | null>`(select max(${emailConversationMessagesTable.createdAt}) from ${emailConversationMessagesTable} where ${emailConversationMessagesTable.conversationId} = ${emailConversationsTable.id})`,
       lastMessagePreview: sql<string | null>`(select ${emailConversationMessagesTable.subject} from ${emailConversationMessagesTable} where ${emailConversationMessagesTable.conversationId} = ${emailConversationsTable.id} order by ${emailConversationMessagesTable.createdAt} desc limit 1)`,
+      reason: emailConversationsTable.needsAttentionReason,
     })
     .from(emailConversationsTable)
     .innerJoin(customersTable, eq(customersTable.id, emailConversationsTable.personId))
@@ -94,6 +98,7 @@ async function listSarahEmail(): Promise<NeedsAttentionItem[]> {
       lastName: customersTable.lastName,
       lastMessageAt: sql<string | null>`(select max(${supportEmailConversationMessagesTable.createdAt}) from ${supportEmailConversationMessagesTable} where ${supportEmailConversationMessagesTable.conversationId} = ${supportEmailConversationsTable.id})`,
       lastMessagePreview: sql<string | null>`(select ${supportEmailConversationMessagesTable.subject} from ${supportEmailConversationMessagesTable} where ${supportEmailConversationMessagesTable.conversationId} = ${supportEmailConversationsTable.id} order by ${supportEmailConversationMessagesTable.createdAt} desc limit 1)`,
+      reason: supportEmailConversationsTable.needsAttentionReason,
     })
     .from(supportEmailConversationsTable)
     .innerJoin(customersTable, eq(customersTable.id, supportEmailConversationsTable.personId))
@@ -156,6 +161,6 @@ export async function getNeedsAttentionMessages(channel: NeedsAttentionChannel, 
 export async function clearNeedsAttentionItem(channel: NeedsAttentionChannel, persona: NeedsAttentionPersona, conversationId: string): Promise<void> {
   if (channel === "sms" && persona === "lucy") return clearLucySmsAttention(conversationId);
   if (channel === "sms" && persona === "sarah") return clearSarahSmsAttention(conversationId);
-  if (channel === "email" && persona === "lucy") return updateEmailConversationState(conversationId, { needsAttention: false });
-  return updateSupportEmailConversationState(conversationId, { needsAttention: false });
+  if (channel === "email" && persona === "lucy") return updateEmailConversationState(conversationId, { needsAttention: false, needsAttentionReason: null });
+  return updateSupportEmailConversationState(conversationId, { needsAttention: false, needsAttentionReason: null });
 }

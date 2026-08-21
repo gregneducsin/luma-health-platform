@@ -140,6 +140,8 @@ export const conversationsTable = pgTable(
      * staff member reviewing the conversation, not automatically.
      */
     needsAttention: boolean("needs_attention").notNull().default(false),
+    /** Human-readable explanation of why needsAttention is set — see needs-attention-reason.ts. Null whenever needsAttention is false. */
+    needsAttentionReason: text("needs_attention_reason"),
     status: text("status", { enum: ["active", "closed"] }).notNull().default("active"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })

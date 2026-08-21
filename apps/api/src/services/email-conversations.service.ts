@@ -21,6 +21,7 @@ export interface EmailConversationStatePatch {
   readonly linkProvided?: boolean;
   readonly promoOffered?: boolean;
   readonly needsAttention?: boolean;
+  readonly needsAttentionReason?: string | null;
 }
 
 /**

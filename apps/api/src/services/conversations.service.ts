@@ -23,6 +23,7 @@ export interface ConversationStatePatch {
   readonly linkProvided?: boolean;
   readonly promoOffered?: boolean;
   readonly needsAttention?: boolean;
+  readonly needsAttentionReason?: string | null;
 }
 
 /**
@@ -53,7 +54,7 @@ export async function updateConversationState(conversationId: string, patch: Con
 
 /** Staff has looked at a flagged conversation — clears the attention flag until the next thing that needs it. */
 export async function clearNeedsAttention(conversationId: string): Promise<void> {
-  await db.update(conversationsTable).set({ needsAttention: false }).where(eq(conversationsTable.id, conversationId));
+  await db.update(conversationsTable).set({ needsAttention: false, needsAttentionReason: null }).where(eq(conversationsTable.id, conversationId));
 }
 
 export type StaffReplyResult = { readonly sent: true } | { readonly sent: false; readonly reason: "not_found" | "no_phone" | "send_failed" };

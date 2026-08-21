@@ -53,7 +53,7 @@ export function createSupportConversationsRouter(): RouterType {
           res.status(404).json({ error: "Conversation not found." });
           return;
         }
-        await supportEmailConversationsService.updateSupportEmailConversationState(req.params.id as string, { needsAttention: false });
+        await supportEmailConversationsService.updateSupportEmailConversationState(req.params.id as string, { needsAttention: false, needsAttentionReason: null });
         res.json({ ok: true });
         return;
       }

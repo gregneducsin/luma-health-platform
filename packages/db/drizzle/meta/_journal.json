@@ -183,6 +183,13 @@
       "when": 1787324995862,
       "tag": "0025_amazing_thanos",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1787332088300,
+      "tag": "0026_classy_firelord",
+      "breakpoints": true
     }
   ]
 }

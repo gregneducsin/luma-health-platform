@@ -23,6 +23,7 @@ export interface SupportEmailConversationStatePatch {
   readonly pendingTopic?: string | null;
   readonly lastDraft?: string | null;
   readonly needsAttention?: boolean;
+  readonly needsAttentionReason?: string | null;
 }
 
 /** Email twin of support-conversations.service.ts's getOrCreateSupportConversation — its own table, same one-per-customer behavior. */
