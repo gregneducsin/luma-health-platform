@@ -25,6 +25,19 @@ export const intakeLinkTokensTable = pgTable(
      * later with no memory of what was discussed.
      */
     promoApplied: text("promo_applied", { enum: ["none", "first_month_20"] }).notNull().default("none"),
+    /**
+     * Which conversation script this lead is on, carried from mint time
+     * through to whichever follow-up job eventually logs a message for this
+     * person — see follow-up-jobs.service.ts's sweep. Needed because a
+     * follow-up nudge can be the very first SMS a person ever gets (e.g. a
+     * Meta lead who only had an email on file when the ad-lead SMS opener
+     * would have fired, but got a phone number added before their follow-up
+     * came due): whoever calls createIntakeLink already knows the correct
+     * value from their own context, so it's captured here rather than left
+     * for the follow-up sweep to guess via conversationsTable's default,
+     * which only matches abandoned-cart leads.
+     */
+    leadSource: text("lead_source", { enum: ["abandoned_cart", "meta_form"] }).notNull().default("abandoned_cart"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     clickedAt: timestamp("clicked_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

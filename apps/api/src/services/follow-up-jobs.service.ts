@@ -47,7 +47,10 @@ export async function sweepFollowUpJobs(): Promise<FollowUpSweepResult> {
   let failedCount = 0;
 
   for (const job of claimed) {
-    const [token] = await db.select({ clickedAt: intakeLinkTokensTable.clickedAt }).from(intakeLinkTokensTable).where(eq(intakeLinkTokensTable.id, job.intakeLinkTokenId));
+    const [token] = await db
+      .select({ clickedAt: intakeLinkTokensTable.clickedAt, leadSource: intakeLinkTokensTable.leadSource })
+      .from(intakeLinkTokensTable)
+      .where(eq(intakeLinkTokensTable.id, job.intakeLinkTokenId));
     const completed = await hasCompletedSinceClick(job.personId, token?.clickedAt ?? null);
 
     if (completed) {
@@ -79,8 +82,15 @@ export async function sweepFollowUpJobs(): Promise<FollowUpSweepResult> {
     // never shows up in their conversation history, leaving the dashboard's
     // last-message stuck on whatever Lucy sent before the follow-up chain
     // took over.
+    //
+    // This can be the very first SMS conversation row for this person (a
+    // follow-up nudge doesn't require any prior inbound text), so the
+    // leadSource passed here matters and can't just fall back to
+    // getOrCreateConversation's default: that default is "abandoned_cart",
+    // which is wrong for a Meta lead whose click came from the emailed
+    // version of their nudge — see leadSource on intakeLinkTokensTable.
     try {
-      const conversation = await getOrCreateConversation(job.personId);
+      const conversation = await getOrCreateConversation(job.personId, token?.leadSource ?? "abandoned_cart");
       await appendMessage(conversation.id, "outbound", sendResult.body, { providerMessageId: sendResult.providerMessageId });
     } catch (err) {
       logger.warn({ personId: job.personId, reason: err instanceof Error ? err.message : String(err) }, "failed to log follow-up SMS into the conversation");

@@ -106,15 +106,30 @@ async function findMatchCandidates(fromName: string | null, transcriptText: stri
  * before classification would miss, and it doesn't depend on Claude
  * noticing the match at all — an exact email is unambiguous enough not to
  * need a judgment call.
+ *
+ * customers.email has no database-level uniqueness constraint, so more
+ * than one customer can technically share an address (a stale duplicate
+ * record, a shared household email, etc). This result feeds the
+ * auto-connect and ask-to-confirm paths below, which act on the assumption
+ * that an exact email means one specific, identified person — picking one
+ * of several arbitrarily and treating it as certain would risk connecting
+ * a text to the wrong person's health record and support history. So a
+ * genuine collision comes back as `ambiguous: true` with no candidate at
+ * all, distinct from no match found — callers must still treat that as a
+ * reason to hold for human review (something real is going on with this
+ * email), just never as license to auto-connect, suggest a specific
+ * person, or ask a confirmation question about an identity we can't
+ * actually pin down.
  */
-async function findExistingCustomerByEmail(email: string): Promise<MatchCandidate | undefined> {
+async function findExistingCustomerByEmail(email: string): Promise<{ candidate: MatchCandidate | undefined; ambiguous: boolean }> {
   const { rows } = await db.execute<{ id: string; firstName: string; lastName: string; email: string }>(sql`
     select id, first_name as "firstName", last_name as "lastName", email
     from customers
     where lower(email) = lower(${email})
-    limit 1
+    limit 2
   `);
-  return rows[0];
+  if (rows.length > 1) return { candidate: undefined, ambiguous: true };
+  return { candidate: rows[0], ambiguous: false };
 }
 
 interface Classification {
@@ -456,12 +471,13 @@ export async function recordAndClassifyUnmatchedSms(fromPhone: string, body: str
   // systemPrompt). Only looks at thread.collectedEmail — a brand-new email
   // given THIS turn can't have been asked about yet, so that case is
   // handled separately below, after classification runs.
-  const preEmailMatch = thread.collectedEmail
+  const preEmailLookup = thread.collectedEmail
     ? await findExistingCustomerByEmail(thread.collectedEmail).catch((err) => {
         logger.warn({ reason: err instanceof Error ? err.message : String(err) }, "unmatched-sms pending-confirmation email lookup failed");
-        return undefined;
+        return { candidate: undefined, ambiguous: false };
       })
-    : undefined;
+    : { candidate: undefined, ambiguous: false };
+  const preEmailMatch = preEmailLookup.candidate;
   const pendingConfirmation = Boolean(preEmailMatch) && !thread.linkedCustomerId && !candidates.some((c) => c.id === preEmailMatch!.id);
 
   let classification: Classification | null = null;
@@ -479,29 +495,41 @@ export async function recordAndClassifyUnmatchedSms(fromPhone: string, body: str
   // folded into the pre-classification candidate search. Takes priority
   // over a name-based match when both somehow point at different people.
   const knownEmailThisTurn = thread.collectedEmail ?? classification?.senderEmail ?? null;
-  const emailMatch = knownEmailThisTurn
+  const emailLookup = knownEmailThisTurn
     ? await findExistingCustomerByEmail(knownEmailThisTurn).catch((err) => {
         logger.warn({ reason: err instanceof Error ? err.message : String(err) }, "unmatched-sms email match lookup failed");
-        return undefined;
+        return { candidate: undefined, ambiguous: false };
       })
-    : undefined;
+    : { candidate: undefined, ambiguous: false };
+  const emailMatch = emailLookup.candidate;
   const matchCandidate = emailMatch ?? nameMatch;
 
   // Force human review for cases where auto-replying risks being actively
   // wrong, not just "Claude wasn't sure": a plausible match to an existing
-  // customer (never auto-linked — see maybeCreateLead) or someone claiming
-  // to already be a customer both need a person to confirm identity before
-  // anything goes out, regardless of Claude's own confidence. Does not
-  // apply when the match resolves on its own — either signal agrees (see
-  // findAutoConnectCustomerId) or the sender is about to be asked to
-  // confirm it themselves (see isFirstEncounterWithEmailMatch below).
-  const needsHumanReview = Boolean(classification?.needsHumanReview || matchCandidate || classification?.intent === "existing_customer_support");
+  // customer (never auto-linked — see maybeCreateLead), an email that
+  // matches more than one customer record (findExistingCustomerByEmail's
+  // ambiguous case — real data, but we can't safely say which person it
+  // is), or someone claiming to already be a customer all need a person to
+  // confirm identity before anything goes out, regardless of Claude's own
+  // confidence. Does not apply when the match resolves on its own — either
+  // signal agrees (see findAutoConnectCustomerId) or the sender is about to
+  // be asked to confirm it themselves (see isFirstEncounterWithEmailMatch
+  // below) — an ambiguous email match never qualifies for either, since
+  // neither path can say who, specifically, was confirmed.
+  const needsHumanReview = Boolean(
+    classification?.needsHumanReview || matchCandidate || emailLookup.ambiguous || classification?.intent === "existing_customer_support",
+  );
 
+  // A message Claude flags for an unrelated reason (needsHumanReview true)
+  // still goes to a person even when the email/name confirmation itself
+  // checks out — "the sender confirmed who they are" doesn't override "this
+  // reply also needs a person to look at it" for some other, separate
+  // reason.
   const autoConnectCustomerId = thread.linkedCustomerId
     ? null
-    : await findAutoConnectCustomerId(nameMatch, emailMatch, Boolean(classification?.confirmsExistingCustomer), normalizedPhone);
+    : await findAutoConnectCustomerId(nameMatch, emailMatch, Boolean(classification?.confirmsExistingCustomer) && !classification?.needsHumanReview, normalizedPhone);
 
-  const leadResult = classification && !autoConnectCustomerId ? await maybeCreateLead(thread, classification, Boolean(matchCandidate)) : null;
+  const leadResult = classification && !autoConnectCustomerId ? await maybeCreateLead(thread, classification, Boolean(matchCandidate) || emailLookup.ambiguous) : null;
 
   // The email just given THIS turn (not previously on file) turns out to
   // match an existing customer, and the texted name doesn't already agree

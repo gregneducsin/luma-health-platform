@@ -150,7 +150,7 @@ export async function sweepMetaLeadEmailTriggers(): Promise<MetaLeadEmailSweepRe
 
     let ctaUrl: string;
     try {
-      const minted = await createIntakeLink(trigger.personId, "first_month_20");
+      const minted = await createIntakeLink(trigger.personId, "first_month_20", "meta_form");
       ctaUrl = minted.url;
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);

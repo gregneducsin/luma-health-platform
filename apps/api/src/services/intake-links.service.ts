@@ -6,6 +6,7 @@ const INTAKE_LINK_TTL_MS = 24 * 60 * 60 * 1000;
 const FOLLOW_UP_DELAY_MS = 2 * 60 * 60 * 1000;
 
 export type PromoVariant = IntakeLinkToken["promoApplied"];
+export type IntakeLeadSource = IntakeLinkToken["leadSource"];
 
 function baskQuestionnaireUrl(promo: PromoVariant): string {
   const envVar = promo === "first_month_20" ? "BASK_QUESTIONNAIRE_PROMO_URL" : "BASK_QUESTIONNAIRE_URL";
@@ -33,8 +34,15 @@ function intakeLinkBaseUrl(): string {
  * (e.g. by whether the conversation used the first_month_offer topic) —
  * never re-derived at click time, which happens hours later with no memory
  * of the conversation.
+ *
+ * `leadSource` is stored for the same reason: whoever's minting this link
+ * already knows which conversation script this person is on (the caller's
+ * own context), and a follow-up nudge sent hours later — see
+ * follow-up-jobs.service.ts — needs that same value to log itself into the
+ * right kind of conversation, since it can end up being the very first SMS
+ * this person ever gets, with no existing conversation row to read it from.
  */
-export async function createIntakeLink(personId: string, promo: PromoVariant = "none"): Promise<{ url: string; expiresAt: Date }> {
+export async function createIntakeLink(personId: string, promo: PromoVariant = "none", leadSource: IntakeLeadSource = "abandoned_cart"): Promise<{ url: string; expiresAt: Date }> {
   const rawToken = generateRawToken();
   const expiresAt = new Date(Date.now() + INTAKE_LINK_TTL_MS);
 
@@ -42,6 +50,7 @@ export async function createIntakeLink(personId: string, promo: PromoVariant = "
     personId,
     tokenHash: hashToken(rawToken),
     promoApplied: promo,
+    leadSource,
     expiresAt,
   });
 

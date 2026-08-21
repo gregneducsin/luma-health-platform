@@ -159,7 +159,7 @@ export async function runLucyTurn(personId: string, body: BotPreviewRequestBody)
 
   if (result.action === "send_form") {
     try {
-      const minted = await createIntakeLink(personId, result.promoOffered ? "first_month_20" : "none");
+      const minted = await createIntakeLink(personId, result.promoOffered ? "first_month_20" : "none", body.leadSource);
       link = minted.url;
       finalReply = result.reply ? `${result.reply} ${link}` : link;
       // Deterministic, not AI-drafted — same reasoning as the link itself

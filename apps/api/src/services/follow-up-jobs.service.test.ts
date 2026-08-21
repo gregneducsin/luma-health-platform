@@ -34,6 +34,7 @@ async function seedPendingJob(
   clickedAt: Date,
   dueAt: Date,
   messageStep: "provider_check_in" | "intake_questions_check_in" = "provider_check_in",
+  leadSource: "abandoned_cart" | "meta_form" = "abandoned_cart",
 ) {
   const [token] = await db
     .insert(intakeLinkTokensTable)
@@ -42,6 +43,7 @@ async function seedPendingJob(
       tokenHash: hashToken(`token-${crypto.randomUUID()}`),
       expiresAt: new Date(clickedAt.getTime() + 24 * 60 * 60 * 1000),
       clickedAt,
+      leadSource,
     })
     .returning({ id: intakeLinkTokensTable.id });
 
@@ -253,6 +255,22 @@ describe("sweepFollowUpJobs", () => {
     expect(messages[0].direction).toBe("outbound");
     expect(messages[0].providerMessageId).toBe("msg_logged");
     expect(messages[0].body).toContain("completed questionnaire");
+  });
+
+  it("creates the conversation with the intake link's leadSource, not the default, when this is the first message a Meta lead ever gets", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_meta_lead" });
+    const personId = await seedCustomer({ phone: "+15553334444" });
+    // A Meta lead who only had email on file when the SMS opener would have
+    // fired, then got a phone added before their emailed link's follow-up
+    // came due — no SMS conversation exists yet, so getOrCreateConversation
+    // is about to create one for the first time here.
+    await seedPendingJob(personId, new Date(Date.now() - 3 * 60 * 60 * 1000), new Date(Date.now() - 60_000), "provider_check_in", "meta_form");
+
+    await sweepFollowUpJobs();
+
+    const [conversation] = await db.select().from(conversationsTable).where(eq(conversationsTable.personId, personId));
+    expect(conversation.leadSource).toBe("meta_form");
   });
 
   it("does not reprocess a job that already resolved", async () => {

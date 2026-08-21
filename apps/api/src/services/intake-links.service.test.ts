@@ -73,6 +73,19 @@ describe("intake-links.service", () => {
       const [row] = await db.select().from(intakeLinkTokensTable).where(eq(intakeLinkTokensTable.personId, personId));
       expect(row.promoApplied).toBe("first_month_20");
     });
+
+    it("defaults leadSource to abandoned_cart, and stores it when a caller passes meta_form", async () => {
+      const { createIntakeLink } = await import("./intake-links.service.js");
+      const defaultPersonId = await seedCustomer();
+      await createIntakeLink(defaultPersonId);
+      const [defaultRow] = await db.select().from(intakeLinkTokensTable).where(eq(intakeLinkTokensTable.personId, defaultPersonId));
+      expect(defaultRow.leadSource).toBe("abandoned_cart");
+
+      const metaPersonId = await seedCustomer();
+      await createIntakeLink(metaPersonId, "first_month_20", "meta_form");
+      const [metaRow] = await db.select().from(intakeLinkTokensTable).where(eq(intakeLinkTokensTable.personId, metaPersonId));
+      expect(metaRow.leadSource).toBe("meta_form");
+    });
   });
 
   describe("handleIntakeLinkClick", () => {

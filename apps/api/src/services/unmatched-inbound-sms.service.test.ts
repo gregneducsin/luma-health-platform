@@ -279,6 +279,49 @@ describe("recordAndClassifyUnmatchedSms", () => {
     expect(allWithEmail).toHaveLength(1); // no duplicate created
   });
 
+  it("does not auto-connect on a confirmed identity if Claude also flags the same reply as needing human review for something else", async () => {
+    const existingEmail = `jordan-${crypto.randomUUID()}@example.com`;
+    const [existing] = await db
+      .insert(customersTable)
+      .values({ firstName: "Jordan", lastName: "OnFile", email: existingEmail, leadReceivedDate: "2026-08-15" })
+      .returning({ id: customersTable.id });
+
+    const phone = uniquePhone();
+    createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "First contact." })));
+    await recordAndClassifyUnmatchedSms(phone, "hi");
+
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_confirm_ask" });
+    createMock.mockResolvedValueOnce(toolResponse(classification({ intent: "new_lead_interest", senderName: "Different Name", senderEmail: existingEmail })));
+    await recordAndClassifyUnmatchedSms(phone, `it's ${existingEmail}`);
+
+    // They confirm it's them, but the same message also raises something
+    // Claude flags as needing a person's attention (e.g. a suitability
+    // question mixed into the same text).
+    sendMessageMock.mockClear();
+    processInboundMessageMock.mockClear();
+    createMock.mockResolvedValueOnce(
+      toolResponse(
+        classification({
+          intent: "new_lead_interest",
+          senderName: "Different Name",
+          senderEmail: existingEmail,
+          confirmsExistingCustomer: true,
+          needsHumanReview: true,
+        }),
+      ),
+    );
+    const thread = await recordAndClassifyUnmatchedSms(phone, "yeah that's me, also is this safe with my heart condition?");
+
+    expect(thread.linkedCustomerId).toBeNull();
+    expect(thread.status).toBe("needs_review");
+    expect(processInboundMessageMock).not.toHaveBeenCalled();
+    expect(sendMessageMock).not.toHaveBeenCalled();
+
+    const [customer] = await db.select({ phone: customersTable.phone }).from(customersTable).where(eq(customersTable.id, existing.id));
+    expect(customer.phone).toBeNull(); // not touched — connection never happened
+  });
+
   it("falls back to human review when a later reply doesn't clearly confirm the email match", async () => {
     const existingEmail = `sam-${crypto.randomUUID()}@example.com`;
     await db.insert(customersTable).values({ firstName: "Sam", lastName: "OnFile", email: existingEmail, leadReceivedDate: "2026-08-15" });
@@ -339,6 +382,34 @@ describe("recordAndClassifyUnmatchedSms", () => {
 
     const allWithEmail = await db.select().from(customersTable).where(eq(customersTable.email, existingEmail));
     expect(allWithEmail).toHaveLength(1); // no duplicate created
+  });
+
+  it("does not auto-connect, create a lead, or reveal a match when the collected email belongs to more than one existing customer", async () => {
+    const sharedEmail = `shared-${crypto.randomUUID()}@example.com`;
+    await db.insert(customersTable).values([
+      { firstName: "First", lastName: "Owner", email: sharedEmail, leadReceivedDate: "2026-08-15" },
+      { firstName: "Second", lastName: "Owner", email: sharedEmail, leadReceivedDate: "2026-08-15" },
+    ]);
+
+    const phone = uniquePhone();
+    createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "First contact." })));
+    await recordAndClassifyUnmatchedSms(phone, "hi");
+
+    sendMessageMock.mockClear();
+    processInboundMessageMock.mockClear();
+    createMock.mockResolvedValueOnce(
+      toolResponse(classification({ intent: "new_lead_interest", senderName: "Ambiguous Person", senderEmail: sharedEmail })),
+    );
+    const thread = await recordAndClassifyUnmatchedSms(phone, `it's ${sharedEmail}`);
+
+    expect(thread.linkedCustomerId).toBeNull();
+    expect(thread.suggestedMatchCustomerId).toBeNull(); // can't safely point at either one
+    expect(thread.status).toBe("needs_review");
+    expect(processInboundMessageMock).not.toHaveBeenCalled();
+    expect(sendMessageMock).not.toHaveBeenCalled(); // no auto-sent confirmation question either — we don't know who to ask about
+
+    const stillTwo = await db.select().from(customersTable).where(eq(customersTable.email, sharedEmail));
+    expect(stillTwo).toHaveLength(2); // no third (duplicate lead) record created
   });
 
   it("does NOT auto-connect on a name match alone, without an agreeing email match — stays human-gated", async () => {
