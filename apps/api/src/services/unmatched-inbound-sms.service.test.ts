@@ -190,6 +190,39 @@ describe("recordAndClassifyUnmatchedSms", () => {
     expect(thread.linkedCustomerId).toBeNull();
   });
 
+  it("does not create a duplicate customer when the collected email exactly matches an existing customer's, even with no name-based match — and reports high confidence", async () => {
+    const existingEmail = `dana-${crypto.randomUUID()}@example.com`;
+    const [existing] = await db
+      .insert(customersTable)
+      .values({ firstName: "Dana", lastName: "Existing", email: existingEmail, leadReceivedDate: "2026-08-15" })
+      .returning({ id: customersTable.id });
+
+    const phone = uniquePhone();
+    createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "First contact." })));
+    await recordAndClassifyUnmatchedSms(phone, "hi"); // first message — consumes the fixed ack
+
+    sendMessageMock.mockClear();
+    createMock.mockResolvedValueOnce(
+      toolResponse(
+        classification({
+          intent: "new_lead_interest",
+          senderName: "Someone Else", // deliberately not matching "Dana Existing" by name
+          senderEmail: existingEmail,
+        }),
+      ),
+    );
+    const thread = await recordAndClassifyUnmatchedSms(phone, `it's ${existingEmail}`);
+
+    expect(thread.linkedCustomerId).toBeNull();
+    expect(thread.suggestedMatchCustomerId).toBe(existing.id);
+    expect(thread.suggestedMatchConfidence).toBe("high");
+    expect(thread.status).toBe("needs_review");
+    expect(sendMessageMock).not.toHaveBeenCalled();
+
+    const allWithEmail = await db.select().from(customersTable).where(eq(customersTable.email, existingEmail));
+    expect(allWithEmail).toHaveLength(1); // no duplicate created
+  });
+
   it("does not create a lead when intent is existing_customer_support, even with a known name and email — and holds the reply for human review instead of auto-sending it", async () => {
     const phone = uniquePhone();
     createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "First contact." })));

@@ -66,6 +66,11 @@ interface MatchCandidate {
  * texted name, if given, plus the transcript). Deliberately narrow: a false
  * positive here means suggesting the wrong person on a health-context
  * thread, worse than staff having to search manually for a real match.
+ *
+ * This is the name-based, Claude-reviewed "possibly this person" suggestion
+ * shown to staff — see findExistingCustomerByEmail below for a separate,
+ * deterministic exact-email check that guards lead creation directly rather
+ * than relying on Claude to notice a match.
  */
 async function findMatchCandidates(fromName: string | null, transcriptText: string): Promise<MatchCandidate[]> {
   const searchText = `${fromName ?? ""} ${transcriptText}`.trim();
@@ -81,6 +86,30 @@ async function findMatchCandidates(fromName: string | null, transcriptText: stri
     limit 5
   `);
   return rows;
+}
+
+/**
+ * Exact (case-insensitive) email match against every customer — unlike the
+ * email pipeline, where the sender's address was already checked against
+ * every customer before the message ever reached this file, an SMS
+ * sender's collected email is new information the original phone-based
+ * lookup never saw. Deliberately a separate, deterministic check from
+ * findMatchCandidates rather than folded into Claude's own
+ * matchCandidateIndex judgment: this runs right before lead creation
+ * (after classification has had a chance to extract the email this same
+ * turn), so it catches a same-turn collision that a candidate search run
+ * before classification would miss, and it doesn't depend on Claude
+ * noticing the match at all — an exact email is unambiguous enough not to
+ * need a judgment call.
+ */
+async function findExistingCustomerByEmail(email: string): Promise<MatchCandidate | undefined> {
+  const { rows } = await db.execute<{ id: string; firstName: string; lastName: string; email: string }>(sql`
+    select id, first_name as "firstName", last_name as "lastName", email
+    from customers
+    where lower(email) = lower(${email})
+    limit 1
+  `);
+  return rows[0];
 }
 
 interface Classification {
@@ -336,8 +365,21 @@ export async function recordAndClassifyUnmatchedSms(fromPhone: string, body: str
     logger.warn({ reason: err instanceof Error ? err.message : String(err) }, "unmatched-sms classification failed");
   }
 
-  const matchCandidate =
+  const nameMatch =
     classification?.matchCandidateIndex !== null && classification?.matchCandidateIndex !== undefined ? candidates[classification.matchCandidateIndex] : undefined;
+
+  // Deterministic exact-email check, independent of Claude's own judgment —
+  // see findExistingCustomerByEmail's docstring for why this can't just be
+  // folded into the pre-classification candidate search. Takes priority
+  // over a name-based match when both somehow point at different people.
+  const knownEmailThisTurn = thread.collectedEmail ?? classification?.senderEmail ?? null;
+  const emailMatch = knownEmailThisTurn
+    ? await findExistingCustomerByEmail(knownEmailThisTurn).catch((err) => {
+        logger.warn({ reason: err instanceof Error ? err.message : String(err) }, "unmatched-sms email match lookup failed");
+        return undefined;
+      })
+    : undefined;
+  const matchCandidate = emailMatch ?? nameMatch;
 
   // Force human review for cases where auto-replying risks being actively
   // wrong, not just "Claude wasn't sure": a plausible match to an existing
@@ -390,7 +432,10 @@ export async function recordAndClassifyUnmatchedSms(fromPhone: string, body: str
       aiSummary: classification?.summary ?? thread.aiSummary,
       suggestedReply: leadResult?.justCreated || autoSent ? null : (classification?.suggestedReply ?? thread.suggestedReply),
       suggestedMatchCustomerId: matchCandidate?.id ?? thread.suggestedMatchCustomerId,
-      suggestedMatchConfidence: matchCandidate ? (classification?.matchConfidence ?? null) : thread.suggestedMatchConfidence,
+      // An exact email match is unambiguous — always "high", regardless of
+      // (or even absent) Claude's own matchConfidence, which only ever
+      // covers the name-based candidate list it was shown.
+      suggestedMatchConfidence: emailMatch ? "high" : matchCandidate ? (classification?.matchConfidence ?? null) : thread.suggestedMatchConfidence,
       linkedCustomerId: leadResult?.customerId ?? thread.linkedCustomerId,
       status: leadResult?.justCreated || autoSent ? "replied" : "needs_review",
       repliedAt: leadResult?.justCreated || autoSent ? new Date() : thread.repliedAt,
