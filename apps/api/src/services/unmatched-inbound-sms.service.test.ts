@@ -190,6 +190,35 @@ describe("recordAndClassifyUnmatchedSms", () => {
     expect(thread.repliedAt).not.toBeNull();
   });
 
+  it("still creates the lead once name and email are both already known, even when this turn's own intent classifies as 'other' — a real production case where a bare email address, then a plain 'thanks', both got classified as 'other' and the lead never got created", async () => {
+    const phone = uniquePhone();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_ack_janelle" });
+    createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "First contact." })));
+    await recordAndClassifyUnmatchedSms(phone, "Hi"); // consumes the fixed ack
+
+    sendMessageMock.mockClear();
+    createMock.mockResolvedValueOnce(toolResponse(classification({ intent: "other", senderName: "Janelle" })));
+    await recordAndClassifyUnmatchedSms(phone, "Janelle");
+
+    sendMessageMock.mockClear();
+    createMock.mockResolvedValueOnce(toolResponse(classification({ intent: "other", senderName: "Janelle" })));
+    await recordAndClassifyUnmatchedSms(phone, "Weight loss");
+
+    // The turn where the email itself arrives, classified "other" — this is
+    // exactly the turn that silently failed to create a lead in production.
+    sendMessageMock.mockClear();
+    processInboundMessageMock.mockClear();
+    createMock.mockResolvedValueOnce(toolResponse(classification({ intent: "other", senderName: "Janelle", senderEmail: "janelle@example.com" })));
+    const thread = await recordAndClassifyUnmatchedSms(phone, "janelle@example.com");
+
+    expect(thread.linkedCustomerId).not.toBeNull();
+    const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, thread.linkedCustomerId as string));
+    expect(customer.firstName).toBe("Janelle");
+    expect(customer.email).toBe("janelle@example.com");
+    expect(processInboundMessageMock).toHaveBeenCalledWith(thread.linkedCustomerId, "janelle@example.com", "meta_form");
+    expect(thread.status).toBe("replied");
+  });
+
   it("seeds the new Lucy conversation with everything said before the triggering message, not just that one message", async () => {
     const phone = uniquePhone();
     sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_ack_seed" });

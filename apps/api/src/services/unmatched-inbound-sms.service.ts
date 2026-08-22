@@ -223,11 +223,15 @@ Classify the message and draft a reply. Unless you set needsHumanReview:true, th
 
 We currently know the sender's name as: ${knownName ?? "unknown"}.
 We currently know the sender's email as: ${knownEmail ?? "unknown"}.
-
+${
+  knownName && knownEmail
+    ? `\nWe already have both their name and email, and the thread shows genuine interest in our products (not spam, not someone claiming to already be a customer) — that's a hot lead. Classify intent as new_lead_interest for THIS turn, even if the specific message you're looking at is just a short acknowledgment ("thanks", "ok", "cool") with no new content of its own. Judge intent from what this person is here for overall, not from the newest message in isolation — that doesn't change just because their latest reply happens to be brief. This matters more than it looks: once we have both name and email, new_lead_interest is what hands them off into a real, live sales conversation instead of leaving them stuck talking to you indefinitely, getting a generic "we'll get back to you" instead of actually being helped. Only classify something other than new_lead_interest here if they say something that genuinely changes the picture (e.g. they're actually an existing customer with a support issue, or they say they're no longer interested).\n`
+    : ""
+}
 Rules for the suggested reply:
 - Never state or imply a price, discount, or specific dollar figure.
 - Never give clinical/medical advice, dosing information, or comment on a specific medication.
-- Never promise a timeline, outcome, or that a specific person will follow up.
+- Never promise a timeline, outcome, or that a specific person will follow up — including vague versions of this ("we'll get back to you soon", "someone will be in touch"). We aren't actually queuing a human follow-up here; if you're not asking for something (name/email) or answering a plain question, that's usually a sign intent should be new_lead_interest instead (see above), not a sign-off.
 - Keep it to 1-2 short sentences, texting style (contractions, no formal tone).
 - If we don't know their name yet, the reply MUST ask for it (e.g. "Hey! Could you share your name so I know who I'm chatting with?") — this takes priority over anything else, including a product/pricing question they may have already asked.
 - If we know their name but not their email, the reply MUST ask for their email instead, framed as getting an account started before going over product or pricing details (e.g. "Thanks ${knownName}! Before I go over pricing or product details, let me get an account started for you — what's your email?") — never ask for both name and email in the same message, and still don't answer their product/pricing question yet even though you now know their name.
@@ -303,9 +307,22 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * The only place this pipeline creates data unattended: a brand-new
  * customer row, never a link to an existing one (that stays human-gated via
  * suggestedMatchCustomerId, same as the email version). Only fires once we
- * have a real name AND a real-looking email, Claude is confident this is a
- * genuine prospective customer (not spam/irrelevant, not someone claiming
- * to already be a customer), and this thread hasn't already been linked.
+ * have a real name AND a real-looking email, this thread isn't a plausible
+ * match to an existing customer, and Claude hasn't flagged this specific
+ * turn as spam or as someone claiming to already be a customer.
+ *
+ * Deliberately does NOT require classification.intent === "new_lead_interest"
+ * — a real production case showed why: once name and email are both on
+ * file, a customer's later replies are often short acknowledgments ("thanks",
+ * "ok") or bare answers to whatever was just asked, which Claude classifies
+ * per-turn from that one message alone and can reasonably read as "other"
+ * rather than re-asserting "new_lead_interest" every time. Gating lead
+ * creation on that one exact label firing again silently stranded a real
+ * lead in this queue indefinitely (no lead created, no handoff to Lucy,
+ * just an endless string of Claude's own generic replies) until a staff
+ * member noticed and stepped in manually. Once we have a real name and
+ * email and nothing below rules it out, that's enough evidence on its own —
+ * spam senders don't hand over a working name and email and keep replying.
  */
 async function maybeCreateLead(
   thread: UnmatchedSmsThread,
@@ -314,7 +331,7 @@ async function maybeCreateLead(
 ): Promise<{ customerId: string; justCreated: boolean } | null> {
   if (thread.linkedCustomerId) return { customerId: thread.linkedCustomerId, justCreated: false };
   if (matchedExisting) return null;
-  if (classification.intent !== "new_lead_interest") return null;
+  if (classification.intent === "spam_or_irrelevant" || classification.intent === "existing_customer_support") return null;
 
   const name = thread.fromName ?? classification.senderName;
   const email = thread.collectedEmail ?? classification.senderEmail;
