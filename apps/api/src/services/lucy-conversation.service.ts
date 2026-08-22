@@ -99,7 +99,7 @@ const MAX_ATTEMPTS = 3;
 export async function runLucyTurn(personId: string, body: BotPreviewRequestBody): Promise<LucyTurnResult> {
   const lastInbound = [...body.messages].reverse().find((m) => m.direction === "inbound");
   if (lastInbound) {
-    const pre = interactivePreCheck(lastInbound.body);
+    const pre = interactivePreCheck(lastInbound.body, body.lastQuestion);
     if (pre.blocked) {
       const deterministic = PRE_CHECK_RESULTS[pre.code] ?? { action: "staff_review" as const, reply: null };
       const reply = pre.code === "SUITABILITY_QUESTION" || pre.code === "MEDICAL_CONTENT" ? pickVariant(INDIVIDUALIZED_MEDICAL_REPLIES) : deterministic.reply;

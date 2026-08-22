@@ -346,8 +346,13 @@ export type InteractivePreCheckResult = { readonly blocked: false } | { readonly
  *
  * Opt-out (code "OPT_OUT") takes the highest priority and is terminal —
  * no objection handling, no rebuttal, no provider call.
+ *
+ * `ourLastQuestion` (optional) is whatever Lucy herself last asked, if
+ * anything — see the MEDICAL_WORDS_LOWER check below for the one place it's
+ * used: telling apart an unprompted medical statement from a short reply
+ * that's just naming which of our own topics the customer wants.
  */
-export function interactivePreCheck(lastInbound: string): InteractivePreCheckResult {
+export function interactivePreCheck(lastInbound: string, ourLastQuestion: string | null = null): InteractivePreCheckResult {
   const upper = lastInbound.toUpperCase();
   const lower = lastInbound.toLowerCase();
   const tokens = upper.split(/\W+/);
@@ -394,7 +399,24 @@ export function interactivePreCheck(lastInbound: string): InteractivePreCheckRes
     return { blocked: false };
   }
   if (MEDICAL_WORDS_LOWER.some((w) => lower.includes(w))) {
-    return { blocked: true, code: "MEDICAL_CONTENT" };
+    // A real production case: Lucy asked an open clarifying question ("is
+    // there something specific about the process you'd like me to go
+    // over?"), the customer answered "Medication and plans" — just naming
+    // one of our own topics, not raising an unprompted medical concern —
+    // and the bare word "medication" blocked it into a generic "that's for
+    // the doctor" deflection instead of letting Claude actually explain it
+    // (bounded by the normal knowledge-topic/post-check rules either way).
+    // Exempted only when we ourselves just asked something (ourLastQuestion
+    // is set) AND the reply is short (<=4 words) AND doesn't itself read as
+    // a question — long enough to matter but short enough that it's
+    // implausible as an independent statement/disclosure of its own. A
+    // genuine unprompted disclosure ("I'm on this medication and want to
+    // switch") is either longer than this, phrased as its own question, or
+    // doesn't follow a question we just asked — any of those still blocks.
+    const isShortAnswerToOurOwnQuestion = Boolean(ourLastQuestion) && !lastInbound.includes("?") && tokens.filter(Boolean).length <= 4;
+    if (!isShortAnswerToOurOwnQuestion) {
+      return { blocked: true, code: "MEDICAL_CONTENT" };
+    }
   }
   if (LEGAL_WORDS_LOWER.some((w) => lower.includes(w)) || LEGAL_SUE_RE.test(lower)) {
     return { blocked: true, code: "LEGAL_CONTENT" };

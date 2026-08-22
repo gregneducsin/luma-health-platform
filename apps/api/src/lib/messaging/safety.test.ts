@@ -103,6 +103,28 @@ describe("interactivePreCheck", () => {
     expect(interactivePreCheck("Will this medication interact badly with my other medication?")).toEqual({ blocked: true, code: "MEDICAL_CONTENT" });
   });
 
+  it("does not block a short reply that's just naming which of our own topics the customer wants, when it directly answers a question we just asked", () => {
+    // Real production case: Lucy asked "is there something specific about
+    // the process you'd like me to go over?" and the customer answered
+    // "Medication and plans" — not an unprompted medical question at all.
+    expect(interactivePreCheck("Medication and plans", "Is there something specific about the process you'd like me to go over?")).toEqual({ blocked: false });
+    expect(interactivePreCheck("medication", "What would help clarify?")).toEqual({ blocked: false });
+  });
+
+  it("still blocks the same short reply when we didn't just ask anything", () => {
+    expect(interactivePreCheck("Medication and plans", null)).toEqual({ blocked: true, code: "MEDICAL_CONTENT" });
+  });
+
+  it("still blocks a longer or question-phrased reply even when we just asked something — only a short, non-question answer is exempted", () => {
+    expect(
+      interactivePreCheck("Well I'm currently on a different medication and I'm not sure if I should switch", "Is there something specific you'd like me to go over?"),
+    ).toEqual({ blocked: true, code: "MEDICAL_CONTENT" });
+    expect(interactivePreCheck("what medication do you recommend?", "Is there something specific you'd like me to go over?")).toEqual({
+      blocked: true,
+      code: "MEDICAL_CONTENT",
+    });
+  });
+
   it("does not block plain process questions despite containing 'prescription' or 'treatment'", () => {
     expect(interactivePreCheck("Do I need a prescription?")).toEqual({ blocked: false });
     expect(interactivePreCheck("How do I get my prescription?")).toEqual({ blocked: false });
