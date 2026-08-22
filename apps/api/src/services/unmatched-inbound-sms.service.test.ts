@@ -102,6 +102,16 @@ describe("recordAndClassifyUnmatchedSms", () => {
     expect(thread.linkedCustomerId).toBeNull();
   });
 
+  it("grounds the triage model in what Luma actually sells, so it can't invent services when asked what the business offers", async () => {
+    createMock.mockResolvedValueOnce(toolResponse(classification()));
+    await recordAndClassifyUnmatchedSms(uniquePhone(), "what does luma health offer?");
+
+    const systemPromptArg = createMock.mock.calls[0][0].system as string;
+    expect(systemPromptArg).toContain("semaglutide");
+    expect(systemPromptArg).toContain("tirzepatide");
+    expect(systemPromptArg).toContain("Never invent services, product categories, or business");
+  });
+
   it("normalizes the phone number to E.164 before storing/looking up the thread", async () => {
     createMock.mockResolvedValueOnce(toolResponse(classification()));
     const thread = await recordAndClassifyUnmatchedSms("5559991234", "hi");
