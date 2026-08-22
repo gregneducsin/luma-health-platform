@@ -144,6 +144,42 @@ interface Classification {
   readonly matchConfidence: "high" | "medium" | "low" | null;
   readonly needsHumanReview: boolean;
   readonly confirmsExistingCustomer: boolean;
+  readonly productCategoryMentioned: "weight_loss_medication" | "other_business_line" | "none";
+}
+
+/**
+ * Second, independent layer on top of the system prompt's grounding
+ * paragraph (see systemPrompt) — a self-reported enum can be wrong the same
+ * way any model output can be wrong, so this scans the actual drafted text
+ * for phrasing associated with the real hallucination this is guarding
+ * against ("digital health platforms, patient engagement tools, and
+ * practice management services"), independent of what Claude declared in
+ * productCategoryMentioned. Deliberately phrase-based rather than
+ * single-word ("platform", "software") to stay narrow enough not to
+ * misfire on a legitimate reply, which never has reason to use this
+ * vocabulary in the first place — every real reply here is either asking
+ * for a name/email or describing the one real product.
+ */
+const OFF_SCOPE_REPLY_PATTERNS: readonly RegExp[] = [
+  /\bplatforms?\b/i,
+  /\bpatient engagement\b/i,
+  /\bpractice management\b/i,
+  /\bsaas\b/i,
+  /\bsoftware\b/i,
+  /\bportal\b/i,
+  /\b(ehr|emr)\b/i,
+  /\bconsulting\b/i,
+  /\bstaffing\b/i,
+  /\bit services\b/i,
+  /\bmarketing services\b/i,
+  /\bscheduling (software|tool|system)\b/i,
+  /\bfor (providers|clinics|offices|practices|hospitals)\b/i,
+  /\bb2b\b/i,
+  /\benterprise\b/i,
+];
+
+function suggestedReplyMentionsOffScopeService(reply: string): boolean {
+  return OFF_SCOPE_REPLY_PATTERNS.some((pattern) => pattern.test(reply));
 }
 
 const CLASSIFY_TOOL: Anthropic.Tool = {
@@ -182,6 +218,12 @@ const CLASSIFY_TOOL: Anthropic.Tool = {
         description:
           "Only meaningful when told below that a prior message already asked this sender to confirm they're an existing customer under a different name. True only if their latest reply clearly confirms that (e.g. 'yes', 'that's me', gives the other name). False otherwise — including whenever that situation hasn't come up, an unclear reply, or a clear denial.",
       },
+      productCategoryMentioned: {
+        type: "string",
+        enum: ["weight_loss_medication", "other_business_line", "none"],
+        description:
+          "Does suggestedReply describe, imply, or reference what Luma Health offers, does, or sells? 'weight_loss_medication' if it references the one real product (prescription semaglutide/tirzepatide via intake questionnaire). 'other_business_line' if it references or implies ANY other service, product category, or business line — software, platforms, patient engagement, practice management, consulting, staffing, or anything else — set this even if you're not fully sure it's inaccurate, since Luma doesn't offer anything beyond the medication program. 'none' if the reply doesn't describe what Luma offers at all (e.g. just asking for a name or email). Answer honestly — this is checked independently of the reply text itself.",
+      },
     },
     required: [
       "intent",
@@ -193,6 +235,7 @@ const CLASSIFY_TOOL: Anthropic.Tool = {
       "matchConfidence",
       "needsHumanReview",
       "confirmsExistingCustomer",
+      "productCategoryMentioned",
     ],
   },
 };
@@ -230,7 +273,9 @@ lines beyond the one above. If asked about something outside this (e.g.
 peptides, other medications, anything you're not sure Luma offers), don't
 confirm or deny it either way — stay non-committal and keep moving the
 conversation forward through the normal flow (name/email/handoff) instead
-of answering with a guess.
+of answering with a guess. Set productCategoryMentioned honestly on every
+turn, even when you're confident suggestedReply is fine — it's checked
+independently of the reply text itself.
 ${pendingConfirmationNote}
 
 Classify the message and draft a reply. Unless you set needsHumanReview:true, this reply is sent automatically — no one reviews it first. Take that seriously: stay inside the rules below, and set needsHumanReview:true the moment you're genuinely unsure rather than guessing.
@@ -574,8 +619,25 @@ export async function recordAndClassifyUnmatchedSms(fromPhone: string, body: str
   // be asked to confirm it themselves (see isFirstEncounterWithEmailMatch
   // below) — an ambiguous email match never qualifies for either, since
   // neither path can say who, specifically, was confirmed.
+  // Two independent checks on top of Claude's own needsHumanReview flag,
+  // neither trusting the other: did it self-report describing a business
+  // line beyond the real product, and separately, does the actual drafted
+  // text match known off-scope phrasing regardless of what it self-reported
+  // (see suggestedReplyMentionsOffScopeService's docstring). Either one
+  // alone is enough to hold this for a person.
+  const offScopeReply = Boolean(
+    classification?.productCategoryMentioned === "other_business_line" ||
+      (classification?.suggestedReply && suggestedReplyMentionsOffScopeService(classification.suggestedReply)),
+  );
+  if (offScopeReply) {
+    logger.warn(
+      { threadId: thread.id, selfReported: classification?.productCategoryMentioned === "other_business_line" },
+      "unmatched-SMS reply flagged as describing an out-of-scope business line, holding for review",
+    );
+  }
+
   const needsHumanReview = Boolean(
-    classification?.needsHumanReview || matchCandidate || emailLookup.ambiguous || classification?.intent === "existing_customer_support",
+    classification?.needsHumanReview || matchCandidate || emailLookup.ambiguous || classification?.intent === "existing_customer_support" || offScopeReply,
   );
 
   // A message Claude flags for an unrelated reason (needsHumanReview true)

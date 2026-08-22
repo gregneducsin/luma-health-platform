@@ -60,6 +60,7 @@ function classification(overrides: Record<string, unknown> = {}) {
     matchConfidence: null,
     needsHumanReview: false,
     confirmsExistingCustomer: false,
+    productCategoryMentioned: "none",
     ...overrides,
   };
 }
@@ -572,6 +573,49 @@ describe("recordAndClassifyUnmatchedSms", () => {
     const thread = await recordAndClassifyUnmatchedSms(phone, "is this safe with my heart condition?");
     expect(thread.status).toBe("needs_review");
     expect(thread.suggestedReply).toBe("Not sure I can answer that safely.");
+    expect(sendMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("holds the reply for human review when Claude self-reports mentioning an out-of-scope business line, even if needsHumanReview itself is false", async () => {
+    const phone = uniquePhone();
+    createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "First contact." })));
+    await recordAndClassifyUnmatchedSms(phone, "hi"); // first message — consumes the fixed ack, unrelated to what's under test
+
+    sendMessageMock.mockClear();
+    createMock.mockResolvedValueOnce(
+      toolResponse(
+        classification({
+          intent: "other",
+          suggestedReply: "We also help clinics manage their patients.",
+          needsHumanReview: false,
+          productCategoryMentioned: "other_business_line",
+        }),
+      ),
+    );
+    const thread = await recordAndClassifyUnmatchedSms(phone, "what does luma health offer?");
+    expect(thread.status).toBe("needs_review");
+    expect(thread.suggestedReply).toBe("We also help clinics manage their patients.");
+    expect(sendMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("holds the reply for human review when the drafted text itself names an out-of-scope service, even when Claude's own flags say it's fine", async () => {
+    const phone = uniquePhone();
+    createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "First contact." })));
+    await recordAndClassifyUnmatchedSms(phone, "hi"); // first message — consumes the fixed ack, unrelated to what's under test
+
+    sendMessageMock.mockClear();
+    createMock.mockResolvedValueOnce(
+      toolResponse(
+        classification({
+          intent: "other",
+          suggestedReply: "We offer digital health platforms and patient engagement tools.",
+          needsHumanReview: false,
+          productCategoryMentioned: "none",
+        }),
+      ),
+    );
+    const thread = await recordAndClassifyUnmatchedSms(phone, "what does luma health offer?");
+    expect(thread.status).toBe("needs_review");
     expect(sendMessageMock).not.toHaveBeenCalled();
   });
 
