@@ -9,6 +9,7 @@ import {
 import * as customersService from "../services/customers.service.js";
 import * as purchasesService from "../services/purchases.service.js";
 import { createIntakeLink } from "../services/intake-links.service.js";
+import { getUpcomingTrigger } from "../services/scheduled-triggers.service.js";
 import { requireRole } from "../middleware/requireAuth.js";
 import { requireCsrf } from "../middleware/csrf.js";
 
@@ -91,6 +92,20 @@ export function createCustomersRouter(): RouterType {
       }
       const { url, expiresAt } = await createIntakeLink(customer.id);
       res.status(201).json({ url, expiresAt: expiresAt.toISOString() });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Soonest still-scheduled automated message across every trigger table
+  // (follow-up jobs, abandoned-cart/lead-checkin/objection-reengagement SMS,
+  // abandoned-cart/meta-lead email, review requests) for this person, or
+  // null if nothing's armed — surfaced on the conversation detail page so
+  // staff can see "there's a text/email due Thursday" without having to ask.
+  router.get("/:id/upcoming-trigger", requireRole("admin", "manager"), async (req, res, next) => {
+    try {
+      const trigger = await getUpcomingTrigger(req.params.id as string);
+      res.json({ trigger: trigger ? { ...trigger, dueAt: trigger.dueAt.toISOString() } : null });
     } catch (err) {
       next(err);
     }

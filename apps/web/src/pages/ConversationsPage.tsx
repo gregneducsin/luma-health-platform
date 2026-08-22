@@ -9,6 +9,7 @@ import {
   type ConversationChannel,
 } from "../hooks/useConversations";
 import { Badge, Card, Button, Input } from "../components/ui";
+import { UpcomingTriggerBanner } from "../components/UpcomingTriggerBanner";
 import { ApiError } from "../hooks/useAuth";
 import { formatTime, formatDate } from "../lib/formatTime";
 
@@ -259,6 +260,7 @@ function ConversationDetailPanel({ conversationId, channel }: { conversationId: 
             <p className="text-xs text-gray-400">
               {channel === "email" ? customer.email ?? "No email on file" : customer.phone ?? "No phone on file"}
             </p>
+            <UpcomingTriggerBanner personId={conversation.personId} />
           </div>
           <div className="flex flex-wrap justify-end gap-1">
             {conversation.leadSource === "meta_form" && <Badge color="purple">Meta lead</Badge>}

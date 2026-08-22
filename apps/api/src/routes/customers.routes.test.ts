@@ -769,3 +769,49 @@ describe("Intake link", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("Upcoming trigger", () => {
+  let app: ReturnType<typeof createApp>;
+
+  beforeAll(() => {
+    app = createApp();
+  });
+
+  it("returns null when nothing is scheduled for this customer", async () => {
+    await seedUser("trigger-admin1@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "trigger-admin1@example.com");
+    const customerRes = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Trigger", lastName: "Lead", email: "trigger-route1@example.com", leadReceivedDate: "2026-08-15" });
+    const customerId = customerRes.body.customer.id;
+
+    const res = await agent.get(`/api/app/customers/${customerId}/upcoming-trigger`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ trigger: null });
+  });
+
+  it("returns the scheduled trigger for this customer", async () => {
+    await seedUser("trigger-admin2@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "trigger-admin2@example.com");
+    const customerRes = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Trigger", lastName: "Lead", email: "trigger-route2@example.com", leadReceivedDate: "2026-08-15" });
+    const customerId = customerRes.body.customer.id;
+
+    const { db, reviewRequestTriggersTable } = await import("@luma/db");
+    const dueAt = new Date(Date.now() + 3_600_000);
+    await db.insert(reviewRequestTriggersTable).values({ personId: customerId, dueAt });
+
+    const res = await agent.get(`/api/app/customers/${customerId}/upcoming-trigger`);
+    expect(res.status).toBe(200);
+    expect(res.body.trigger).toMatchObject({ kind: "review_request_sms", label: "Review-request text", status: "pending" });
+    expect(new Date(res.body.trigger.dueAt).getTime()).toBe(dueAt.getTime());
+  });
+
+  it("rejects unauthenticated requests", async () => {
+    const res = await request(app).get("/api/app/customers/00000000-0000-0000-0000-000000000000/upcoming-trigger");
+    expect(res.status).toBe(401);
+  });
+});
