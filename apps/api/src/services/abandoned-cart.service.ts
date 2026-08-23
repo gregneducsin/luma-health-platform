@@ -1,9 +1,9 @@
 import { and, eq, inArray, lte, sql } from "drizzle-orm";
-import { db, abandonedCartTriggersTable, customersTable, purchasesTable, questionnaireEventsTable } from "@luma/db";
+import { db, abandonedCartTriggersTable, conversationsTable, customersTable, purchasesTable, questionnaireEventsTable } from "@luma/db";
 import { getOrCreateConversation, appendMessage, updateConversationState } from "./conversations.service.js";
 import { scheduleLeadCheckin } from "./lead-checkin.service.js";
 import { getSmsProvider } from "../lib/sms-provider.js";
-import { renderAbandonedCartOpener } from "../lib/messaging/follow-up-templates.js";
+import { renderAbandonedCartOpener, renderAbandonedCartFollowUp } from "../lib/messaging/follow-up-templates.js";
 import { logger } from "../lib/logger.js";
 import { isCustomerSmsDnd } from "./dnd.service.js";
 
@@ -141,7 +141,16 @@ async function sendOpener(personId: string): Promise<SendResult> {
     return { ok: false, reason: "NO_PHONE_NUMBER" };
   }
 
-  const text = renderAbandonedCartOpener(customer.firstName);
+  // A person can already have an active conversation by the time their
+  // questionnaire abandonment fires this opener — most commonly, they came
+  // in as a Meta lead first and only later started (then abandoned) the
+  // Bask questionnaire separately. Re-sending the full "Hi, this is Lucy"
+  // opener into that same thread reads as a robotic duplicate introduction
+  // — see renderAbandonedCartFollowUp's docstring. The abandoned-
+  // questionnaire nudge itself is still real signal worth sending, just
+  // without repeating the introduction.
+  const [existingConversation] = await db.select({ id: conversationsTable.id }).from(conversationsTable).where(eq(conversationsTable.personId, personId));
+  const text = existingConversation ? renderAbandonedCartFollowUp(customer.firstName) : renderAbandonedCartOpener(customer.firstName);
   const conversation = await getOrCreateConversation(personId);
 
   try {

@@ -69,6 +69,25 @@ export function renderAbandonedCartOpener(firstName: string): string {
 }
 
 /**
+ * Same abandoned-questionnaire nudge as renderAbandonedCartOpener, for a
+ * lead who already has an active conversation with Lucy by the time this
+ * fires — most commonly, they came in as a Meta lead first and only later
+ * started (then abandoned) the Bask questionnaire separately. Drops the
+ * self-introduction — same reasoning as provider_check_in/
+ * intake_questions_check_in above — since repeating "Hi, this is Lucy with
+ * Luma Health" into an already-ongoing thread reads as a robotic duplicate,
+ * not a genuine follow-up. The abandoned-questionnaire signal itself is
+ * still real and worth sending, just without re-introducing her.
+ */
+export function renderAbandonedCartFollowUp(firstName: string): string {
+  const name = firstName.trim() || "there";
+  return pickVariant([
+    `Hey ${name}, noticed you started your online visit but didn't get a chance to finish it. Complete your enrollment now and get $20 off your first month. Want me to send the link to get started?`,
+    `Hey ${name}, looks like you started your online visit but didn't quite finish it. Complete your enrollment and get $20 off your first month. Want the link so you can pick back up?`,
+  ]);
+}
+
+/**
  * The very first outbound message to a lead who just submitted a Meta
  * (Facebook/Instagram) lead-gen form — fired instantly on receipt of the
  * webhook, 24/7, no monitored-hours window. Fixed template, not AI-drafted,

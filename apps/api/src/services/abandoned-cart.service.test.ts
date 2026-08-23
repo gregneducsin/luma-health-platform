@@ -10,7 +10,7 @@ vi.mock("../lib/sms-provider.js", async () => {
 });
 
 const { scheduleAbandonedCartOpener, sweepAbandonedCartTriggers } = await import("./abandoned-cart.service.js");
-const { getOrCreateConversation, listMessages } = await import("./conversations.service.js");
+const { getOrCreateConversation, appendMessage, listMessages } = await import("./conversations.service.js");
 
 async function seedCustomer(opts: { phone?: string | null } = {}): Promise<string> {
   const [row] = await db
@@ -106,6 +106,33 @@ describe("sweepAbandonedCartTriggers", () => {
     const [checkin] = await db.select().from(leadCheckinTriggersTable).where(eq(leadCheckinTriggersTable.personId, personId));
     expect(checkin).toBeDefined();
     expect(checkin.status).toBe("pending");
+  });
+
+  it("skips the duplicate self-introduction when the person already has an active conversation (e.g. a Meta lead who separately abandoned the questionnaire)", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_followup" });
+
+    const personId = await seedCustomer();
+    // Simulate the person already being a Meta lead with an active thread —
+    // same shape sendMetaLeadOpener creates (getOrCreateConversation with
+    // leadSource "meta_form"), before the abandoned-cart opener ever fires.
+    const existingConversation = await getOrCreateConversation(personId, "meta_form");
+    await appendMessage(existingConversation.id, "outbound", "Hey there, this is Lucy with Luma Health. I wanted to check what state you're in.", {});
+
+    const questionnaireEventId = await seedAbandonedQuestionnaire(personId);
+    await scheduleAbandonedCartOpener(personId, questionnaireEventId);
+    await backdateTrigger(personId);
+
+    const result = await sweepAbandonedCartTriggers();
+    expect(result.sentCount).toBe(1);
+    expect(sendMessageMock).toHaveBeenCalledWith("+15559990000", expect.stringContaining("$20 off your first month"));
+    expect(sendMessageMock).toHaveBeenCalledWith("+15559990000", expect.not.stringContaining("this is Lucy"));
+
+    // Lands in the SAME conversation, not a second one.
+    const conversation = await getOrCreateConversation(personId);
+    expect(conversation.id).toBe(existingConversation.id);
+    const messages = await listMessages(conversation.id);
+    expect(messages.length).toBe(2);
   });
 
   it("sends exactly once when a second sweep starts while the first is still mid-send for the same trigger", async () => {
