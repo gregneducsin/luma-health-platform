@@ -10,14 +10,12 @@ import { logger } from "../lib/logger.js";
 import { isCustomerSmsDnd } from "./dnd.service.js";
 
 /**
- * ASSUMPTION pending owner confirmation: there's no explicit "delivered"
- * signal from Bask, so the review check-in fires a fixed delay after the
- * order-shipped event rather than off a real delivery-confirmation webhook
- * — same fixed-delay-off-the-last-known-event pattern as the abandoned-cart
- * opener. 5 days was chosen as a reasonable default (most orders should have
- * arrived by then); adjust REVIEW_REQUEST_DELAY_MS if that's wrong.
+ * There's no explicit "delivered" signal from Bask, so the review check-in
+ * fires a fixed delay after the order-shipped event rather than off a real
+ * delivery-confirmation webhook — same fixed-delay-off-the-last-known-event
+ * pattern as the abandoned-cart opener. Owner-set to 11 days from shipping.
  */
-const REVIEW_REQUEST_DELAY_MS = 5 * 24 * 60 * 60 * 1000;
+const REVIEW_REQUEST_DELAY_MS = 11 * 24 * 60 * 60 * 1000;
 
 /**
  * A failed send (SMS provider timeout, no phone on file yet, etc.) gets a
