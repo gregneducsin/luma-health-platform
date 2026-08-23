@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearch } from "wouter";
 import {
   useSupportConversationsList,
   useSupportConversationDetail,
-  useSendSarahTestMessage,
   useClearSupportNeedsAttention,
   useSendStaffReply,
   type SupportConversationChannel,
@@ -173,21 +172,12 @@ function StaffReplyBox({ conversationId, channel }: { conversationId: string; ch
 
 function SupportConversationDetailPanel({ conversationId, channel }: { conversationId: string; channel: SupportConversationChannel }) {
   const { data, isLoading } = useSupportConversationDetail(conversationId, channel);
-  const [input, setInput] = useState("");
-  const sendMessage = useSendSarahTestMessage();
   const clearAttention = useClearSupportNeedsAttention();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [data?.messages.length]);
-
-  function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    const message = input.trim();
-    if (!message || !data || sendMessage.isPending) return;
-    sendMessage.mutate({ customerId: data.conversation.personId, message }, { onSuccess: () => setInput("") });
-  }
 
   if (isLoading || !data) {
     return (
@@ -261,44 +251,15 @@ function SupportConversationDetailPanel({ conversationId, channel }: { conversat
             </div>
           </div>
         ))}
-        {sendMessage.isPending && <p className="text-sm text-gray-400">Sarah is thinking…</p>}
       </div>
 
-      {channel === "sms" ? (
-        <form onSubmit={handleSubmit} className="border-t border-gray-200 p-3">
-          <p className="mb-2 text-xs text-gray-400">
-            Simulates what the patient would text back, running the real Sarah pipeline (Claude call, guardrails,
-            persistence) — an SMS provider is now connected, so this <strong>will</strong> send a real reply to this
-            patient's phone number if one is on file. Only use this against test/fake customer records.
-          </p>
-          <div className="flex items-center gap-2">
-            <Input
-              className="flex-1"
-              placeholder="Simulate an inbound message…"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              disabled={sendMessage.isPending}
-            />
-            <Button type="submit" disabled={sendMessage.isPending || !input.trim()}>
-              Send
-            </Button>
-          </div>
-          {sendMessage.isError && (
-            <p className="mt-2 text-xs text-red-600">
-              {sendMessage.error instanceof ApiError ? sendMessage.error.message : "Something went wrong."}
-            </p>
-          )}
-          {sendMessage.isSuccess && sendMessage.data.ok === false && (
-            <p className="mt-2 text-xs text-red-600">Sarah's reply was rejected by the guardrail ({sendMessage.data.code}) — nothing was sent.</p>
-          )}
-        </form>
-      ) : (
-        <div className="border-t border-gray-200 p-3">
-          <p className="text-xs text-gray-400">
-            Reply from the box above when this conversation needs attention, or reply from your own email client anytime.
-          </p>
-        </div>
-      )}
+      <div className="border-t border-gray-200 p-3">
+        <p className="text-xs text-gray-400">
+          {channel === "sms"
+            ? "Reply from the box above when this conversation needs attention, or text the patient directly anytime."
+            : "Reply from the box above when this conversation needs attention, or reply from your own email client anytime."}
+        </p>
+      </div>
     </Card>
   );
 }

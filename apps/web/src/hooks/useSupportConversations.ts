@@ -2,8 +2,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   SupportConversationSummary,
   SupportConversationDetail,
-  SendSarahTestMessageRequest,
-  SarahTurnResponse,
   SendSupportConversationReplyResponse,
 } from "@luma/shared";
 import { api } from "../lib/apiClient";
@@ -27,17 +25,6 @@ export function useSupportConversationDetail(id: string | null, channel: Support
     queryFn: () => api.get<SupportConversationDetail>(`/api/app/support-conversations/${id}`, { channel }),
     enabled: id !== null,
     refetchInterval: DETAIL_POLL_INTERVAL_MS,
-  });
-}
-
-/** Sends a simulated inbound message through the real Sarah dispatch pipeline (test/dev tool). */
-export function useSendSarahTestMessage() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (input: SendSarahTestMessageRequest) => api.post<SarahTurnResponse>("/api/app/sarah-test/message", input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["support-conversations"] });
-    },
   });
 }
 
