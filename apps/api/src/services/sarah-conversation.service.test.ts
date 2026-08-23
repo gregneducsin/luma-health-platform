@@ -54,7 +54,7 @@ describe("runSarahTurn", () => {
     }
   });
 
-  it("routes a prescription question to staff_review via pre-check, no provider call", async () => {
+  it("routes a prescription question to staff_review via pre-check, no provider call, but still replies with the patient portal instead of leaving the patient in silence", async () => {
     callSarahInteractiveMock.mockClear();
     const result = await runSarahTurn(baseBody({ messages: [{ direction: "inbound", body: "what dosage am I on" }] }));
 
@@ -63,6 +63,9 @@ describe("runSarahTurn", () => {
     if (result.ok) {
       expect(result.action).toBe("staff_review");
       expect(result.requiresStaff).toBe(true);
+      expect(result.reply).toMatch(/portal/i);
+      expect(result.reply).toContain("https://go.mylumahealth.com/login");
+      expect(result.preCheckCode).toBe("PRESCRIPTION_QUESTION");
     }
   });
 

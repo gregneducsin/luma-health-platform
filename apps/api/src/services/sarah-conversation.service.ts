@@ -1,8 +1,30 @@
 import { supportPreCheck, supportPostCheck } from "../lib/support/safety.js";
 import { callSarahInteractive, SarahProviderError } from "../lib/support/provider.js";
-import { getSarahEnabledTopics } from "../lib/messaging/knowledge-catalog.js";
+import { getSarahEnabledTopics, APPROVED_PORTAL_URL } from "../lib/messaging/knowledge-catalog.js";
 import type { SarahPreviewRequestBody, SarahInteractiveResult } from "../lib/support/types.js";
 import { logger } from "../lib/logger.js";
+
+/**
+ * PRESCRIPTION_QUESTION used to get a null reply — the patient was left in
+ * silence while the conversation quietly went to the staff queue (see a real
+ * production case: Debbie Terkay asked what dose she was on and got nothing
+ * back). Same reasoning as Lucy's INDIVIDUALIZED_MEDICAL_REPLIES: the honest,
+ * always-safe answer to any prescription-specifics question is the same
+ * regardless of the specific question — log into the patient portal to see
+ * the prescription or message the doctor directly — so there's no reason to
+ * leave the patient hanging while still routing to staff. Varied rather than
+ * fixed (like Lucy's individualized-medical replies) since this isn't a
+ * compliance-critical fixed script the way OPT_OUT/EMERGENCY_CONTENT are.
+ */
+const PRESCRIPTION_QUESTION_REPLIES = [
+  `For anything about your specific prescription or dose, your patient portal is the best place to check — you can view your prescription details or message the doctor directly there: ${APPROVED_PORTAL_URL}`,
+  `Great question — for prescription or dose specifics, log into your patient portal to see your details or message the doctor directly: ${APPROVED_PORTAL_URL}`,
+  `That's something your patient portal can help with — log in to view your prescription or message the doctor directly: ${APPROVED_PORTAL_URL}`,
+] as const;
+
+function pickVariant(variants: readonly string[]): string {
+  return variants[Math.floor(Math.random() * variants.length)];
+}
 
 export type SarahTurnResult =
   | {
@@ -27,6 +49,8 @@ const PRE_CHECK_RESULTS: Record<string, { action: "pause" | "staff_review"; repl
     reply:
       "If this is a medical emergency, please call 911 or go to your nearest emergency room right away. This text line isn't monitored for emergencies — our team has been notified and will follow up with you.",
   },
+  // reply: null here is a placeholder — the real reply is picked at send
+  // time from PRESCRIPTION_QUESTION_REPLIES, see below.
   PRESCRIPTION_QUESTION: { action: "staff_review", reply: null },
   LEGAL_CONTENT: { action: "staff_review", reply: null },
 };
@@ -45,10 +69,11 @@ export async function runSarahTurn(body: SarahPreviewRequestBody): Promise<Sarah
     const pre = supportPreCheck(lastInbound.body);
     if (pre.blocked) {
       const deterministic = PRE_CHECK_RESULTS[pre.code] ?? { action: "staff_review" as const, reply: null };
+      const reply = pre.code === "PRESCRIPTION_QUESTION" ? pickVariant(PRESCRIPTION_QUESTION_REPLIES) : deterministic.reply;
       return {
         ok: true,
         action: deterministic.action,
-        reply: deterministic.reply,
+        reply,
         nextQuestion: null,
         inboundSentiment: null,
         requiresStaff: deterministic.action === "staff_review",
