@@ -145,10 +145,22 @@ const PRESCRIPTION_QUESTION_PHRASES_LOWER = [
  */
 const MG_DOSAGE_RE = /\bmg\b|\d\s?mg\b/i;
 
+/**
+ * A patient reporting their medication's cold-chain may have failed in
+ * transit (real production case: Virginia Kibler — "one ice pack, hot to
+ * the touch, providing no refrigeration at all"). This is a potential
+ * medication-safety issue, not a routine shipping complaint — Sarah has no
+ * way to assess whether the medication is still safe to use, so this routes
+ * straight to staff the same way a prescription question does, rather than
+ * falling through to the generic "acknowledge and say the team will follow
+ * up" fallback for uncovered topics.
+ */
+const COLD_CHAIN_CONCERN_PHRASES_LOWER = ["ice pack", "not refrigerated", "wasn't refrigerated", "no refrigeration", "not cold", "warm to the touch", "hot to the touch", "melted", "spoiled"] as const;
+
 export type SupportPreCheckResult = { readonly blocked: false } | { readonly blocked: true; readonly code: string };
 
 /**
- * Priority order: opt_out > STOP_WORD > emergency > prescription_question > legal.
+ * Priority order: opt_out > STOP_WORD > emergency > prescription_question > cold_chain_concern > legal.
  */
 export function supportPreCheck(lastInbound: string): SupportPreCheckResult {
   const upper = lastInbound.toUpperCase();
@@ -163,6 +175,7 @@ export function supportPreCheck(lastInbound: string): SupportPreCheckResult {
   if (!lastInbound.trim().endsWith("?") && STOP_WORDS_UPPER.some((w) => tokens.includes(w))) return { blocked: true, code: "STOP_WORD" };
   if (EMERGENCY_WORDS_LOWER.some((w) => lower.includes(w)) || EMERGENCY_911_RE.test(lower)) return { blocked: true, code: "EMERGENCY_CONTENT" };
   if (PRESCRIPTION_QUESTION_PHRASES_LOWER.some((w) => lower.includes(w)) || MG_DOSAGE_RE.test(lower)) return { blocked: true, code: "PRESCRIPTION_QUESTION" };
+  if (COLD_CHAIN_CONCERN_PHRASES_LOWER.some((w) => lower.includes(w))) return { blocked: true, code: "COLD_CHAIN_CONCERN" };
   if (LEGAL_WORDS_LOWER.some((w) => lower.includes(w)) || LEGAL_SUE_RE.test(lower)) return { blocked: true, code: "LEGAL_CONTENT" };
 
   return { blocked: false };

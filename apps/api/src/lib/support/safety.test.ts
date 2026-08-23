@@ -94,6 +94,12 @@ describe("supportPreCheck", () => {
     expect(supportPreCheck("Is it safe for me to double up this week?")).toEqual({ blocked: true, code: "PRESCRIPTION_QUESTION" });
   });
 
+  it("blocks a report that the medication's cold-chain may have failed in transit", () => {
+    expect(supportPreCheck("One ice pack on one side. Hot to the touch providing no refrigeration at all!")).toEqual({ blocked: true, code: "COLD_CHAIN_CONCERN" });
+    expect(supportPreCheck("the package wasn't refrigerated when it arrived")).toEqual({ blocked: true, code: "COLD_CHAIN_CONCERN" });
+    expect(supportPreCheck("it was warm to the touch")).toEqual({ blocked: true, code: "COLD_CHAIN_CONCERN" });
+  });
+
   it("does not treat 'end'/'quit' as a stop word when it's the tail of an unrelated question", () => {
     expect(supportPreCheck("When does this program end?")).toEqual({ blocked: false });
     expect(supportPreCheck("Can I quit anytime if it's not working?")).toEqual({ blocked: false });

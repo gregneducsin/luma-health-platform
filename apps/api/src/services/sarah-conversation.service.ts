@@ -22,6 +22,21 @@ const PRESCRIPTION_QUESTION_REPLIES = [
   `That's something your patient portal can help with — log in to view your prescription or message the doctor directly: ${APPROVED_PORTAL_URL}`,
 ] as const;
 
+/**
+ * COLD_CHAIN_CONCERN — a report that the medication may not have stayed cold
+ * in transit (real production case: Virginia Kibler). Sarah has no way to
+ * assess whether the medication is still safe to use, so this always routes
+ * to staff, but the patient still gets pointed straight at the fastest real
+ * channel — messaging the doctor or support directly through the patient
+ * portal — instead of a vague "we'll follow up" while the report sits in a
+ * staff queue.
+ */
+const COLD_CHAIN_CONCERN_REPLIES = [
+  `That's not something to wait on — please message your doctor or our support team directly through your patient portal so they can look into it right away: ${APPROVED_PORTAL_URL}`,
+  `Let's get that looked at right away — please message your doctor or support directly through the patient portal: ${APPROVED_PORTAL_URL}`,
+  `That's worth flagging directly — please message your doctor or support through the patient portal so they can address it right away: ${APPROVED_PORTAL_URL}`,
+] as const;
+
 function pickVariant(variants: readonly string[]): string {
   return variants[Math.floor(Math.random() * variants.length)];
 }
@@ -50,8 +65,10 @@ const PRE_CHECK_RESULTS: Record<string, { action: "pause" | "staff_review"; repl
       "If this is a medical emergency, please call 911 or go to your nearest emergency room right away. This text line isn't monitored for emergencies — our team has been notified and will follow up with you.",
   },
   // reply: null here is a placeholder — the real reply is picked at send
-  // time from PRESCRIPTION_QUESTION_REPLIES, see below.
+  // time from PRESCRIPTION_QUESTION_REPLIES / COLD_CHAIN_CONCERN_REPLIES,
+  // see below.
   PRESCRIPTION_QUESTION: { action: "staff_review", reply: null },
+  COLD_CHAIN_CONCERN: { action: "staff_review", reply: null },
   LEGAL_CONTENT: { action: "staff_review", reply: null },
 };
 
@@ -69,7 +86,12 @@ export async function runSarahTurn(body: SarahPreviewRequestBody): Promise<Sarah
     const pre = supportPreCheck(lastInbound.body);
     if (pre.blocked) {
       const deterministic = PRE_CHECK_RESULTS[pre.code] ?? { action: "staff_review" as const, reply: null };
-      const reply = pre.code === "PRESCRIPTION_QUESTION" ? pickVariant(PRESCRIPTION_QUESTION_REPLIES) : deterministic.reply;
+      const reply =
+        pre.code === "PRESCRIPTION_QUESTION"
+          ? pickVariant(PRESCRIPTION_QUESTION_REPLIES)
+          : pre.code === "COLD_CHAIN_CONCERN"
+            ? pickVariant(COLD_CHAIN_CONCERN_REPLIES)
+            : deterministic.reply;
       return {
         ok: true,
         action: deterministic.action,

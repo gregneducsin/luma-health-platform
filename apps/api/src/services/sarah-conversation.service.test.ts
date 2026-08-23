@@ -69,6 +69,23 @@ describe("runSarahTurn", () => {
     }
   });
 
+  it("routes a cold-chain concern to staff_review via pre-check, no provider call, but still points the patient to the portal instead of leaving them in silence", async () => {
+    callSarahInteractiveMock.mockClear();
+    const result = await runSarahTurn(
+      baseBody({ messages: [{ direction: "inbound", body: "One ice pack on one side. Hot to the touch providing no refrigeration at all!" }] }),
+    );
+
+    expect(callSarahInteractiveMock).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.action).toBe("staff_review");
+      expect(result.requiresStaff).toBe(true);
+      expect(result.reply).toMatch(/portal/i);
+      expect(result.reply).toContain("https://go.mylumahealth.com/login");
+      expect(result.preCheckCode).toBe("COLD_CHAIN_CONCERN");
+    }
+  });
+
   it("responds with a real 911 message on emergency content, and still flags staff attention", async () => {
     callSarahInteractiveMock.mockClear();
     const result = await runSarahTurn(baseBody({ messages: [{ direction: "inbound", body: "this is an emergency" }] }));
