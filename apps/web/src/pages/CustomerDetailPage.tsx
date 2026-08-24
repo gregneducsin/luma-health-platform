@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useParams } from "wouter";
+import { useParams, Link } from "wouter";
 import { useCustomer, useCreatePurchase, useUpdatePurchase, useCreateIntakeLink } from "../hooks/useCustomers";
 import { Badge, Button, Card, ErrorText, Field, Input } from "../components/ui";
 import { ApiError } from "../hooks/useAuth";
@@ -30,11 +30,19 @@ export function CustomerDetailPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold text-gray-900">
-          {customer.firstName} {customer.lastName}
-        </h1>
-        <p className="text-sm text-gray-500">{customer.personNumber}</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">
+            {customer.firstName} {customer.lastName}
+          </h1>
+          <p className="text-sm text-gray-500">{customer.personNumber}</p>
+        </div>
+        <Link
+          href={`/conversations?personId=${customer.id}`}
+          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+        >
+          View conversation →
+        </Link>
       </div>
 
       <Card>

@@ -98,16 +98,19 @@ function ConversationList({
   const { data, isLoading } = useConversationsList(channel);
   const [onlyNeedsAttention, setOnlyNeedsAttention] = useState(false);
   const [leadSourceFilter, setLeadSourceFilter] = useState<LeadSourceFilter>("all");
+  const [search, setSearch] = useState("");
 
   const attentionCount = data?.conversations.filter((c) => c.needsAttention).length ?? 0;
   const visible = useMemo(() => {
     if (!data) return [];
+    const term = search.trim().toLowerCase();
     return data.conversations.filter((c) => {
       if (onlyNeedsAttention && !c.needsAttention) return false;
       if (leadSourceFilter !== "all" && c.leadSource !== leadSourceFilter) return false;
+      if (term && !`${c.firstName} ${c.lastName}`.toLowerCase().includes(term)) return false;
       return true;
     });
-  }, [data, onlyNeedsAttention, leadSourceFilter]);
+  }, [data, onlyNeedsAttention, leadSourceFilter, search]);
 
   return (
     <Card className="flex h-[calc(100vh-268px)] flex-col overflow-hidden p-0">
@@ -144,6 +147,12 @@ function ConversationList({
             </button>
           ))}
         </div>
+        <Input
+          className="mt-2"
+          placeholder="Search by name…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
       </div>
       <div className="flex-1 overflow-y-auto">
         {isLoading && <p className="p-4 text-sm text-gray-400">Loading…</p>}
@@ -317,13 +326,36 @@ function ConversationDetailPanel({ conversationId, channel }: { conversationId: 
 export function ConversationsPage() {
   // Lets NeedsAttentionPage link directly into the right channel tab (e.g. /conversations?channel=email).
   const search = useSearch();
-  const initialChannel: ConversationChannel = new URLSearchParams(search).get("channel") === "email" ? "email" : "sms";
+  const params = new URLSearchParams(search);
+  const initialChannel: ConversationChannel = params.get("channel") === "email" ? "email" : "sms";
+  const deepLinkPersonId = params.get("personId");
   const [channel, setChannel] = useState<ConversationChannel>(initialChannel);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const deepLinkResolved = useRef(false);
+
+  // CustomerDetailPage links here as /conversations?personId=... — find that
+  // person's conversation once the list loads and select it. Keeps trying
+  // across a manual channel toggle (the person may only exist on the other
+  // channel) until it succeeds; a manual selection or lack of a personId
+  // param disables this entirely.
+  const { data: listData } = useConversationsList(channel);
+  useEffect(() => {
+    if (!deepLinkPersonId || deepLinkResolved.current || selectedId !== null || !listData) return;
+    const match = listData.conversations.find((c) => c.personId === deepLinkPersonId);
+    if (match) {
+      setSelectedId(match.id);
+      deepLinkResolved.current = true;
+    }
+  }, [deepLinkPersonId, listData, selectedId]);
 
   function handleChannelChange(c: ConversationChannel) {
     setChannel(c);
     setSelectedId(null);
+  }
+
+  function handleSelect(id: string) {
+    deepLinkResolved.current = true;
+    setSelectedId(id);
   }
 
   return (
@@ -331,7 +363,7 @@ export function ConversationsPage() {
       <ResponseRateSummary channel={channel} />
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="md:col-span-1">
-          <ConversationList channel={channel} onChannelChange={handleChannelChange} selectedId={selectedId} onSelect={setSelectedId} />
+          <ConversationList channel={channel} onChannelChange={handleChannelChange} selectedId={selectedId} onSelect={handleSelect} />
         </div>
         <div className="md:col-span-2">
           {selectedId ? (
