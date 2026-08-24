@@ -75,13 +75,51 @@ async function dispatchInboundEmail(personId: string, subject: string, bodyText:
   logger.warn({ personId }, "inbound email from a person with no Lucy or Sarah email conversation — no auto-reply sent");
 }
 
-function imapConfig(): { host: string; user: string; pass: string } {
+interface ImapMailbox {
+  readonly host: string;
+  readonly user: string;
+  readonly pass: string;
+}
+
+/**
+ * EMAIL_INBOUND_EXTRA_MAILBOXES lets additional real mailboxes on the same
+ * Google Workspace (not aliases of the primary one — those are already
+ * covered for free, since mail sent to an alias lands in the primary
+ * mailbox's own inbox) also get polled for inbound routing — e.g. a
+ * hello@ inbox or a staff member's own address that customers sometimes
+ * reply to directly. Each entry needs its own 2-Step-Verification app
+ * password, same requirement as the primary mailbox. Format:
+ * "user1@domain:apppassword1,user2@domain:apppassword2" — colon and comma
+ * are both safe delimiters since Google app passwords are 16 lowercase
+ * letters with no punctuation.
+ */
+export function parseExtraMailboxes(raw: string | undefined): ImapMailbox[] {
+  if (!raw?.trim()) return [];
+  return raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .map((entry) => {
+      const colonIndex = entry.indexOf(":");
+      if (colonIndex === -1) {
+        throw new Error(`EMAIL_INBOUND_EXTRA_MAILBOXES entry is missing the ":" separating user from app password: "${entry}"`);
+      }
+      const user = entry.slice(0, colonIndex).trim();
+      const pass = entry.slice(colonIndex + 1).trim().replace(/\s+/g, "");
+      if (!user || !pass) {
+        throw new Error(`EMAIL_INBOUND_EXTRA_MAILBOXES entry has an empty user or app password: "${entry}"`);
+      }
+      return { host: "imap.gmail.com", user, pass };
+    });
+}
+
+function imapConfigs(): ImapMailbox[] {
   const user = process.env.GOOGLE_WORKSPACE_SMTP_USER;
   const pass = process.env.GOOGLE_WORKSPACE_SMTP_APP_PASSWORD;
   if (!user || !pass) {
     throw new Error("GOOGLE_WORKSPACE_SMTP_USER/GOOGLE_WORKSPACE_SMTP_APP_PASSWORD is not set — required for IMAP polling too (same mailbox, same app password).");
   }
-  return { host: "imap.gmail.com", user, pass };
+  return [{ host: "imap.gmail.com", user, pass }, ...parseExtraMailboxes(process.env.EMAIL_INBOUND_EXTRA_MAILBOXES)];
 }
 
 export interface EmailInboundSweepResult {
@@ -91,7 +129,7 @@ export interface EmailInboundSweepResult {
 }
 
 /**
- * Polls the connected Google Workspace mailbox for unread mail, once per
+ * Polls the connected Google Workspace mailbox(es) for unread mail, once per
  * call — same "sweep" shape as the SMS trigger sweeps (sweepAbandonedCartTriggers
  * etc.), just polling an inbox instead of due DB rows. Idempotency is DB-level
  * (webhook_events, keyed on the RFC 5322 Message-ID), not merely the IMAP
@@ -99,9 +137,39 @@ export interface EmailInboundSweepResult {
  * a double-reply. Safe to call repeatedly, including overlapping runs, for
  * the same reason every other sweep in this codebase is: whichever call
  * wins the DB-level claim (recordWebhookEventIfNew) is the only one that acts.
+ *
+ * Polls the primary mailbox plus every EMAIL_INBOUND_EXTRA_MAILBOXES entry,
+ * one mailbox at a time. A single mailbox's connection failure (bad app
+ * password, revoked access, etc.) is caught and logged, not thrown — it
+ * shouldn't stop the primary mailbox (or any other extra one) from being
+ * polled on the same sweep.
  */
 export async function sweepInboundEmail(): Promise<EmailInboundSweepResult> {
-  const { host, user, pass } = imapConfig();
+  const mailboxes = imapConfigs();
+  let processedCount = 0;
+  let skippedCount = 0;
+  let failedCount = 0;
+
+  for (const mailbox of mailboxes) {
+    try {
+      const result = await sweepMailbox(mailbox);
+      processedCount += result.processedCount;
+      skippedCount += result.skippedCount;
+      failedCount += result.failedCount;
+    } catch (err) {
+      logger.error({ user: mailbox.user, reason: err instanceof Error ? err.message : String(err) }, "inbound email sweep failed to poll mailbox");
+      failedCount++;
+    }
+  }
+
+  if (processedCount > 0 || failedCount > 0) {
+    logger.info({ processedCount, skippedCount, failedCount }, "inbound email sweep completed");
+  }
+
+  return { processedCount, skippedCount, failedCount };
+}
+
+async function sweepMailbox({ host, user, pass }: ImapMailbox): Promise<EmailInboundSweepResult> {
   const client = new ImapFlow({ host, port: 993, secure: true, auth: { user, pass }, logger: false });
 
   let processedCount = 0;
@@ -174,10 +242,6 @@ export async function sweepInboundEmail(): Promise<EmailInboundSweepResult> {
     }
   } finally {
     await client.logout().catch(() => undefined);
-  }
-
-  if (processedCount > 0 || failedCount > 0) {
-    logger.info({ processedCount, skippedCount, failedCount }, "inbound email sweep completed");
   }
 
   return { processedCount, skippedCount, failedCount };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { stripQuotedReply } from "./email-inbound.service.js";
+import { stripQuotedReply, parseExtraMailboxes } from "./email-inbound.service.js";
 
 describe("stripQuotedReply", () => {
   it("returns the whole body when there's no quoted history", () => {
@@ -34,5 +34,34 @@ describe("stripQuotedReply", () => {
       "okay and then if i wanted to speak to the doctor?\n\n" +
       "On Wed, Aug 19, 2026 at 12:01 AM Sarah at Luma Health <lucym@start.mylumahealth.com> wrote:\n> previous message text";
     expect(stripQuotedReply(body)).toBe("okay and then if i wanted to speak to the doctor?");
+  });
+});
+
+describe("parseExtraMailboxes", () => {
+  it("returns an empty array when unset or blank", () => {
+    expect(parseExtraMailboxes(undefined)).toEqual([]);
+    expect(parseExtraMailboxes("  ")).toEqual([]);
+  });
+
+  it("parses a single user:apppassword entry", () => {
+    expect(parseExtraMailboxes("hello@mylumahealth.com:abcdefghijklmnop")).toEqual([
+      { host: "imap.gmail.com", user: "hello@mylumahealth.com", pass: "abcdefghijklmnop" },
+    ]);
+  });
+
+  it("parses multiple comma-separated entries and strips spaces out of the app password", () => {
+    expect(parseExtraMailboxes("hello@mylumahealth.com:abcd efgh ijkl mnop, greg@mylumahealth.com:qrst uvwx yzab cdef")).toEqual([
+      { host: "imap.gmail.com", user: "hello@mylumahealth.com", pass: "abcdefghijklmnop" },
+      { host: "imap.gmail.com", user: "greg@mylumahealth.com", pass: "qrstuvwxyzabcdef" },
+    ]);
+  });
+
+  it("throws on an entry missing the user:password separator", () => {
+    expect(() => parseExtraMailboxes("hello@mylumahealth.com")).toThrow(/missing the ":"/);
+  });
+
+  it("throws on an entry with an empty user or password", () => {
+    expect(() => parseExtraMailboxes(":abcdefghijklmnop")).toThrow(/empty user or app password/);
+    expect(() => parseExtraMailboxes("hello@mylumahealth.com:")).toThrow(/empty user or app password/);
   });
 });
