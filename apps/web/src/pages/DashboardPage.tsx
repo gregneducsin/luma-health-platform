@@ -87,7 +87,9 @@ export function DashboardPage() {
   const { data: employeesData } = useEmployees();
   const { data: weeksData } = usePayrollWeeks();
   const { data: currentUser } = useCurrentUser();
-  const canSeeNeedsAttention = currentUser?.user?.role === "admin" || currentUser?.user?.role === "manager";
+  // Matches the real /needs-attention route guard (App.tsx, Layout.tsx) —
+  // admin + customer_service, not manager, whose scope is payroll/Leads/Orders.
+  const canSeeNeedsAttention = currentUser?.user?.role === "admin" || currentUser?.user?.role === "customer_service";
 
   const totalRevenue = customersData?.customers.reduce((sum, c) => sum + Number(c.totalPaid), 0) ?? 0;
   const activeEmployees = employeesData?.employees.filter((e) => e.status === "active").length ?? 0;
