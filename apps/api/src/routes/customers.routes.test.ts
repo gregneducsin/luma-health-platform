@@ -1000,4 +1000,27 @@ describe("Customer notes", () => {
     expect((await request(app).get(`/api/app/customers/${anyId}/notes`)).status).toBe(401);
     expect((await request(app).post(`/api/app/customers/${anyId}/notes`).send({ body: "x" })).status).toBe(401);
   });
+
+  it("customer_service can both read and add notes — this is who actually takes the call/text and logs it", async () => {
+    await seedUser("notes-admin5@example.com", "admin");
+    const admin = await loginAgent(app, "notes-admin5@example.com");
+    const customerRes = await admin.agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", admin.csrf)
+      .send({ firstName: "Note", lastName: "Subject", email: "note-subject5@example.com", leadReceivedDate: "2026-08-15" });
+    const customerId = customerRes.body.customer.id;
+
+    await seedUser("notes-cs1@example.com", "customer_service");
+    const cs = await loginAgent(app, "notes-cs1@example.com");
+    const addRes = await cs.agent
+      .post(`/api/app/customers/${customerId}/notes`)
+      .set("x-csrf-token", cs.csrf)
+      .send({ body: "Called the customer, confirmed shipping address." });
+    expect(addRes.status).toBe(201);
+    expect(addRes.body.note).toMatchObject({ customerId, authorEmail: "notes-cs1@example.com" });
+
+    const listRes = await cs.agent.get(`/api/app/customers/${customerId}/notes`);
+    expect(listRes.status).toBe(200);
+    expect(listRes.body.notes).toHaveLength(1);
+  });
 });

@@ -81,10 +81,12 @@ export function createCustomersRouter(): RouterType {
     }
   });
 
-  // Internal staff notes — never shown to the customer. Manager gets the
-  // same read-only treatment as the rest of the Leads/Orders surface; only
-  // admin can add one.
-  router.get("/:id/notes", requireRole("admin", "manager"), async (req, res, next) => {
+  // Internal staff notes — never shown to the customer. customer_service is
+  // included because CS reps add notes while taking an action on a call/text
+  // (that's the whole point of the feature); manager stays read-only, same
+  // as the rest of the Leads/Orders surface, and never gets write access
+  // since it doesn't take customer-facing actions.
+  router.get("/:id/notes", requireRole("admin", "manager", "customer_service"), async (req, res, next) => {
     try {
       const notes = await customersService.listCustomerNotes(req.params.id as string);
       res.json({ notes });
@@ -93,7 +95,7 @@ export function createCustomersRouter(): RouterType {
     }
   });
 
-  router.post("/:id/notes", requireRole("admin"), requireCsrf, async (req, res, next) => {
+  router.post("/:id/notes", requireRole("admin", "customer_service"), requireCsrf, async (req, res, next) => {
     try {
       const parsed = createCustomerNoteRequestSchema.safeParse(req.body);
       if (!parsed.success) {
