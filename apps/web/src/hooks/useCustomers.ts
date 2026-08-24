@@ -18,6 +18,8 @@ import type {
   QuestionnairesResponse,
   IntakeLinkResponse,
   CustomerQuestionnaireEvent,
+  CustomerNote,
+  CreateCustomerNoteRequest,
 } from "@luma/shared";
 import { api } from "../lib/apiClient";
 
@@ -124,6 +126,21 @@ export function useCreatePurchase(customerId: string) {
       queryClient.invalidateQueries({ queryKey: ["purchases", "list"] });
       queryClient.invalidateQueries({ queryKey: ["purchases", "summary"] });
     },
+  });
+}
+
+export function useCustomerNotes(customerId: string) {
+  return useQuery({
+    queryKey: ["customers", "notes", customerId],
+    queryFn: () => api.get<{ notes: CustomerNote[] }>(`/api/app/customers/${customerId}/notes`),
+  });
+}
+
+export function useCreateCustomerNote(customerId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateCustomerNoteRequest) => api.post<{ note: CustomerNote }>(`/api/app/customers/${customerId}/notes`, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["customers", "notes", customerId] }),
   });
 }
 

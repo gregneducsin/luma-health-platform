@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useParams, Link } from "wouter";
-import { useCustomer, useCreatePurchase, useUpdatePurchase, useCreateIntakeLink } from "../hooks/useCustomers";
+import { useCustomer, useCreatePurchase, useUpdatePurchase, useCreateIntakeLink, useCustomerNotes, useCreateCustomerNote } from "../hooks/useCustomers";
 import { Badge, Button, Card, ErrorText, Field, Input } from "../components/ui";
 import { ApiError, useCurrentUser } from "../hooks/useAuth";
 import { formatDate, formatDateTime } from "../lib/formatTime";
@@ -76,6 +76,8 @@ export function CustomerDetailPage() {
         </dl>
       </Card>
 
+      <NotesCard customerId={customer.id} canEdit={canEdit} />
+
       {questionnaireEvents.length > 0 && (
         <Card>
           <h2 className="text-sm font-semibold text-gray-900">Questionnaire / Funnel</h2>
@@ -130,6 +132,60 @@ export function CustomerDetailPage() {
         </table>
       </Card>
     </div>
+  );
+}
+
+/** Internal staff commentary — never shown to the customer. Append-only: no edit or delete, matching every other activity log in this app. */
+function NotesCard({ customerId, canEdit }: { customerId: string; canEdit: boolean }) {
+  const { data, isLoading } = useCustomerNotes(customerId);
+  const [draft, setDraft] = useState("");
+  const createNote = useCreateCustomerNote(customerId);
+
+  function handleAdd() {
+    const body = draft.trim();
+    if (!body || createNote.isPending) return;
+    createNote.mutate({ body }, { onSuccess: () => setDraft("") });
+  }
+
+  return (
+    <Card>
+      <h2 className="text-sm font-semibold text-gray-900">Notes</h2>
+      <p className="text-xs text-gray-500">Internal staff notes — never shown to the customer.</p>
+
+      {canEdit && (
+        <div className="mt-3">
+          <textarea
+            className="w-full rounded-md border border-gray-300 p-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            rows={2}
+            placeholder="Add a note…"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            disabled={createNote.isPending}
+          />
+          <div className="mt-2 flex items-center gap-2">
+            <Button onClick={handleAdd} disabled={createNote.isPending || !draft.trim()}>
+              {createNote.isPending ? "Adding…" : "Add note"}
+            </Button>
+            <ErrorText>
+              {createNote.isError ? (createNote.error instanceof ApiError ? createNote.error.message : "Something went wrong.") : null}
+            </ErrorText>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-3 space-y-2">
+        {isLoading && <p className="text-xs text-gray-400">Loading…</p>}
+        {!isLoading && data?.notes.length === 0 && <p className="text-xs text-gray-400">No notes yet.</p>}
+        {data?.notes.map((note) => (
+          <div key={note.id} className="rounded-md border border-gray-100 px-3 py-2">
+            <p className="whitespace-pre-wrap text-sm text-gray-800">{note.body}</p>
+            <p className="mt-1 text-xs text-gray-400">
+              {note.authorEmail} · {formatDateTime(note.createdAt)}
+            </p>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }
 

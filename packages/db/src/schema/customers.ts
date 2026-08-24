@@ -69,5 +69,28 @@ export const externalIdentitiesTable = pgTable(
   ],
 );
 
+/**
+ * Internal staff commentary about a customer — "called to complain about
+ * X", "requested a callback", etc. Nothing here is ever shown to the
+ * customer. Append-only (no edit/delete) — same convention as every other
+ * activity log in this codebase (conversation messages, audit events).
+ * authorEmail is a denormalized snapshot, not a foreign key, matching
+ * purchase_classification_audits' changedBy — a note should read the same
+ * years later even if the author's account is later disabled or renamed.
+ */
+export const customerNotesTable = pgTable(
+  "customer_notes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customersTable.id, { onDelete: "cascade" }),
+    authorEmail: text("author_email").notNull(),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("customer_notes_customer_id_idx").on(t.customerId)],
+);
+
 export type Customer = typeof customersTable.$inferSelect;
 export type InsertCustomer = typeof customersTable.$inferInsert;

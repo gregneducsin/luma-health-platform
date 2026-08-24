@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, ilike, or, sql, getTableColumns } from "drizzle-orm";
-import { db, customersTable, purchasesTable, questionnaireEventsTable, externalIdentitiesTable } from "@luma/db";
+import { db, customersTable, purchasesTable, questionnaireEventsTable, externalIdentitiesTable, customerNotesTable } from "@luma/db";
 import type { CreateCustomerRequest, CustomersSummaryQuery, ListCustomersQuery, UpdateCustomerRequest } from "@luma/shared";
 import { normalizePhone } from "../lib/phone.js";
 
@@ -172,6 +172,16 @@ export async function listDistinctQuestionnaireIds() {
 export async function getCustomer(id: string) {
   const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, id));
   return customer ?? null;
+}
+
+/** Internal staff notes for this customer, newest first. */
+export async function listCustomerNotes(customerId: string) {
+  return db.select().from(customerNotesTable).where(eq(customerNotesTable.customerId, customerId)).orderBy(desc(customerNotesTable.createdAt));
+}
+
+export async function createCustomerNote(customerId: string, body: string, authorEmail: string) {
+  const [note] = await db.insert(customerNotesTable).values({ customerId, body, authorEmail }).returning();
+  return note;
 }
 
 /** Every questionnaire this customer has an event for, most recently active first — answers "where did this lead come from." */

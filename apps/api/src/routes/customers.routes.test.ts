@@ -921,3 +921,83 @@ describe("Upcoming trigger", () => {
     expect(badKindRes.status).toBe(400);
   });
 });
+
+describe("Customer notes", () => {
+  let app: ReturnType<typeof createApp>;
+
+  beforeAll(() => {
+    app = createApp();
+  });
+
+  it("admin adds a note, and it lists newest first", async () => {
+    await seedUser("notes-admin1@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "notes-admin1@example.com");
+    const customerRes = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Note", lastName: "Subject", email: "note-subject1@example.com", leadReceivedDate: "2026-08-15" });
+    const customerId = customerRes.body.customer.id;
+
+    const firstRes = await agent.post(`/api/app/customers/${customerId}/notes`).set("x-csrf-token", csrf).send({ body: "Called to confirm address." });
+    expect(firstRes.status).toBe(201);
+    expect(firstRes.body.note).toMatchObject({ customerId, authorEmail: "notes-admin1@example.com", body: "Called to confirm address." });
+
+    const secondRes = await agent.post(`/api/app/customers/${customerId}/notes`).set("x-csrf-token", csrf).send({ body: "Requested a callback tomorrow." });
+    expect(secondRes.status).toBe(201);
+
+    const listRes = await agent.get(`/api/app/customers/${customerId}/notes`);
+    expect(listRes.status).toBe(200);
+    expect(listRes.body.notes).toHaveLength(2);
+    expect(listRes.body.notes[0].body).toBe("Requested a callback tomorrow.");
+    expect(listRes.body.notes[1].body).toBe("Called to confirm address.");
+  });
+
+  it("rejects an empty note body with 400", async () => {
+    await seedUser("notes-admin2@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "notes-admin2@example.com");
+    const customerRes = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Note", lastName: "Subject", email: "note-subject2@example.com", leadReceivedDate: "2026-08-15" });
+    const customerId = customerRes.body.customer.id;
+
+    const res = await agent.post(`/api/app/customers/${customerId}/notes`).set("x-csrf-token", csrf).send({ body: "" });
+    expect(res.status).toBe(400);
+  });
+
+  it("404s adding a note for a customer that doesn't exist", async () => {
+    await seedUser("notes-admin3@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "notes-admin3@example.com");
+    const res = await agent
+      .post("/api/app/customers/00000000-0000-0000-0000-000000000000/notes")
+      .set("x-csrf-token", csrf)
+      .send({ body: "Should not land anywhere." });
+    expect(res.status).toBe(404);
+  });
+
+  it("manager can read notes but not add one — same read-only treatment as the rest of Leads/Orders", async () => {
+    await seedUser("notes-admin4@example.com", "admin");
+    const admin = await loginAgent(app, "notes-admin4@example.com");
+    const customerRes = await admin.agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", admin.csrf)
+      .send({ firstName: "Note", lastName: "Subject", email: "note-subject4@example.com", leadReceivedDate: "2026-08-15" });
+    const customerId = customerRes.body.customer.id;
+    await admin.agent.post(`/api/app/customers/${customerId}/notes`).set("x-csrf-token", admin.csrf).send({ body: "Admin-authored note." });
+
+    await seedUser("notes-mgr1@example.com", "manager");
+    const manager = await loginAgent(app, "notes-mgr1@example.com");
+    const listRes = await manager.agent.get(`/api/app/customers/${customerId}/notes`);
+    expect(listRes.status).toBe(200);
+    expect(listRes.body.notes).toHaveLength(1);
+
+    const addRes = await manager.agent.post(`/api/app/customers/${customerId}/notes`).set("x-csrf-token", manager.csrf).send({ body: "Manager should not be able to add this." });
+    expect(addRes.status).toBe(403);
+  });
+
+  it("rejects unauthenticated requests to both endpoints", async () => {
+    const anyId = "00000000-0000-0000-0000-000000000000";
+    expect((await request(app).get(`/api/app/customers/${anyId}/notes`)).status).toBe(401);
+    expect((await request(app).post(`/api/app/customers/${anyId}/notes`).send({ body: "x" })).status).toBe(401);
+  });
+});

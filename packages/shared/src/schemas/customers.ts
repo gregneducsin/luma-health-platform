@@ -97,3 +97,22 @@ export const customersSummarySchema = z.object({
   conversionRate: z.number(),
 });
 export type CustomersSummary = z.infer<typeof customersSummarySchema>;
+
+export const customerNoteSchema = z.object({
+  id: z.string().uuid(),
+  customerId: z.string().uuid(),
+  authorEmail: z.string().email(),
+  body: z.string(),
+  createdAt: z.string(),
+});
+export type CustomerNote = z.infer<typeof customerNoteSchema>;
+
+export const createCustomerNoteRequestSchema = z.object({
+  body: z.string().min(1).max(2000),
+});
+export type CreateCustomerNoteRequest = z.infer<typeof createCustomerNoteRequestSchema>;
+
+export const customerNotesListResponseSchema = z.object({
+  notes: z.array(customerNoteSchema),
+});
+export type CustomerNotesListResponse = z.infer<typeof customerNotesListResponseSchema>;
