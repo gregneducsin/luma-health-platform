@@ -102,7 +102,7 @@ export function createCustomersRouter(): RouterType {
   // abandoned-cart/meta-lead email, review requests) for this person, or
   // null if nothing's armed — surfaced on the conversation detail page so
   // staff can see "there's a text/email due Thursday" without having to ask.
-  router.get("/:id/upcoming-trigger", requireRole("admin", "manager"), async (req, res, next) => {
+  router.get("/:id/upcoming-trigger", requireRole("admin", "manager", "customer_service"), async (req, res, next) => {
     try {
       const trigger = await getUpcomingTrigger(req.params.id as string);
       res.json({ trigger: trigger ? { ...trigger, dueAt: trigger.dueAt.toISOString() } : null });

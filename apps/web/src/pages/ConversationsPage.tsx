@@ -283,7 +283,6 @@ function ConversationDetailPanel({ conversationId, channel }: { conversationId: 
                 {clearAttention.isPending ? "Marking…" : "Mark reviewed"}
               </Button>
             </div>
-            <StaffReplyBox conversationId={conversation.id} channel={channel} />
           </div>
         )}
       </div>
@@ -313,10 +312,9 @@ function ConversationDetailPanel({ conversationId, channel }: { conversationId: 
       </div>
 
       <div className="border-t border-gray-200 p-3">
-        <p className="text-xs text-gray-400">
-          {channel === "sms"
-            ? "Reply from the box above when this conversation needs attention, or text the customer directly anytime."
-            : "Reply from the box above when this conversation needs attention, or reply from your own email client anytime."}
+        <StaffReplyBox conversationId={conversation.id} channel={channel} />
+        <p className="mt-1 text-xs text-gray-400">
+          {channel === "sms" ? "You can also text the customer directly anytime." : "You can also reply from your own email client anytime."}
         </p>
       </div>
     </Card>

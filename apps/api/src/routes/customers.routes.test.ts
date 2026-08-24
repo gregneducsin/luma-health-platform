@@ -848,4 +848,20 @@ describe("Upcoming trigger", () => {
     const res = await request(app).get("/api/app/customers/00000000-0000-0000-0000-000000000000/upcoming-trigger");
     expect(res.status).toBe(401);
   });
+
+  it("customer_service can read it too — this powers the banner on their own Conversations/Support pages", async () => {
+    await seedUser("trigger-admin3@example.com", "admin");
+    const admin = await loginAgent(app, "trigger-admin3@example.com");
+    const customerRes = await admin.agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", admin.csrf)
+      .send({ firstName: "Trigger", lastName: "Lead", email: "trigger-route3@example.com", leadReceivedDate: "2026-08-15" });
+    const customerId = customerRes.body.customer.id;
+
+    await seedUser("trigger-cs1@example.com", "customer_service");
+    const cs = await loginAgent(app, "trigger-cs1@example.com");
+    const res = await cs.agent.get(`/api/app/customers/${customerId}/upcoming-trigger`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ trigger: null });
+  });
 });

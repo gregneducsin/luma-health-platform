@@ -242,7 +242,6 @@ function SupportConversationDetailPanel({ conversationId, channel }: { conversat
                 {clearAttention.isPending ? "Marking…" : "Mark reviewed"}
               </Button>
             </div>
-            <StaffReplyBox conversationId={conversation.id} channel={channel} />
           </div>
         )}
       </div>
@@ -272,10 +271,9 @@ function SupportConversationDetailPanel({ conversationId, channel }: { conversat
       </div>
 
       <div className="border-t border-gray-200 p-3">
-        <p className="text-xs text-gray-400">
-          {channel === "sms"
-            ? "Reply from the box above when this conversation needs attention, or text the patient directly anytime."
-            : "Reply from the box above when this conversation needs attention, or reply from your own email client anytime."}
+        <StaffReplyBox conversationId={conversation.id} channel={channel} />
+        <p className="mt-1 text-xs text-gray-400">
+          {channel === "sms" ? "You can also text the patient directly anytime." : "You can also reply from your own email client anytime."}
         </p>
       </div>
     </Card>
