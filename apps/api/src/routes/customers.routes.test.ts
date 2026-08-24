@@ -864,4 +864,60 @@ describe("Upcoming trigger", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ trigger: null });
   });
+
+  it("rejects manager on both the read and the cancel — manager can't reach Conversations/Support", async () => {
+    await seedUser("trigger-mgr1@example.com", "manager");
+    const { agent, csrf } = await loginAgent(app, "trigger-mgr1@example.com");
+    const anyId = "00000000-0000-0000-0000-000000000000";
+    expect((await agent.get(`/api/app/customers/${anyId}/upcoming-trigger`)).status).toBe(403);
+    expect((await agent.post(`/api/app/customers/${anyId}/upcoming-trigger/cancel`).set("x-csrf-token", csrf).send({ kind: "follow_up" })).status).toBe(403);
+  });
+
+  it("cancels the pending trigger, and reports cancelled: false on a second attempt or a stale kind", async () => {
+    await seedUser("trigger-admin4@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "trigger-admin4@example.com");
+    const customerRes = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Trigger", lastName: "Lead", email: "trigger-route4@example.com", leadReceivedDate: "2026-08-15" });
+    const customerId = customerRes.body.customer.id;
+
+    const { db, reviewRequestTriggersTable } = await import("@luma/db");
+    const { eq } = await import("drizzle-orm");
+    const dueAt = new Date(Date.now() + 3_600_000);
+    await db.insert(reviewRequestTriggersTable).values({ personId: customerId, dueAt });
+
+    const cancelRes = await agent
+      .post(`/api/app/customers/${customerId}/upcoming-trigger/cancel`)
+      .set("x-csrf-token", csrf)
+      .send({ kind: "review_request_sms" });
+    expect(cancelRes.status).toBe(200);
+    expect(cancelRes.body).toEqual({ cancelled: true });
+
+    const [trigger] = await db.select().from(reviewRequestTriggersTable).where(eq(reviewRequestTriggersTable.personId, customerId));
+    expect(trigger.status).toBe("cancelled");
+    expect(trigger.cancelledReason).toBe("staff_cancelled");
+
+    const afterRes = await agent.get(`/api/app/customers/${customerId}/upcoming-trigger`);
+    expect(afterRes.body).toEqual({ trigger: null });
+
+    // Already cancelled — a second attempt (e.g. a stale banner, or the customer's follow-up sent in the meantime) is a no-op, not an error.
+    const secondCancelRes = await agent
+      .post(`/api/app/customers/${customerId}/upcoming-trigger/cancel`)
+      .set("x-csrf-token", csrf)
+      .send({ kind: "review_request_sms" });
+    expect(secondCancelRes.status).toBe(200);
+    expect(secondCancelRes.body).toEqual({ cancelled: false });
+  });
+
+  it("rejects unauthenticated cancel requests, and an invalid kind with 400", async () => {
+    const anyId = "00000000-0000-0000-0000-000000000000";
+    const unauthRes = await request(app).post(`/api/app/customers/${anyId}/upcoming-trigger/cancel`).send({ kind: "follow_up" });
+    expect(unauthRes.status).toBe(401);
+
+    await seedUser("trigger-admin5@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "trigger-admin5@example.com");
+    const badKindRes = await agent.post(`/api/app/customers/${anyId}/upcoming-trigger/cancel`).set("x-csrf-token", csrf).send({ kind: "not_a_real_kind" });
+    expect(badKindRes.status).toBe(400);
+  });
 });

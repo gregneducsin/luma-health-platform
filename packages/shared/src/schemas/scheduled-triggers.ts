@@ -20,3 +20,15 @@ export const upcomingTriggerResponseSchema = z.object({
   trigger: upcomingTriggerSchema.nullable(),
 });
 export type UpcomingTriggerResponse = z.infer<typeof upcomingTriggerResponseSchema>;
+
+export const cancelUpcomingTriggerRequestSchema = z.object({
+  kind: upcomingTriggerSchema.shape.kind,
+});
+export type CancelUpcomingTriggerRequest = z.infer<typeof cancelUpcomingTriggerRequestSchema>;
+
+export const cancelUpcomingTriggerResponseSchema = z.object({
+  // false when the trigger already resolved (sent/cancelled elsewhere)
+  // between the banner loading and staff clicking Cancel.
+  cancelled: z.boolean(),
+});
+export type CancelUpcomingTriggerResponse = z.infer<typeof cancelUpcomingTriggerResponseSchema>;

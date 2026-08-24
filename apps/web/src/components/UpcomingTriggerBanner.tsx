@@ -1,4 +1,4 @@
-import { useUpcomingTrigger } from "../hooks/useScheduledTriggers";
+import { useCancelUpcomingTrigger, useUpcomingTrigger } from "../hooks/useScheduledTriggers";
 
 /** "in 3 days", "in 2h", "any moment now" (already due but not yet swept) — not a countdown, just enough precision to be useful at a glance. */
 function formatDueIn(dueAtIso: string): string {
@@ -22,13 +22,28 @@ function formatDueIn(dueAtIso: string): string {
  */
 export function UpcomingTriggerBanner({ personId }: { personId: string | null }) {
   const { data } = useUpcomingTrigger(personId);
+  const cancelTrigger = useCancelUpcomingTrigger(personId);
   const trigger = data?.trigger;
   if (!trigger) return null;
+
+  // "processing" is the sweep's transient claim right before it actually
+  // sends — already too late to call off, so no Cancel affordance then.
+  const canCancel = trigger.status === "pending";
 
   return (
     <p className="mt-1 flex items-center gap-1.5 text-xs text-gray-400">
       <span aria-hidden="true">📅</span>
       Next scheduled: {trigger.label} — {trigger.status === "processing" ? "sending now" : formatDueIn(trigger.dueAt)}
+      {canCancel && (
+        <button
+          type="button"
+          className="text-blue-500 hover:underline disabled:text-gray-300"
+          disabled={cancelTrigger.isPending}
+          onClick={() => cancelTrigger.mutate(trigger.kind)}
+        >
+          {cancelTrigger.isPending ? "Cancelling…" : "Cancel"}
+        </button>
+      )}
     </p>
   );
 }

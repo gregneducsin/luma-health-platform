@@ -15,7 +15,7 @@ import {
 } from "@luma/db";
 import { hashToken } from "../lib/crypto.js";
 
-const { getUpcomingTrigger } = await import("./scheduled-triggers.service.js");
+const { getUpcomingTrigger, cancelUpcomingTrigger } = await import("./scheduled-triggers.service.js");
 
 async function seedCustomer(): Promise<string> {
   const [row] = await db
@@ -98,5 +98,53 @@ describe("getUpcomingTrigger", () => {
     await db.insert(objectionReengagementTriggersTable).values({ personId, dueAt: new Date(Date.now() - 60_000), status: "failed" });
 
     expect(await getUpcomingTrigger(personId)).toBeNull();
+  });
+});
+
+describe("cancelUpcomingTrigger", () => {
+  it("cancels a pending review-request trigger and records the reason", async () => {
+    const personId = await seedCustomer();
+    await db.insert(reviewRequestTriggersTable).values({ personId, dueAt: new Date(Date.now() + 60_000) });
+
+    const cancelled = await cancelUpcomingTrigger(personId, "review_request_sms");
+    expect(cancelled).toBe(true);
+
+    const [row] = await db.select().from(reviewRequestTriggersTable).where(eq(reviewRequestTriggersTable.personId, personId));
+    expect(row.status).toBe("cancelled");
+    expect(row.cancelledReason).toBe("staff_cancelled");
+    expect(await getUpcomingTrigger(personId)).toBeNull();
+  });
+
+  it("cancels a 'processing' row too, not just 'pending' (same PENDING_STATUSES getUpcomingTrigger reads)", async () => {
+    const personId = await seedCustomer();
+    const [trigger] = await db
+      .insert(abandonedCartTriggersTable)
+      .values({ personId, questionnaireEventId: await seedQuestionnaireEvent(personId), dueAt: new Date(Date.now() + 60_000) })
+      .returning();
+    await db.update(abandonedCartTriggersTable).set({ status: "processing" }).where(eq(abandonedCartTriggersTable.id, trigger.id));
+
+    expect(await cancelUpcomingTrigger(personId, "abandoned_cart_sms")).toBe(true);
+  });
+
+  it("returns false and touches nothing when there's no matching pending row — a stale kind, or already resolved", async () => {
+    const personId = await seedCustomer();
+    await db.insert(reviewRequestTriggersTable).values({ personId, dueAt: new Date(Date.now() - 60_000), status: "sent" });
+
+    expect(await cancelUpcomingTrigger(personId, "review_request_sms")).toBe(false);
+    expect(await cancelUpcomingTrigger(personId, "follow_up")).toBe(false);
+
+    const [row] = await db.select().from(reviewRequestTriggersTable).where(eq(reviewRequestTriggersTable.personId, personId));
+    expect(row.status).toBe("sent"); // untouched
+  });
+
+  it("only cancels the row for the kind passed, not every trigger the person has", async () => {
+    const personId = await seedCustomer();
+    await db.insert(reviewRequestTriggersTable).values({ personId, dueAt: new Date(Date.now() + 60_000) });
+    await db.insert(leadCheckinTriggersTable).values({ personId, dueAt: new Date(Date.now() + 3_600_000) });
+
+    await cancelUpcomingTrigger(personId, "review_request_sms");
+
+    const [leadCheckin] = await db.select().from(leadCheckinTriggersTable).where(eq(leadCheckinTriggersTable.personId, personId));
+    expect(leadCheckin.status).toBe("pending");
   });
 });
