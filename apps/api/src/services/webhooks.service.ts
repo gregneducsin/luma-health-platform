@@ -21,7 +21,13 @@ import { scheduleAbandonedCartOpener } from "./abandoned-cart.service.js";
 import { scheduleAbandonedCartEmailSequence } from "./abandoned-cart-email.service.js";
 import { sendMetaLeadOpener } from "./meta-lead.service.js";
 import { scheduleMetaLeadEmailSequence } from "./meta-lead-email.service.js";
-import { sendOrderReceivedOpener, handlePrescriptionWritten, handleOrderShipped, handlePaymentFailed } from "./order-fulfillment.service.js";
+import {
+  sendOrderReceivedOpener,
+  sendRefillOrderReceivedNotice,
+  handlePrescriptionWritten,
+  handleOrderShipped,
+  handlePaymentFailed,
+} from "./order-fulfillment.service.js";
 import { setCustomerSmsDnd, setCustomerEmailDnd } from "./dnd.service.js";
 import { normalizePhone } from "../lib/phone.js";
 import { logger } from "../lib/logger.js";
@@ -289,15 +295,15 @@ export async function handleBaskOrderWebhook(payload: BaskOrderWebhookRequest): 
     await setCustomerSmsDnd(customerId, false);
     await setCustomerEmailDnd(customerId, false);
 
-    // Sarah's opening "doctor is reviewing it" welcome message fires the
-    // moment the order lands — instant, same as the Meta lead opener, not a
-    // scheduled sweep. Only for a genuine first order: a recurring/refill
-    // order re-sending the same "your order was just received!" welcome
-    // message every time reads as broken, not as a real update.
+    // Sarah's opening message fires the moment the order lands — instant,
+    // same as the Meta lead opener, not a scheduled sweep. A genuine first
+    // order gets the "doctor is reviewing it" welcome copy; re-sending that
+    // same welcome to a recurring/refill order would read as broken, so it
+    // gets its own refill-specific notice instead — not silence.
     if (isFirstOrder) {
       await sendOrderReceivedOpener(customerId);
     } else {
-      logger.info({ customerId }, "recurring order — welcome opener not re-sent");
+      await sendRefillOrderReceivedNotice(customerId);
     }
 
     await markWebhookEventProcessed(recorded.id, customerId);

@@ -308,6 +308,7 @@ describe("Webhooks", () => {
       // purchase row in our DB, so our own "does an earlier row exist" check
       // says first_order — but Bask knows they're a real repeat customer.
       sendMessageMock.mockClear();
+      sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_bask_says_recurring" });
       const res = await request(app)
         .post("/api/webhooks/bask-order")
         .set("x-webhook-secret", ORDER_SECRET)
@@ -332,7 +333,9 @@ describe("Webhooks", () => {
       const purchases = await db.select().from(purchasesTable).where(eq(purchasesTable.customerId, customer!.id));
       expect(purchases).toHaveLength(1);
       expect(purchases[0].orderClassification).toBe("recurring");
-      expect(sendMessageMock).not.toHaveBeenCalled();
+      // Gets the refill notice, not the "your first order!" welcome copy.
+      expect(sendMessageMock).toHaveBeenCalledTimes(1);
+      expect(sendMessageMock.mock.calls[0][1]).toContain("refill");
     });
 
     it("accepts a capitalized Python-style string value (confirmed from a real Zapier payload)", async () => {
@@ -401,9 +404,11 @@ describe("Webhooks", () => {
       const purchases = await db.select().from(purchasesTable).where(eq(purchasesTable.customerId, customer!.id));
       expect(purchases).toHaveLength(2);
       expect(purchases.find((p) => p.orderNumber === "BASK-MISMATCH")?.orderClassification).toBe("recurring");
-      // The conflict shouldn't just avoid the DB error — it also shouldn't
-      // send a "your first order!" welcome text to a customer we already
-      // have purchase history for.
+      // No SMS here — not because of the recurring/refill distinction (that
+      // now sends its own notice), but because this pre-existing customer
+      // was seeded with no phone on file, and findOrCreateCustomerByExternalIdentity
+      // doesn't back-fill contact fields onto an already-matched customer
+      // from the webhook payload.
       expect(sendMessageMock).not.toHaveBeenCalled();
     });
 
@@ -488,7 +493,7 @@ describe("Webhooks", () => {
       expect(messages.length).toBe(1);
     });
 
-    it("does not re-send the order-received welcome opener on a recurring (refill) order for an existing customer", async () => {
+    it("sends the refill notice, not the first-order welcome copy, on a recurring (refill) order for an existing customer", async () => {
       const { db, customersTable, externalIdentitiesTable, purchasesTable } = await import("@luma/db");
       const { eq } = await import("drizzle-orm");
       const [customer] = await db
@@ -513,8 +518,11 @@ describe("Webhooks", () => {
         });
       expect(first.status).toBe(200);
       expect(sendMessageMock).toHaveBeenCalledTimes(1);
+      expect(sendMessageMock.mock.calls[0][1]).toContain("this is Sarah");
+      expect(sendMessageMock.mock.calls[0][1]).not.toContain("refill");
 
       sendMessageMock.mockClear();
+      sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_refill_second" });
       const second = await request(app)
         .post("/api/webhooks/bask-order")
         .set("x-webhook-secret", ORDER_SECRET)
@@ -528,7 +536,8 @@ describe("Webhooks", () => {
           purchasedAt: "2026-03-09T09:00:00.000Z",
         });
       expect(second.status).toBe(200);
-      expect(sendMessageMock).not.toHaveBeenCalled();
+      expect(sendMessageMock).toHaveBeenCalledTimes(1);
+      expect(sendMessageMock.mock.calls[0][1]).toContain("refill");
 
       const purchases = await db.select().from(purchasesTable).where(eq(purchasesTable.customerId, customer!.id));
       expect(purchases).toHaveLength(2);
@@ -948,6 +957,7 @@ describe("Webhooks", () => {
       });
 
       sendMessageMock.mockClear();
+      sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_refill_notice_before_failure" });
       await request(app)
         .post("/api/webhooks/bask-order")
         .set("x-webhook-secret", ORDER_SECRET)

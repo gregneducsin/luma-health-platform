@@ -5,6 +5,7 @@ import { getOrCreateSupportEmailConversation, appendSupportEmailMessage } from "
 import { getSmsProvider } from "../lib/sms-provider.js";
 import {
   renderOrderReceivedMessage,
+  renderRefillOrderReceivedMessage,
   renderPrescriptionWrittenMessage,
   renderOrderShippedMessage,
   renderReviewRequestMessage,
@@ -13,6 +14,7 @@ import {
 } from "../lib/support/templates.js";
 import {
   renderOrderReceivedEmail,
+  renderRefillOrderReceivedEmail,
   renderPrescriptionWrittenEmail,
   renderOrderShippedEmail,
   renderPaymentFailedFirstOrderEmail,
@@ -85,6 +87,48 @@ export async function sendOrderReceivedOpener(personId: string): Promise<void> {
     render: (unsubscribeUrl) => renderOrderReceivedEmail(customer.firstName, unsubscribeUrl),
     appendMessage: appendSupportEmailMessage,
     logLabel: "order-received",
+  });
+}
+
+/**
+ * Refill-order counterpart to sendOrderReceivedOpener — fires for a
+ * recurring order instead of the first-order welcome, since re-sending that
+ * welcome copy to a returning customer reads as broken. Without this, a
+ * recurring order previously got no notice at all until prescription-written
+ * or order-shipped fired later. Same instant-send, fail-soft shape.
+ */
+export async function sendRefillOrderReceivedNotice(personId: string): Promise<void> {
+  const customer = await getCustomerContact(personId);
+  if (!customer) {
+    logger.warn({ personId }, "refill order-received notice not sent: customer not found");
+    return;
+  }
+
+  const conversation = await getOrCreateSupportConversation(personId);
+  const dnd = await isCustomerSmsDnd(personId);
+  if (customer.phone && !dnd) {
+    const text = renderRefillOrderReceivedMessage(customer.firstName);
+    try {
+      const result = await getSmsProvider().sendMessage(customer.phone, text);
+      await appendSupportMessage(conversation.id, "outbound", text, { providerMessageId: result.providerMessageId });
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      logger.warn({ personId, reason }, "refill order-received notice send failed");
+      await appendSupportMessage(conversation.id, "outbound", text, {});
+    }
+  } else {
+    logger.warn({ personId, reason: dnd ? "do_not_disturb" : "no_phone_number" }, "refill order-received notice SMS not sent");
+  }
+
+  const emailConversation = await getOrCreateSupportEmailConversation(personId);
+  await sendTriggerEmail({
+    persona: "sarah",
+    personId,
+    conversationId: emailConversation.id,
+    email: customer.email,
+    render: (unsubscribeUrl) => renderRefillOrderReceivedEmail(customer.firstName, unsubscribeUrl),
+    appendMessage: appendSupportEmailMessage,
+    logLabel: "refill-order-received",
   });
 }
 

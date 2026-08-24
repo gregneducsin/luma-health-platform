@@ -16,6 +16,15 @@ export function renderOrderReceivedMessage(firstName: string): string {
   );
 }
 
+export function renderRefillOrderReceivedMessage(firstName: string): string {
+  const name = firstName.trim() || "there";
+  return (
+    `Hi ${name}, this is Sarah on the doctor support side. We've received your refill order and it's being processed now. ` +
+    "If you have any questions in the meantime, you can check your patient portal, https://go.mylumahealth.com/login\n\n" +
+    "We will update you once it ships."
+  );
+}
+
 export function renderPrescriptionWrittenMessage(firstName: string): string {
   const name = firstName.trim() || "there";
   return `Hi ${name}, good news, the doctor has written your prescription and it's on its way to the pharmacy. We'll let you know as soon as it ships.`;

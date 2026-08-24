@@ -23,9 +23,8 @@ vi.mock("../lib/email-provider.js", async () => {
   return { ...actual, getEmailProvider: (persona: "lucy" | "sarah") => ({ provider: { sendEmail: sendEmailMock }, fromName: `${persona} at Luma Health` }) };
 });
 
-const { sendOrderReceivedOpener, handlePrescriptionWritten, handleOrderShipped, handlePaymentFailed, sweepReviewRequestTriggers } = await import(
-  "./order-fulfillment.service.js"
-);
+const { sendOrderReceivedOpener, sendRefillOrderReceivedNotice, handlePrescriptionWritten, handleOrderShipped, handlePaymentFailed, sweepReviewRequestTriggers } =
+  await import("./order-fulfillment.service.js");
 const { getOrCreateSupportConversation, listSupportMessages } = await import("./support-conversations.service.js");
 
 async function seedCustomer(opts: { phone?: string | null } = {}): Promise<string> {
@@ -97,6 +96,57 @@ describe("sendOrderReceivedOpener", () => {
     const personId = await seedCustomer();
     await setCustomerSmsDnd(personId, true);
     await sendOrderReceivedOpener(personId);
+    expect(sendMessageMock).not.toHaveBeenCalled();
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("sendRefillOrderReceivedNotice", () => {
+  it("sends the refill notice (not the first-order welcome copy) and logs it", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_refill" });
+
+    const personId = await seedCustomer();
+    await sendRefillOrderReceivedNotice(personId);
+
+    expect(sendMessageMock).toHaveBeenCalledWith("+15559991111", expect.stringContaining("refill"));
+    const conversation = await getOrCreateSupportConversation(personId);
+    const messages = await listSupportMessages(conversation.id);
+    expect(messages.length).toBe(1);
+    expect(messages[0].providerMessageId).toBe("msg_refill");
+  });
+
+  it("also sends a refill-order-received email alongside the text", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_refill_email_sibling" });
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<refill-order-received@example.com>" });
+
+    const personId = await seedCustomer();
+    const email = await getCustomerEmail(personId);
+    await sendRefillOrderReceivedNotice(personId);
+
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    expect(sendEmailMock.mock.calls[0][0]).toBe(email);
+  });
+
+  it("does not call the SMS provider when there's no phone on file, but still sends the email", async () => {
+    sendMessageMock.mockClear();
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<refill-no-phone@example.com>" });
+    const personId = await seedCustomer({ phone: null });
+    await sendRefillOrderReceivedNotice(personId);
+    expect(sendMessageMock).not.toHaveBeenCalled();
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not call the SMS provider when the customer is SMS do-not-disturb, but still sends the email", async () => {
+    sendMessageMock.mockClear();
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<refill-sms-dnd@example.com>" });
+    const personId = await seedCustomer();
+    await setCustomerSmsDnd(personId, true);
+    await sendRefillOrderReceivedNotice(personId);
     expect(sendMessageMock).not.toHaveBeenCalled();
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
   });
