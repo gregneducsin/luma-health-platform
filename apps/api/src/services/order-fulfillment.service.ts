@@ -329,22 +329,16 @@ export async function sweepReviewRequestTriggers(): Promise<ReviewRequestSweepRe
     }
 
     const text = renderReviewRequestMessage(customer.firstName);
-    try {
-      const result = await getSmsProvider().sendMessage(customer.phone, text);
-      await appendSupportMessage(conversation.id, "outbound", text, { providerMessageId: result.providerMessageId });
-      // Only flip reviewRequested on an actual successful send — setting it
-      // on a failed attempt (as this used to) made Sarah's conversation loop
-      // treat the patient's next reply as a sentiment answer to a review
-      // check-in question they were never actually sent.
-      await updateSupportConversationState(conversation.id, { reviewRequested: true });
-      await db
-        .update(reviewRequestTriggersTable)
-        .set({ status: "sent", sentAt: sql`now()`, providerMessageId: result.providerMessageId, attemptCount: nextAttemptCount })
-        .where(eq(reviewRequestTriggersTable.id, trigger.id));
-      sentCount++;
 
-      // No email leg here — no real template exists yet for the review-
-      // request email (see templates.ts), so this stays SMS-only for now.
+    // The "sent" write below must happen right after a successful send,
+    // before anything else that could throw — otherwise a failure in a
+    // downstream step (logging into the conversation, flipping
+    // reviewRequested) falls into the catch, marks this "failed", and a
+    // later sweep retries it: a real duplicate text to the patient, even
+    // though the first one already went out.
+    let result: { providerMessageId: string };
+    try {
+      result = await getSmsProvider().sendMessage(customer.phone, text);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       await appendSupportMessage(conversation.id, "outbound", text, {});
@@ -353,6 +347,26 @@ export async function sweepReviewRequestTriggers(): Promise<ReviewRequestSweepRe
         .set({ status: "failed", failureReason: reason, attemptCount: nextAttemptCount })
         .where(eq(reviewRequestTriggersTable.id, trigger.id));
       failedCount++;
+      continue;
+    }
+
+    await db
+      .update(reviewRequestTriggersTable)
+      .set({ status: "sent", sentAt: sql`now()`, providerMessageId: result.providerMessageId, attemptCount: nextAttemptCount })
+      .where(eq(reviewRequestTriggersTable.id, trigger.id));
+    sentCount++;
+    // No email leg here — no real template exists yet for the review-
+    // request email (see templates.ts), so this stays SMS-only for now.
+
+    try {
+      await appendSupportMessage(conversation.id, "outbound", text, { providerMessageId: result.providerMessageId });
+      // Only flip reviewRequested once the text is actually confirmed sent —
+      // setting it on a failed attempt (as this used to) made Sarah's
+      // conversation loop treat the patient's next reply as a sentiment
+      // answer to a review check-in question they were never actually sent.
+      await updateSupportConversationState(conversation.id, { reviewRequested: true });
+    } catch (err) {
+      logger.warn({ personId: trigger.personId, reason: err instanceof Error ? err.message : String(err) }, "failed to log review-request send into the conversation");
     }
   }
 

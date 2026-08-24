@@ -9,6 +9,13 @@ vi.mock("../lib/sms-provider.js", async () => {
   return { ...actual, getSmsProvider: () => ({ sendMessage: sendMessageMock }) };
 });
 
+const appendMessageMock = vi.fn();
+vi.mock("./conversations.service.js", async () => {
+  const actual = await vi.importActual<typeof import("./conversations.service.js")>("./conversations.service.js");
+  appendMessageMock.mockImplementation(actual.appendMessage);
+  return { ...actual, appendMessage: appendMessageMock };
+});
+
 const { scheduleObjectionReengagement, sweepObjectionReengagementTriggers } = await import("./objection-reengagement.service.js");
 const { listMessages } = await import("./conversations.service.js");
 
@@ -80,6 +87,30 @@ describe("sweepObjectionReengagementTriggers", () => {
     const messages = await listMessages(conversation.id);
     expect(messages).toHaveLength(1);
     expect(messages[0].body).toContain("Taylor");
+  });
+
+  it("marks the trigger sent — not failed/retried — when the real text send succeeds but logging it into the conversation throws", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_logging_blip" });
+    appendMessageMock.mockRejectedValueOnce(new Error("transient db blip"));
+
+    const personId = await seedCustomer();
+    await scheduleObjectionReengagement(personId);
+    await backdateTrigger(personId);
+
+    const result = await sweepObjectionReengagementTriggers();
+    expect(result.sentCount).toBe(1);
+    expect(result.failedCount).toBe(0);
+
+    const [trigger] = await db.select().from(objectionReengagementTriggersTable).where(eq(objectionReengagementTriggersTable.personId, personId));
+    expect(trigger.status).toBe("sent");
+
+    // A later sweep must not re-send the real text just because the
+    // conversation-log write failed the first time.
+    sendMessageMock.mockClear();
+    await db.update(objectionReengagementTriggersTable).set({ updatedAt: new Date(Date.now() - 60 * 60 * 1000) }).where(eq(objectionReengagementTriggersTable.personId, personId));
+    await sweepObjectionReengagementTriggers();
+    expect(sendMessageMock).not.toHaveBeenCalled();
   });
 
   it("creates the conversation with the trigger's stored leadSource when none exists yet", async () => {

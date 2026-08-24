@@ -9,6 +9,13 @@ vi.mock("../lib/sms-provider.js", async () => {
   return { ...actual, getSmsProvider: () => ({ sendMessage: sendMessageMock }) };
 });
 
+const appendMessageMock = vi.fn();
+vi.mock("./conversations.service.js", async () => {
+  const actual = await vi.importActual<typeof import("./conversations.service.js")>("./conversations.service.js");
+  appendMessageMock.mockImplementation(actual.appendMessage);
+  return { ...actual, appendMessage: appendMessageMock };
+});
+
 const { scheduleLeadCheckin, sweepLeadCheckinTriggers } = await import("./lead-checkin.service.js");
 const { getOrCreateConversation, listMessages, updateConversationState } = await import("./conversations.service.js");
 
@@ -199,6 +206,31 @@ describe("sweepLeadCheckinTriggers", () => {
     const [trigger] = await db.select().from(leadCheckinTriggersTable).where(eq(leadCheckinTriggersTable.personId, personId));
     expect(trigger.status).toBe("sent");
     expect(trigger.attemptCount).toBe(2);
+  });
+
+  it("marks the trigger sent — not failed/retried — when the real text send succeeds but logging it into the conversation throws", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_logging_blip" });
+    appendMessageMock.mockRejectedValueOnce(new Error("transient db blip"));
+
+    const personId = await seedCustomer();
+    await scheduleLeadCheckin(personId);
+    await backdateTrigger(personId);
+
+    const result = await sweepLeadCheckinTriggers();
+    expect(result.sentCount).toBe(1);
+    expect(result.failedCount).toBe(0);
+
+    const [trigger] = await db.select().from(leadCheckinTriggersTable).where(eq(leadCheckinTriggersTable.personId, personId));
+    expect(trigger.status).toBe("sent");
+    expect(trigger.attemptCount).toBe(1);
+
+    // A later sweep must not re-send the real text just because the
+    // conversation-log write failed the first time.
+    sendMessageMock.mockClear();
+    await db.update(leadCheckinTriggersTable).set({ updatedAt: new Date(Date.now() - 60 * 60 * 1000) }).where(eq(leadCheckinTriggersTable.personId, personId));
+    await sweepLeadCheckinTriggers();
+    expect(sendMessageMock).not.toHaveBeenCalled();
   });
 
   it("stops retrying once the attempt cap is reached, leaving it permanently failed", async () => {

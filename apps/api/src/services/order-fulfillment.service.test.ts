@@ -23,6 +23,13 @@ vi.mock("../lib/email-provider.js", async () => {
   return { ...actual, getEmailProvider: (persona: "lucy" | "sarah") => ({ provider: { sendEmail: sendEmailMock }, fromName: `${persona} at Luma Health` }) };
 });
 
+const appendSupportMessageMock = vi.fn();
+vi.mock("./support-conversations.service.js", async () => {
+  const actual = await vi.importActual<typeof import("./support-conversations.service.js")>("./support-conversations.service.js");
+  appendSupportMessageMock.mockImplementation(actual.appendSupportMessage);
+  return { ...actual, appendSupportMessage: appendSupportMessageMock };
+});
+
 const { sendOrderReceivedOpener, sendRefillOrderReceivedNotice, handlePrescriptionWritten, handleOrderShipped, handlePaymentFailed, sweepReviewRequestTriggers } =
   await import("./order-fulfillment.service.js");
 const { getOrCreateSupportConversation, listSupportMessages } = await import("./support-conversations.service.js");
@@ -315,6 +322,30 @@ describe("sweepReviewRequestTriggers", () => {
 
     const conversation = await getOrCreateSupportConversation(personId);
     expect(conversation.reviewRequested).toBe(true);
+  });
+
+  it("marks the trigger sent — not failed/retried — when the real text send succeeds but logging it into the conversation throws", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_shipped" }).mockResolvedValueOnce({ providerMessageId: "msg_logging_blip" });
+
+    const personId = await seedCustomer();
+    await handleOrderShipped(personId, "TRACK-LOGBLIP");
+    await backdateTrigger(personId);
+
+    appendSupportMessageMock.mockRejectedValueOnce(new Error("transient db blip"));
+    const result = await sweepReviewRequestTriggers();
+    expect(result.sentCount).toBe(1);
+    expect(result.failedCount).toBe(0);
+
+    const [trigger] = await db.select().from(reviewRequestTriggersTable).where(eq(reviewRequestTriggersTable.personId, personId));
+    expect(trigger.status).toBe("sent");
+
+    // A later sweep must not re-send the real text just because the
+    // conversation-log write failed the first time.
+    sendMessageMock.mockClear();
+    await db.update(reviewRequestTriggersTable).set({ updatedAt: new Date(Date.now() - 60 * 60 * 1000) }).where(eq(reviewRequestTriggersTable.personId, personId));
+    await sweepReviewRequestTriggers();
+    expect(sendMessageMock).not.toHaveBeenCalled();
   });
 
   it("cancels a due trigger for a do-not-disturb customer instead of sending", async () => {

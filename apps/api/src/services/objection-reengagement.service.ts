@@ -108,14 +108,14 @@ export async function sweepObjectionReengagementTriggers(): Promise<ObjectionRee
     const conversation = await getOrCreateConversation(trigger.personId, trigger.leadSource);
     const text = renderReengagementCheckin(customer.firstName);
 
+    // The "sent" write below must happen right after a successful send,
+    // before anything else that could throw — otherwise a failure in a
+    // downstream step (logging into the conversation) falls into the catch,
+    // marks this "failed", and a later sweep retries it: a real duplicate
+    // text to the customer, even though the first one already went out.
+    let result: { providerMessageId: string };
     try {
-      const result = await getSmsProvider().sendMessage(customer.phone, text);
-      await appendMessage(conversation.id, "outbound", text, { providerMessageId: result.providerMessageId });
-      await db
-        .update(objectionReengagementTriggersTable)
-        .set({ status: "sent", sentAt: sql`now()`, providerMessageId: result.providerMessageId, attemptCount: nextAttemptCount })
-        .where(eq(objectionReengagementTriggersTable.id, trigger.id));
-      sentCount++;
+      result = await getSmsProvider().sendMessage(customer.phone, text);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       logger.warn({ personId: trigger.personId, reason }, "objection re-engagement send failed");
@@ -125,6 +125,19 @@ export async function sweepObjectionReengagementTriggers(): Promise<ObjectionRee
         .set({ status: "failed", failureReason: reason, attemptCount: nextAttemptCount })
         .where(eq(objectionReengagementTriggersTable.id, trigger.id));
       failedCount++;
+      continue;
+    }
+
+    await db
+      .update(objectionReengagementTriggersTable)
+      .set({ status: "sent", sentAt: sql`now()`, providerMessageId: result.providerMessageId, attemptCount: nextAttemptCount })
+      .where(eq(objectionReengagementTriggersTable.id, trigger.id));
+    sentCount++;
+
+    try {
+      await appendMessage(conversation.id, "outbound", text, { providerMessageId: result.providerMessageId });
+    } catch (err) {
+      logger.warn({ personId: trigger.personId, reason: err instanceof Error ? err.message : String(err) }, "failed to log objection re-engagement into the conversation");
     }
   }
 
