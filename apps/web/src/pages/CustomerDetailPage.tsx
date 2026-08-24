@@ -37,12 +37,20 @@ export function CustomerDetailPage() {
           </h1>
           <p className="text-sm text-gray-500">{customer.personNumber}</p>
         </div>
-        <Link
-          href={`/conversations?personId=${customer.id}`}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-        >
-          View conversation →
-        </Link>
+        <div className="flex gap-2">
+          <Link
+            href={`/conversations?personId=${customer.id}`}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            View in Conversations →
+          </Link>
+          <Link
+            href={`/support?personId=${customer.id}`}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            View in Support →
+          </Link>
+        </div>
       </div>
 
       <Card>

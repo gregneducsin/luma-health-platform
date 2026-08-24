@@ -63,12 +63,18 @@ function SupportConversationList({
 }) {
   const { data, isLoading } = useSupportConversationsList(channel);
   const [onlyNeedsAttention, setOnlyNeedsAttention] = useState(false);
+  const [search, setSearch] = useState("");
 
   const attentionCount = data?.conversations.filter((c) => c.needsAttention).length ?? 0;
   const visible = useMemo(() => {
     if (!data) return [];
-    return onlyNeedsAttention ? data.conversations.filter((c) => c.needsAttention) : data.conversations;
-  }, [data, onlyNeedsAttention]);
+    const term = search.trim().toLowerCase();
+    return data.conversations.filter((c) => {
+      if (onlyNeedsAttention && !c.needsAttention) return false;
+      if (term && !`${c.firstName} ${c.lastName}`.toLowerCase().includes(term)) return false;
+      return true;
+    });
+  }, [data, onlyNeedsAttention, search]);
 
   return (
     <Card className="flex h-[calc(100vh-180px)] flex-col overflow-hidden p-0">
@@ -94,11 +100,23 @@ function SupportConversationList({
             Needs attention
           </button>
         </div>
+        <Input
+          className="mt-2"
+          placeholder="Search by name…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
       </div>
       <div className="flex-1 overflow-y-auto">
         {isLoading && <p className="p-4 text-sm text-gray-400">Loading…</p>}
         {data && visible.length === 0 && (
-          <p className="p-4 text-sm text-gray-400">{onlyNeedsAttention ? "Nothing needs attention right now." : "No conversations yet."}</p>
+          <p className="p-4 text-sm text-gray-400">
+            {search.trim()
+              ? "No conversations match that search."
+              : onlyNeedsAttention
+                ? "Nothing needs attention right now."
+                : "No conversations yet."}
+          </p>
         )}
         {visible.map((c) => (
           <button
@@ -267,19 +285,42 @@ function SupportConversationDetailPanel({ conversationId, channel }: { conversat
 export function SupportPage() {
   // Lets NeedsAttentionPage link directly into the right channel tab (e.g. /support?channel=email).
   const search = useSearch();
-  const initialChannel: SupportConversationChannel = new URLSearchParams(search).get("channel") === "email" ? "email" : "sms";
+  const params = new URLSearchParams(search);
+  const initialChannel: SupportConversationChannel = params.get("channel") === "email" ? "email" : "sms";
+  const deepLinkPersonId = params.get("personId");
   const [channel, setChannel] = useState<SupportConversationChannel>(initialChannel);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const deepLinkResolved = useRef(false);
+
+  // CustomerDetailPage links here as /support?personId=... — find that
+  // person's conversation once the list loads and select it. Keeps trying
+  // across a manual channel toggle (the person may only exist on the other
+  // channel) until it succeeds; a manual selection or lack of a personId
+  // param disables this entirely.
+  const { data: listData } = useSupportConversationsList(channel);
+  useEffect(() => {
+    if (!deepLinkPersonId || deepLinkResolved.current || selectedId !== null || !listData) return;
+    const match = listData.conversations.find((c) => c.personId === deepLinkPersonId);
+    if (match) {
+      setSelectedId(match.id);
+      deepLinkResolved.current = true;
+    }
+  }, [deepLinkPersonId, listData, selectedId]);
 
   function handleChannelChange(c: SupportConversationChannel) {
     setChannel(c);
     setSelectedId(null);
   }
 
+  function handleSelect(id: string) {
+    deepLinkResolved.current = true;
+    setSelectedId(id);
+  }
+
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
       <div className="md:col-span-1">
-        <SupportConversationList channel={channel} onChannelChange={handleChannelChange} selectedId={selectedId} onSelect={setSelectedId} />
+        <SupportConversationList channel={channel} onChannelChange={handleChannelChange} selectedId={selectedId} onSelect={handleSelect} />
       </div>
       <div className="md:col-span-2">
         {selectedId ? (
