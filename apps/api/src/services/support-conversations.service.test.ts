@@ -7,6 +7,9 @@ vi.mock("../lib/sms-provider.js", async () => {
   return { ...actual, getSmsProvider: () => ({ sendMessage: sendMessageMock }) };
 });
 
+const notifySlackMock = vi.fn();
+vi.mock("../lib/slack.js", () => ({ notifySlack: (...args: unknown[]) => notifySlackMock(...args) }));
+
 const {
   getOrCreateSupportConversation,
   appendSupportMessage,
@@ -208,5 +211,39 @@ describe("sendStaffReply", () => {
 
     const updated = await getSupportConversationDetail(conversation.id);
     expect(updated?.conversation.needsAttention).toBe(true);
+  });
+});
+
+describe("updateSupportConversationState — Slack alert on needsAttention", () => {
+  it("alerts Slack the first time a conversation is flagged, naming the customer and reason", async () => {
+    notifySlackMock.mockClear();
+    const personId = await seedCustomer();
+    const conversation = await getOrCreateSupportConversation(personId);
+
+    await updateSupportConversationState(conversation.id, { needsAttention: true, needsAttentionReason: "payment failed" });
+
+    expect(notifySlackMock).toHaveBeenCalledTimes(1);
+    expect(notifySlackMock.mock.calls[0][0]).toContain("payment failed");
+  });
+
+  it("does not re-alert on a subsequent patch while already flagged", async () => {
+    notifySlackMock.mockClear();
+    const personId = await seedCustomer();
+    const conversation = await getOrCreateSupportConversation(personId);
+
+    await updateSupportConversationState(conversation.id, { needsAttention: true, needsAttentionReason: "first reason" });
+    await updateSupportConversationState(conversation.id, { needsAttention: true, needsAttentionReason: "still flagged" });
+
+    expect(notifySlackMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not alert when the patch doesn't touch needsAttention", async () => {
+    notifySlackMock.mockClear();
+    const personId = await seedCustomer();
+    const conversation = await getOrCreateSupportConversation(personId);
+
+    await updateSupportConversationState(conversation.id, { lastQuestion: "anything else?" });
+
+    expect(notifySlackMock).not.toHaveBeenCalled();
   });
 });

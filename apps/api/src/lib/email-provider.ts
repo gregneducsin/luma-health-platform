@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import nodemailer, { type Transporter } from "nodemailer";
 import { createGmailClient, encodeMessage } from "../services/gmail.service.js";
 import { htmlToPlainText } from "./email/templates.js";
+import { notifySlack } from "./slack.js";
 
 /**
  * Outbound email provider abstraction — same shape as sms-provider.ts's
@@ -219,6 +220,23 @@ function personaFromName(persona: EmailPersona): string {
   return process.env[personaEnvKey] ?? PERSONA_DEFAULT_NAME[persona];
 }
 
+/**
+ * Wraps a provider so every caller's send failure alerts to Slack — same
+ * reasoning as sms-provider.ts's withFailureAlert. Re-throws unchanged.
+ */
+function withFailureAlert(provider: EmailProvider): EmailProvider {
+  return {
+    async sendEmail(to, subject, html, opts) {
+      try {
+        return await provider.sendEmail(to, subject, html, opts);
+      } catch (err) {
+        void notifySlack(`Email send failed: ${err instanceof Error ? err.message : String(err)}`);
+        throw err;
+      }
+    },
+  };
+}
+
 export function getEmailProvider(persona: EmailPersona): { provider: EmailProvider; fromName: string } {
   const providerName = process.env.EMAIL_PROVIDER;
   if (!providerName) {
@@ -235,7 +253,7 @@ export function getEmailProvider(persona: EmailPersona): { provider: EmailProvid
       const missingList = [...(fromEmail ? [] : ["GOOGLE_GMAIL_FROM_EMAIL or GOOGLE_WORKSPACE_SMTP_USER"]), ...missing];
       throw new Error(`EMAIL_PROVIDER is 'gmail_api' but ${missingList.join(", ")} is not set.`);
     }
-    return { provider: new GmailApiEmailProvider(fromEmail), fromName: personaFromName(persona) };
+    return { provider: withFailureAlert(new GmailApiEmailProvider(fromEmail)), fromName: personaFromName(persona) };
   }
 
   if (providerName === "google_workspace") {
@@ -246,7 +264,7 @@ export function getEmailProvider(persona: EmailPersona): { provider: EmailProvid
     }
     const fromEmail = process.env.GOOGLE_WORKSPACE_FROM_EMAIL ?? user;
     const port = process.env.GOOGLE_WORKSPACE_SMTP_PORT ? Number(process.env.GOOGLE_WORKSPACE_SMTP_PORT) : 587;
-    return { provider: new GoogleWorkspaceEmailProvider(user, appPassword, fromEmail, port), fromName: personaFromName(persona) };
+    return { provider: withFailureAlert(new GoogleWorkspaceEmailProvider(user, appPassword, fromEmail, port)), fromName: personaFromName(persona) };
   }
 
   throw new EmailProviderNotConfiguredError();

@@ -1,10 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { db, customersTable } from "@luma/db";
 import { getOrCreateConversation, appendMessage, updateConversationState } from "./conversations.service.js";
 import { getOrCreateSupportConversation, appendSupportMessage, updateSupportConversationState } from "./support-conversations.service.js";
 import { getOrCreateEmailConversation, appendEmailMessage, updateEmailConversationState } from "./email-conversations.service.js";
 import { getOrCreateSupportEmailConversation, appendSupportEmailMessage, updateSupportEmailConversationState } from "./support-email-conversations.service.js";
 import { listNeedsAttention, getNeedsAttentionMessages, clearNeedsAttentionItem } from "./needs-attention.service.js";
+
+const notifySlackMock = vi.fn();
+vi.mock("../lib/slack.js", () => ({ notifySlack: (...args: unknown[]) => notifySlackMock(...args) }));
 
 async function seedCustomer(firstName: string): Promise<string> {
   const [row] = await db
@@ -101,5 +104,34 @@ describe("clearNeedsAttentionItem", () => {
     for (const personId of [lucySmsPerson, sarahSmsPerson, lucyEmailPerson, sarahEmailPerson]) {
       expect(flaggedPersonIds.has(personId)).toBe(false);
     }
+  });
+});
+
+describe("Slack alert on needsAttention — all 4 channels", () => {
+  it("alerts once per channel when a conversation is first flagged", async () => {
+    notifySlackMock.mockClear();
+
+    const lucySmsPerson = await seedCustomer("SlackLucySms");
+    const lucySmsConvo = await getOrCreateConversation(lucySmsPerson);
+    await updateConversationState(lucySmsConvo.id, { needsAttention: true, needsAttentionReason: "lucy sms reason" });
+
+    const sarahSmsPerson = await seedCustomer("SlackSarahSms");
+    const sarahSmsConvo = await getOrCreateSupportConversation(sarahSmsPerson);
+    await updateSupportConversationState(sarahSmsConvo.id, { needsAttention: true, needsAttentionReason: "sarah sms reason" });
+
+    const lucyEmailPerson = await seedCustomer("SlackLucyEmail");
+    const lucyEmailConvo = await getOrCreateEmailConversation(lucyEmailPerson);
+    await updateEmailConversationState(lucyEmailConvo.id, { needsAttention: true, needsAttentionReason: "lucy email reason" });
+
+    const sarahEmailPerson = await seedCustomer("SlackSarahEmail");
+    const sarahEmailConvo = await getOrCreateSupportEmailConversation(sarahEmailPerson);
+    await updateSupportEmailConversationState(sarahEmailConvo.id, { needsAttention: true, needsAttentionReason: "sarah email reason" });
+
+    expect(notifySlackMock).toHaveBeenCalledTimes(4);
+    const messages = notifySlackMock.mock.calls.map((c) => c[0]);
+    expect(messages.some((m) => m.includes("lucy sms reason"))).toBe(true);
+    expect(messages.some((m) => m.includes("sarah sms reason"))).toBe(true);
+    expect(messages.some((m) => m.includes("lucy email reason"))).toBe(true);
+    expect(messages.some((m) => m.includes("sarah email reason"))).toBe(true);
   });
 });

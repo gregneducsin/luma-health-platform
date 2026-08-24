@@ -8,6 +8,7 @@ import {
   type SupportEmailConversationMessage,
 } from "@luma/db";
 import type { SarahPreviewRequestBody } from "../lib/support/types.js";
+import { notifySlack } from "../lib/slack.js";
 
 const MAX_HISTORY_MESSAGES = 20;
 
@@ -44,7 +45,20 @@ export async function getOrCreateSupportEmailConversation(personId: string): Pro
   return row;
 }
 
+/** See support-conversations.service.ts's updateSupportConversationState for why the pre-update read only happens on this one patch shape. */
 export async function updateSupportEmailConversationState(conversationId: string, patch: SupportEmailConversationStatePatch): Promise<void> {
+  if (patch.needsAttention === true) {
+    const [before] = await db
+      .select({ needsAttention: supportEmailConversationsTable.needsAttention, firstName: customersTable.firstName, lastName: customersTable.lastName })
+      .from(supportEmailConversationsTable)
+      .innerJoin(customersTable, eq(customersTable.id, supportEmailConversationsTable.personId))
+      .where(eq(supportEmailConversationsTable.id, conversationId));
+    await db.update(supportEmailConversationsTable).set(patch).where(eq(supportEmailConversationsTable.id, conversationId));
+    if (before && !before.needsAttention) {
+      void notifySlack(`Needs attention (email) — ${before.firstName} ${before.lastName}: ${patch.needsAttentionReason ?? "no reason given"}`);
+    }
+    return;
+  }
   await db.update(supportEmailConversationsTable).set(patch).where(eq(supportEmailConversationsTable.id, conversationId));
 }
 

@@ -18,6 +18,9 @@ vi.mock("googleapis", () => ({
   },
 }));
 
+const notifySlackMock = vi.fn();
+vi.mock("./slack.js", () => ({ notifySlack: (...args: unknown[]) => notifySlackMock(...args) }));
+
 function decodeRawPayload(): string {
   const raw = sendMock.mock.calls.at(-1)?.[0].requestBody.raw as string;
   const base64 = raw.replace(/-/g, "+").replace(/_/g, "/");
@@ -157,6 +160,16 @@ describe("getEmailProvider", () => {
 
         const decoded = decodeRawPayload();
         expect(decoded).toContain("Subject: Welcome to Luma Health\r\n");
+      });
+
+      it("alerts Slack on a send failure, then still rejects with the original error", async () => {
+        notifySlackMock.mockClear();
+        sendMock.mockRejectedValueOnce(new Error("Gmail API quota exceeded"));
+        const provider = configuredProvider();
+
+        await expect(provider.sendEmail("customer@example.com", "Subject", "<p>hi</p>")).rejects.toThrow(/quota exceeded/);
+        expect(notifySlackMock).toHaveBeenCalledTimes(1);
+        expect(notifySlackMock.mock.calls[0][0]).toMatch(/Email send failed/);
       });
 
       it("sends a multipart/alternative message with both a plain-text and an HTML part, not HTML-only", async () => {

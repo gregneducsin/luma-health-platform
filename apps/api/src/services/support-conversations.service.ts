@@ -3,6 +3,7 @@ import { db, supportConversationsTable, supportConversationMessagesTable, custom
 import type { SarahPreviewRequestBody } from "../lib/support/types.js";
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { logger } from "../lib/logger.js";
+import { notifySlack } from "../lib/slack.js";
 
 const MAX_HISTORY_MESSAGES = 20;
 
@@ -40,6 +41,22 @@ export async function getOrCreateSupportConversation(personId: string): Promise<
 }
 
 export async function updateSupportConversationState(conversationId: string, patch: SupportConversationStatePatch): Promise<void> {
+  // Only worth the extra read when this patch is actually raising the flag —
+  // every other patch (order state, review sentiment, etc.) skips it. Reads
+  // the pre-update value so a conversation that's already flagged doesn't
+  // re-alert on every subsequent message while it's still open.
+  if (patch.needsAttention === true) {
+    const [before] = await db
+      .select({ needsAttention: supportConversationsTable.needsAttention, firstName: customersTable.firstName, lastName: customersTable.lastName })
+      .from(supportConversationsTable)
+      .innerJoin(customersTable, eq(customersTable.id, supportConversationsTable.personId))
+      .where(eq(supportConversationsTable.id, conversationId));
+    await db.update(supportConversationsTable).set(patch).where(eq(supportConversationsTable.id, conversationId));
+    if (before && !before.needsAttention) {
+      void notifySlack(`Needs attention (text) — ${before.firstName} ${before.lastName}: ${patch.needsAttentionReason ?? "no reason given"}`);
+    }
+    return;
+  }
   await db.update(supportConversationsTable).set(patch).where(eq(supportConversationsTable.id, conversationId));
 }
 

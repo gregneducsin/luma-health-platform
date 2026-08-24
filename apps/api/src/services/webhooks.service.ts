@@ -25,6 +25,7 @@ import { sendOrderReceivedOpener, handlePrescriptionWritten, handleOrderShipped,
 import { setCustomerSmsDnd, setCustomerEmailDnd } from "./dnd.service.js";
 import { normalizePhone } from "../lib/phone.js";
 import { logger } from "../lib/logger.js";
+import { notifySlack } from "../lib/slack.js";
 
 /**
  * Case-insensitive exact email match — NOT ilike(), which treats `_` and `%`
@@ -83,10 +84,14 @@ export async function markWebhookEventProcessed(id: string, personId?: string): 
 }
 
 export async function markWebhookEventFailed(id: string, errorMessage: string): Promise<void> {
-  await db
+  const [row] = await db
     .update(webhookEventsTable)
     .set({ status: "failed", processedAt: new Date(), errorMessage })
-    .where(eq(webhookEventsTable.id, id));
+    .where(eq(webhookEventsTable.id, id))
+    .returning({ source: webhookEventsTable.source });
+  if (row) {
+    void notifySlack(`Webhook processing failed (${row.source}): ${errorMessage}`);
+  }
 }
 
 /**

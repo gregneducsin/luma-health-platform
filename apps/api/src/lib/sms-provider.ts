@@ -1,3 +1,5 @@
+import { notifySlack } from "./slack.js";
+
 /**
  * Outbound SMS provider abstraction. getSmsProvider() throws until one is
  * wired up (see SMS_PROVIDER env var). Everything that calls this is
@@ -68,6 +70,25 @@ class IbluSendProvider implements SmsProvider {
   }
 }
 
+/**
+ * Wraps a provider so every caller's send failure alerts to Slack, without
+ * every one of this app's dozen-plus call sites having to remember to do it
+ * themselves. Re-throws unchanged — every existing caller's own try/catch
+ * (fail-soft log-and-continue) behaves exactly as before this wrapper.
+ */
+function withFailureAlert(provider: SmsProvider): SmsProvider {
+  return {
+    async sendMessage(to: string, body: string): Promise<SmsSendResult> {
+      try {
+        return await provider.sendMessage(to, body);
+      } catch (err) {
+        void notifySlack(`SMS send failed: ${err instanceof Error ? err.message : String(err)}`);
+        throw err;
+      }
+    },
+  };
+}
+
 export function getSmsProvider(): SmsProvider {
   const provider = process.env.SMS_PROVIDER;
   if (!provider) {
@@ -78,7 +99,7 @@ export function getSmsProvider(): SmsProvider {
     if (!apiKey) {
       throw new Error("SMS_PROVIDER is 'iblusend' but IBLUSEND_API_KEY is not set.");
     }
-    return new IbluSendProvider(apiKey);
+    return withFailureAlert(new IbluSendProvider(apiKey));
   }
   throw new SmsProviderNotConfiguredError();
 }

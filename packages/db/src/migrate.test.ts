@@ -47,6 +47,9 @@ const EXPECTED_TABLES = [
   "meta_lead_email_triggers",
   "unmatched_email_threads",
   "unmatched_email_messages",
+  "objection_reengagement_triggers",
+  "unmatched_sms_threads",
+  "unmatched_sms_messages",
 ].sort();
 
 let testSchema: string;

@@ -2,6 +2,7 @@ import { desc, eq, sql } from "drizzle-orm";
 import { db, emailConversationsTable, emailConversationMessagesTable, customersTable, type EmailConversation, type EmailConversationMessage } from "@luma/db";
 import type { BotPreviewRequestBody } from "../lib/messaging/types.js";
 import type { ObjectionKey } from "../lib/messaging/objection-handling.js";
+import { notifySlack } from "../lib/slack.js";
 
 const MAX_HISTORY_MESSAGES = 20;
 
@@ -48,7 +49,20 @@ export async function getOrCreateEmailConversation(
   return row;
 }
 
+/** See support-conversations.service.ts's updateSupportConversationState for why the pre-update read only happens on this one patch shape. */
 export async function updateEmailConversationState(conversationId: string, patch: EmailConversationStatePatch): Promise<void> {
+  if (patch.needsAttention === true) {
+    const [before] = await db
+      .select({ needsAttention: emailConversationsTable.needsAttention, firstName: customersTable.firstName, lastName: customersTable.lastName })
+      .from(emailConversationsTable)
+      .innerJoin(customersTable, eq(customersTable.id, emailConversationsTable.personId))
+      .where(eq(emailConversationsTable.id, conversationId));
+    await db.update(emailConversationsTable).set(patch).where(eq(emailConversationsTable.id, conversationId));
+    if (before && !before.needsAttention) {
+      void notifySlack(`Needs attention (email) — ${before.firstName} ${before.lastName}: ${patch.needsAttentionReason ?? "no reason given"}`);
+    }
+    return;
+  }
   await db.update(emailConversationsTable).set(patch).where(eq(emailConversationsTable.id, conversationId));
 }
 

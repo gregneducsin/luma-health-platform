@@ -4,6 +4,7 @@ import type { BotPreviewRequestBody } from "../lib/messaging/types.js";
 import type { ObjectionKey } from "../lib/messaging/objection-handling.js";
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { logger } from "../lib/logger.js";
+import { notifySlack } from "../lib/slack.js";
 
 const MAX_HISTORY_MESSAGES = 20;
 
@@ -48,7 +49,20 @@ export async function getOrCreateConversation(personId: string, leadSource: "aba
   return row;
 }
 
+/** See support-conversations.service.ts's updateSupportConversationState for why the pre-update read only happens on this one patch shape. */
 export async function updateConversationState(conversationId: string, patch: ConversationStatePatch): Promise<void> {
+  if (patch.needsAttention === true) {
+    const [before] = await db
+      .select({ needsAttention: conversationsTable.needsAttention, firstName: customersTable.firstName, lastName: customersTable.lastName })
+      .from(conversationsTable)
+      .innerJoin(customersTable, eq(customersTable.id, conversationsTable.personId))
+      .where(eq(conversationsTable.id, conversationId));
+    await db.update(conversationsTable).set(patch).where(eq(conversationsTable.id, conversationId));
+    if (before && !before.needsAttention) {
+      void notifySlack(`Needs attention (text) — ${before.firstName} ${before.lastName}: ${patch.needsAttentionReason ?? "no reason given"}`);
+    }
+    return;
+  }
   await db.update(conversationsTable).set(patch).where(eq(conversationsTable.id, conversationId));
 }
 

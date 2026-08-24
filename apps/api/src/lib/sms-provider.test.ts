@@ -1,6 +1,9 @@
 import { describe, expect, it, afterEach, vi } from "vitest";
 import { getSmsProvider, SmsProviderNotConfiguredError } from "./sms-provider.js";
 
+const notifySlackMock = vi.fn();
+vi.mock("./slack.js", () => ({ notifySlack: (...args: unknown[]) => notifySlackMock(...args) }));
+
 describe("getSmsProvider", () => {
   const originalProvider = process.env.SMS_PROVIDER;
   const originalApiKey = process.env.IBLUSEND_API_KEY;
@@ -79,6 +82,21 @@ describe("getSmsProvider", () => {
       vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true }) }));
 
       await expect(getSmsProvider().sendMessage("+15551234567", "Hello there")).rejects.toThrow(/message_id/);
+    });
+
+    it("alerts Slack on a send failure, then still rejects with the original error", async () => {
+      notifySlackMock.mockClear();
+      process.env.SMS_PROVIDER = "iblusend";
+      process.env.IBLUSEND_API_KEY = "iblu_test_abc123";
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({ ok: false, status: 429, text: async () => '{"error":"rate_limited"}' }),
+      );
+
+      await expect(getSmsProvider().sendMessage("+15551234567", "Hello there")).rejects.toThrow(/429/);
+      expect(notifySlackMock).toHaveBeenCalledTimes(1);
+      expect(notifySlackMock.mock.calls[0][0]).toMatch(/SMS send failed/);
     });
   });
 });
