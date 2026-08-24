@@ -116,7 +116,7 @@ export async function sendStaffReply(conversationId: string, body: string): Prom
     logger.warn({ conversationId, reason: err instanceof Error ? err.message : String(err) }, "staff reply send failed");
   }
 
-  await appendMessage(conversationId, "outbound", body, { providerMessageId });
+  await appendMessage(conversationId, "outbound", body, { providerMessageId, sentBy: "staff" });
   if (sendFailed) return { sent: false, reason: "send_failed" };
 
   await clearNeedsAttention(conversationId);
@@ -127,11 +127,22 @@ export async function appendMessage(
   conversationId: string,
   direction: "inbound" | "outbound",
   body: string,
-  opts: { sentiment?: "positive" | "neutral" | "negative" | null; providerMessageId?: string | null } = {},
+  opts: {
+    sentiment?: "positive" | "neutral" | "negative" | null;
+    providerMessageId?: string | null;
+    sentBy?: "ai" | "staff" | null;
+  } = {},
 ): Promise<ConversationMessage> {
   const [row] = await db
     .insert(conversationMessagesTable)
-    .values({ conversationId, direction, body, sentiment: opts.sentiment ?? null, providerMessageId: opts.providerMessageId ?? null })
+    .values({
+      conversationId,
+      direction,
+      body,
+      sentiment: opts.sentiment ?? null,
+      providerMessageId: opts.providerMessageId ?? null,
+      sentBy: opts.sentBy ?? (direction === "outbound" ? "ai" : null),
+    })
     .returning();
   return row;
 }

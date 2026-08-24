@@ -9,6 +9,7 @@ import {
 } from "../hooks/useSupportConversations";
 import { Badge, Card, Button, Input } from "../components/ui";
 import { UpcomingTriggerBanner } from "../components/UpcomingTriggerBanner";
+import { CollapsibleCustomerNotes } from "../components/CustomerNotesCard";
 import { ApiError } from "../hooks/useAuth";
 import { formatTime, formatDate } from "../lib/formatTime";
 
@@ -37,6 +38,12 @@ const SENTIMENT_COLOR: Record<string, "green" | "gray" | "red"> = {
 function SentimentBadge({ sentiment }: { sentiment: "positive" | "neutral" | "negative" | null }) {
   if (!sentiment) return null;
   return <Badge color={SENTIMENT_COLOR[sentiment]}>{sentiment}</Badge>;
+}
+
+/** Marks who actually wrote an outbound message — the bot vs a staff member typing into the reply box — so the timeline reads as one continuous conversation but staff can still tell AI from human at a glance. */
+function SenderBadge({ sentBy, botName }: { sentBy: "ai" | "staff" | null | undefined; botName: string }) {
+  if (!sentBy) return null;
+  return <span className="text-[11px] font-medium text-gray-400">{sentBy === "ai" ? botName : "Staff"}</span>;
 }
 
 function relativeTime(iso: string | null): string {
@@ -246,6 +253,10 @@ function SupportConversationDetailPanel({ conversationId, channel }: { conversat
         )}
       </div>
 
+      <div className="border-b border-gray-200 px-4 py-2">
+        <CollapsibleCustomerNotes customerId={conversation.personId} />
+      </div>
+
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
         {messages.length === 0 && <p className="text-sm text-gray-400">No messages yet.</p>}
         {messages.map((m) => (
@@ -262,6 +273,7 @@ function SupportConversationDetailPanel({ conversationId, channel }: { conversat
                 {m.body}
               </span>
               <div className="flex items-center gap-2 px-1">
+                {m.direction === "outbound" && <SenderBadge sentBy={m.sentBy} botName="Sarah" />}
                 <span className="text-[11px] text-gray-400">{formatTime(m.createdAt)}</span>
                 <SentimentBadge sentiment={m.sentiment} />
               </div>

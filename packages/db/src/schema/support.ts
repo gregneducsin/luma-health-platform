@@ -67,6 +67,8 @@ export const supportConversationMessagesTable = pgTable(
     body: text("body").notNull(),
     sentiment: text("sentiment", { enum: ["positive", "neutral", "negative"] }),
     providerMessageId: text("provider_message_id"),
+    /** Who actually wrote an outbound message — Sarah (or an automated trigger) vs a staff member typing into the reply box. Null on inbound (always the customer). */
+    sentBy: text("sent_by", { enum: ["ai", "staff"] }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("support_conversation_messages_conversation_id_idx").on(t.conversationId, t.createdAt)],

@@ -234,7 +234,11 @@ export async function sendEmailStaffReply(conversationId: string, body: string):
     logger.warn({ conversationId, reason: err instanceof Error ? err.message : String(err) }, "staff email reply send failed");
   }
 
-  await appendEmailMessage(conversationId, "outbound", subject, signedBody, { messageId, inReplyTo: lastMessage?.messageId ?? null });
+  await appendEmailMessage(conversationId, "outbound", subject, signedBody, {
+    messageId,
+    inReplyTo: lastMessage?.messageId ?? null,
+    sentBy: "staff",
+  });
   if (sendFailed) return { sent: false, reason: "send_failed" };
 
   await updateEmailConversationState(conversationId, { needsAttention: false, needsAttentionReason: null });

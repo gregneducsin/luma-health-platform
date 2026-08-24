@@ -81,7 +81,12 @@ export async function appendEmailMessage(
   direction: "inbound" | "outbound",
   subject: string,
   body: string,
-  opts: { sentiment?: "positive" | "neutral" | "negative" | null; messageId?: string | null; inReplyTo?: string | null } = {},
+  opts: {
+    sentiment?: "positive" | "neutral" | "negative" | null;
+    messageId?: string | null;
+    inReplyTo?: string | null;
+    sentBy?: "ai" | "staff" | null;
+  } = {},
 ): Promise<EmailConversationMessage> {
   const [row] = await db
     .insert(emailConversationMessagesTable)
@@ -93,6 +98,7 @@ export async function appendEmailMessage(
       sentiment: opts.sentiment ?? null,
       messageId: opts.messageId ?? null,
       inReplyTo: opts.inReplyTo ?? null,
+      sentBy: opts.sentBy ?? (direction === "outbound" ? "ai" : null),
     })
     .returning();
   return row;

@@ -50,6 +50,7 @@ const EXPECTED_TABLES = [
   "objection_reengagement_triggers",
   "unmatched_sms_threads",
   "unmatched_sms_messages",
+  "customer_notes",
 ].sort();
 
 let testSchema: string;
