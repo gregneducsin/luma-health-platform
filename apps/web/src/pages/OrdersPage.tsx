@@ -2,14 +2,24 @@ import { useState } from "react";
 import { Link } from "wouter";
 import { usePurchasesList, usePurchasesSummary } from "../hooks/useCustomers";
 import { Badge, Card } from "../components/ui";
-import type { PurchasesSummaryQuery } from "@luma/shared";
+import type { PurchasesSummaryQuery, PurchaseWithCustomer } from "@luma/shared";
 
 const STATUS_COLOR: Record<string, "gray" | "green" | "yellow" | "red" | "blue"> = {
   completed: "green",
   pending: "yellow",
   refunded: "gray",
   cancelled: "red",
+  payment_failed: "red",
 };
+
+const STATUS_OPTIONS: { value: PurchaseWithCustomer["status"] | ""; label: string }[] = [
+  { value: "", label: "All Statuses" },
+  { value: "completed", label: "Completed" },
+  { value: "payment_failed", label: "Payment Failed" },
+  { value: "pending", label: "Pending" },
+  { value: "refunded", label: "Refunded" },
+  { value: "cancelled", label: "Cancelled" },
+];
 
 const PERIOD_OPTIONS: { value: PurchasesSummaryQuery["period"]; label: string }[] = [
   { value: 7, label: "Last 7 Days" },
@@ -72,9 +82,14 @@ function SummaryBar() {
 
 export function OrdersPage() {
   const [orderClassification, setOrderClassification] = useState("");
+  const [status, setStatus] = useState<PurchaseWithCustomer["status"] | "">("");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const { data, isLoading } = usePurchasesList({
     limit: 50,
     orderClassification: (orderClassification || undefined) as "first_order" | "recurring" | undefined,
+    status: status || undefined,
+    sortBy: "purchaseDate",
+    sortDir,
   });
 
   return (
@@ -83,15 +98,38 @@ export function OrdersPage() {
 
       <SummaryBar />
 
-      <select
-        className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
-        value={orderClassification}
-        onChange={(e) => setOrderClassification(e.target.value)}
-      >
-        <option value="">All Orders</option>
-        <option value="first_order">New (first order)</option>
-        <option value="recurring">Recurring</option>
-      </select>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+          value={orderClassification}
+          onChange={(e) => setOrderClassification(e.target.value)}
+        >
+          <option value="">All Orders</option>
+          <option value="first_order">New (first order)</option>
+          <option value="recurring">Recurring</option>
+        </select>
+
+        <select
+          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+          value={status}
+          onChange={(e) => setStatus(e.target.value as PurchaseWithCustomer["status"] | "")}
+        >
+          {STATUS_OPTIONS.map((o) => (
+            <option key={o.label} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+
+        <button
+          type="button"
+          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+          onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+          title="Sort by order date"
+        >
+          {sortDir === "asc" ? "Oldest first" : "Newest first"}
+        </button>
+      </div>
 
       <Card className="overflow-x-auto p-0">
         {isLoading ? (

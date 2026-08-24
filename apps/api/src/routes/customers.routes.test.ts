@@ -620,7 +620,9 @@ describe("Purchases", () => {
     expect(row.customerLastName).toBe("Placer");
   });
 
-  it("filters by orderClassification (first_order vs recurring)", async () => {
+  it("filters by orderClassification (first_order vs recurring) and by status, sorting oldest-first when asked", async () => {
+    // Shares one login for both concerns — the auth rate limiter caps
+    // logins per test file, and this file is already close to that cap.
     await seedUser("admin-order-class-filter@example.com", "admin");
     const { agent, csrf } = await loginAgent(app, "admin-order-class-filter@example.com");
 
@@ -639,8 +641,15 @@ describe("Purchases", () => {
     const recurringOrder = await agent
       .post(`/api/app/customers/${customerId}/purchases`)
       .set("x-csrf-token", csrf)
-      .send({ purchaseDate: "2026-01-02", orderNumber: "ORD-CLASS-2", productName: "Thing", amountPaid: "20.00" });
+      .send({ purchaseDate: "2026-01-02", orderNumber: "ORD-CLASS-2", productName: "Thing", amountPaid: "20.00", status: "payment_failed" });
     expect(recurringOrder.body.purchase.orderClassification).toBe("recurring");
+    expect(recurringOrder.body.purchase.status).toBe("payment_failed");
+
+    const newerFailed = await agent
+      .post(`/api/app/customers/${customerId}/purchases`)
+      .set("x-csrf-token", csrf)
+      .send({ purchaseDate: "2026-01-03", orderNumber: "ORD-CLASS-NEWER-FAILED", productName: "Thing", amountPaid: "15.00", status: "payment_failed" });
+    expect(newerFailed.body.purchase.status).toBe("payment_failed");
 
     const firstOnly = await agent.get("/api/app/purchases").query({ orderClassification: "first_order", limit: 100 });
     expect(firstOnly.body.purchases.some((p: { orderNumber: string }) => p.orderNumber === "ORD-CLASS-1")).toBe(true);
@@ -649,6 +658,20 @@ describe("Purchases", () => {
     const recurringOnly = await agent.get("/api/app/purchases").query({ orderClassification: "recurring", limit: 100 });
     expect(recurringOnly.body.purchases.some((p: { orderNumber: string }) => p.orderNumber === "ORD-CLASS-2")).toBe(true);
     expect(recurringOnly.body.purchases.some((p: { orderNumber: string }) => p.orderNumber === "ORD-CLASS-1")).toBe(false);
+
+    // Status filter, for the Orders page's "Payment Failed" view.
+    const failedOnly = await agent.get("/api/app/purchases").query({ status: "payment_failed", limit: 100 });
+    const failedOrderNumbers = failedOnly.body.purchases.map((p: { orderNumber: string }) => p.orderNumber);
+    expect(failedOrderNumbers).toContain("ORD-CLASS-2");
+    expect(failedOrderNumbers).toContain("ORD-CLASS-NEWER-FAILED");
+    expect(failedOrderNumbers).not.toContain("ORD-CLASS-1");
+
+    // Oldest-first sort, for surfacing the longest-unresolved failures first.
+    const oldestFirst = await agent.get("/api/app/purchases").query({ status: "payment_failed", sortBy: "purchaseDate", sortDir: "asc", limit: 100 });
+    const olderIndex = oldestFirst.body.purchases.findIndex((p: { orderNumber: string }) => p.orderNumber === "ORD-CLASS-2");
+    const newerIndex = oldestFirst.body.purchases.findIndex((p: { orderNumber: string }) => p.orderNumber === "ORD-CLASS-NEWER-FAILED");
+    expect(olderIndex).toBeGreaterThanOrEqual(0);
+    expect(olderIndex).toBeLessThan(newerIndex);
   });
 
   it("rejects unauthenticated requests to the purchases list", async () => {

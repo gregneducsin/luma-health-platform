@@ -18,9 +18,13 @@ const SORT_COLUMNS = {
 
 /** Order-level list across all customers, for the Orders tab. */
 export async function listPurchases(query: ListPurchasesQuery) {
-  const { sortBy, sortDir, limit, offset, orderClassification } = query;
+  const { sortBy, sortDir, limit, offset, orderClassification, status } = query;
   const orderFn = sortDir === "asc" ? asc : desc;
-  const whereCondition = orderClassification ? eq(purchasesTable.orderClassification, orderClassification) : undefined;
+  const conditions = [
+    orderClassification ? eq(purchasesTable.orderClassification, orderClassification) : undefined,
+    status ? eq(purchasesTable.status, status) : undefined,
+  ].filter((c): c is NonNullable<typeof c> => c !== undefined);
+  const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
 
   const rows = await db
     .select({
