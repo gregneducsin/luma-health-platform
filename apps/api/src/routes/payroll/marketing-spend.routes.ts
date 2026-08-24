@@ -15,7 +15,7 @@ export function createMarketingSpendRouter(): RouterType {
     }
   });
 
-  router.post("/", requireRole("admin"), requireCsrf, async (req, res, next) => {
+  router.post("/", requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
     try {
       const parsed = createMarketingSpendWeekRequestSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -33,7 +33,7 @@ export function createMarketingSpendRouter(): RouterType {
     }
   });
 
-  router.patch("/:id", requireRole("admin"), requireCsrf, async (req, res, next) => {
+  router.patch("/:id", requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
     try {
       const parsed = updateMarketingSpendWeekRequestSchema.safeParse(req.body);
       if (!parsed.success) {

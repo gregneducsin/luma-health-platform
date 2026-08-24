@@ -207,17 +207,25 @@ class GmailApiEmailProvider implements EmailProvider {
  * names (and, if the workspace has separate "send mail as" aliases
  * configured, different addresses via the per-persona *_FROM_EMAIL vars)
  * while sharing one authenticated mailbox by default. See .env.example.
+ * "system" is the non-patient-facing identity for staff-facing transactional
+ * mail (user invitations, and any future account-management email).
  */
-export type EmailPersona = "lucy" | "sarah";
+export type EmailPersona = "lucy" | "sarah" | "system";
 
 const PERSONA_DEFAULT_NAME: Record<EmailPersona, string> = {
   lucy: "Lucy at Luma Health",
   sarah: "Sarah at Luma Health",
+  system: "Luma Health",
+};
+
+const PERSONA_ENV_KEY: Record<EmailPersona, string> = {
+  lucy: "GOOGLE_WORKSPACE_LUCY_FROM_NAME",
+  sarah: "GOOGLE_WORKSPACE_SARAH_FROM_NAME",
+  system: "GOOGLE_WORKSPACE_SYSTEM_FROM_NAME",
 };
 
 function personaFromName(persona: EmailPersona): string {
-  const personaEnvKey = persona === "lucy" ? "GOOGLE_WORKSPACE_LUCY_FROM_NAME" : "GOOGLE_WORKSPACE_SARAH_FROM_NAME";
-  return process.env[personaEnvKey] ?? PERSONA_DEFAULT_NAME[persona];
+  return process.env[PERSONA_ENV_KEY[persona]] ?? PERSONA_DEFAULT_NAME[persona];
 }
 
 /**

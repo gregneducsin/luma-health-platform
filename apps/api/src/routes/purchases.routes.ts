@@ -7,7 +7,7 @@ import { requireCsrf } from "../middleware/csrf.js";
 export function createPurchasesRouter(): RouterType {
   const router: RouterType = Router();
 
-  router.get("/", requireRole("admin", "manager"), async (req, res, next) => {
+  router.get("/", requireRole("admin"), async (req, res, next) => {
     try {
       const parsed = listPurchasesQuerySchema.safeParse(req.query);
       if (!parsed.success) {
@@ -21,7 +21,7 @@ export function createPurchasesRouter(): RouterType {
     }
   });
 
-  router.get("/summary", requireRole("admin", "manager"), async (req, res, next) => {
+  router.get("/summary", requireRole("admin"), async (req, res, next) => {
     try {
       const parsed = purchasesSummaryQuerySchema.safeParse(req.query);
       if (!parsed.success) {

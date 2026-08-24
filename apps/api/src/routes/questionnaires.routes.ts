@@ -6,7 +6,7 @@ import { requireRole } from "../middleware/requireAuth.js";
 export function createQuestionnairesRouter(): RouterType {
   const router: RouterType = Router();
 
-  router.get("/", requireRole("admin", "manager"), async (req, res, next) => {
+  router.get("/", requireRole("admin"), async (req, res, next) => {
     try {
       const parsed = questionnairesQuerySchema.safeParse(req.query);
       if (!parsed.success) {

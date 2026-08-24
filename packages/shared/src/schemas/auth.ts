@@ -34,7 +34,15 @@ export const authUserSchema = z.object({
   email: z.string().email(),
   firstName: z.string(),
   lastName: z.string(),
-  role: z.enum(["admin", "manager", "employee"]),
+  role: z.enum(["admin", "manager", "customer_service"]),
   status: z.enum(["invited", "active", "locked", "disabled"]),
 });
 export type AuthUser = z.infer<typeof authUserSchema>;
+
+export const inviteUserRequestSchema = z.object({
+  email: z.string().email(),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  role: z.enum(["admin", "manager", "customer_service"]),
+});
+export type InviteUserRequest = z.infer<typeof inviteUserRequestSchema>;

@@ -1,5 +1,6 @@
 import { type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
+import type { AuthUser } from "@luma/shared";
 import { useCurrentUser, useLogout } from "../hooks/useAuth";
 import { useNeedsAttentionList } from "../hooks/useNeedsAttention";
 import { useUnmatchedEmailsList } from "../hooks/useUnmatchedEmails";
@@ -7,26 +8,28 @@ import { useUnmatchedSmsList } from "../hooks/useUnmatchedSms";
 import { Button, Badge } from "./ui";
 import { AiAssistantWidget } from "./AiAssistantWidget";
 
-const NAV_ITEMS = [
-  { href: "/", label: "Dashboard" },
-  { href: "/needs-attention", label: "Needs Attention" },
-  { href: "/unmatched-contacts", label: "Unmatched Contacts" },
-  { href: "/customers", label: "Leads" },
-  { href: "/orders", label: "Orders" },
-  { href: "/questionnaires", label: "Questionnaires" },
-  { href: "/conversations", label: "Conversations" },
-  { href: "/support", label: "Support" },
-  { href: "/reporting", label: "Reporting" },
-  { href: "/marketing-cpa", label: "Marketing CPA" },
-  { href: "/payroll/employees", label: "Employees" },
-  { href: "/payroll/weeks", label: "Payroll" },
+const NAV_ITEMS: readonly { href: string; label: string; roles: readonly AuthUser["role"][] }[] = [
+  { href: "/", label: "Dashboard", roles: ["admin"] },
+  { href: "/needs-attention", label: "Needs Attention", roles: ["admin", "customer_service"] },
+  { href: "/unmatched-contacts", label: "Unmatched Contacts", roles: ["admin", "customer_service"] },
+  { href: "/customers", label: "Leads", roles: ["admin"] },
+  { href: "/orders", label: "Orders", roles: ["admin"] },
+  { href: "/questionnaires", label: "Questionnaires", roles: ["admin"] },
+  { href: "/conversations", label: "Conversations", roles: ["admin", "customer_service"] },
+  { href: "/support", label: "Support", roles: ["admin", "customer_service"] },
+  { href: "/reporting", label: "Reporting", roles: ["admin"] },
+  { href: "/marketing-cpa", label: "Marketing CPA", roles: ["admin", "manager"] },
+  { href: "/payroll/employees", label: "Employees", roles: ["admin", "manager"] },
+  { href: "/payroll/weeks", label: "Payroll", roles: ["admin", "manager"] },
+  { href: "/users", label: "Users", roles: ["admin"] },
 ];
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const { data } = useCurrentUser();
   const logout = useLogout();
-  const canSeeNeedsAttention = data?.user?.role === "admin" || data?.user?.role === "manager";
+  const role = data?.user?.role;
+  const canSeeNeedsAttention = role === "admin" || role === "customer_service";
   const { data: needsAttentionData } = useNeedsAttentionList(canSeeNeedsAttention);
   const needsAttentionCount = needsAttentionData?.items.length ?? 0;
   const { data: unmatchedEmailsData } = useUnmatchedEmailsList(canSeeNeedsAttention);
@@ -34,6 +37,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const unmatchedContactsCount =
     (unmatchedEmailsData?.items.filter((i) => i.status === "needs_review").length ?? 0) +
     (unmatchedSmsData?.items.filter((i) => i.status === "needs_review").length ?? 0);
+  const visibleNavItems = NAV_ITEMS.filter((item) => !role || item.roles.includes(role));
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -41,7 +45,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <div className="mx-auto flex max-w-[1800px] items-center justify-between px-4 py-3">
           <nav className="flex items-center gap-4">
             <span className="mr-2 text-sm font-semibold text-gray-900">Luma Health</span>
-            {NAV_ITEMS.map((item) => (
+            {visibleNavItems.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
@@ -67,7 +71,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
       </header>
       <main className="mx-auto max-w-[1800px] px-4 py-6">{children}</main>
-      {data?.user && (data.user.role === "admin" || data.user.role === "manager") && <AiAssistantWidget />}
+      {role === "admin" && <AiAssistantWidget />}
     </div>
   );
 }

@@ -29,7 +29,7 @@ async function seedInvitedUser(email: string) {
   const { db, appUsersTable } = await import("@luma/db");
   const [user] = await db
     .insert(appUsersTable)
-    .values({ email, normalizedEmail: email, role: "employee", status: "invited" })
+    .values({ email, normalizedEmail: email, role: "customer_service", status: "invited" })
     .returning();
   return user;
 }

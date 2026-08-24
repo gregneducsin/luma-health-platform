@@ -4,7 +4,7 @@ import { createApp } from "../../app.js";
 
 const PASSWORD = "CorrectHorseBattery1";
 
-async function seedUser(email: string, role: "admin" | "manager" | "employee") {
+async function seedUser(email: string, role: "admin" | "manager" | "customer_service") {
   const { db, appUsersTable } = await import("@luma/db");
   const { hashPassword } = await import("../../lib/crypto.js");
   const [user] = await db
@@ -27,11 +27,13 @@ describe("Employees", () => {
     app = createApp();
   });
 
-  it("employee role is forbidden, manager can read but not write, admin can do both", async () => {
-    await seedUser("payroll-emp1@example.com", "employee");
-    const employeeAgent = await loginAgent(app, "payroll-emp1@example.com");
-    expect((await employeeAgent.agent.get("/api/app/payroll/employees")).status).toBe(403);
+  it("customer_service role is forbidden entirely — payroll is manager/admin scope, not customer_service's", async () => {
+    await seedUser("payroll-cs1@example.com", "customer_service");
+    const csAgent = await loginAgent(app, "payroll-cs1@example.com");
+    expect((await csAgent.agent.get("/api/app/payroll/employees")).status).toBe(403);
+  });
 
+  it("manager can both read and write — payroll/employees is manager's scope", async () => {
     await seedUser("payroll-mgr1@example.com", "manager");
     const managerAgent = await loginAgent(app, "payroll-mgr1@example.com");
     expect((await managerAgent.agent.get("/api/app/payroll/employees")).status).toBe(200);
@@ -39,8 +41,10 @@ describe("Employees", () => {
       .post("/api/app/payroll/employees")
       .set("x-csrf-token", managerAgent.csrf)
       .send({ firstName: "X", lastName: "Y", email: "xy@example.com", hourlyRate: "20.00" });
-    expect(managerCreate.status).toBe(403);
+    expect(managerCreate.status).toBe(201);
+  });
 
+  it("admin can both read and write", async () => {
     await seedUser("payroll-admin1@example.com", "admin");
     const adminAgent = await loginAgent(app, "payroll-admin1@example.com");
     const created = await adminAgent.agent

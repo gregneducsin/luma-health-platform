@@ -9,7 +9,7 @@ export function createAiAssistantRouter(): RouterType {
   const router: RouterType = Router();
   const limiter = createAiAssistantLimiter();
 
-  router.post("/ask", limiter, requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
+  router.post("/ask", limiter, requireRole("admin"), requireCsrf, async (req, res, next) => {
     try {
       const parsed = askAiAssistantRequestSchema.safeParse(req.body);
       if (!parsed.success) {

@@ -16,7 +16,7 @@ import { requireCsrf } from "../middleware/csrf.js";
 export function createCustomersRouter(): RouterType {
   const router: RouterType = Router();
 
-  router.get("/", requireRole("admin", "manager"), async (req, res, next) => {
+  router.get("/", requireRole("admin"), async (req, res, next) => {
     try {
       const parsed = listCustomersQuerySchema.safeParse(req.query);
       if (!parsed.success) {
@@ -32,7 +32,7 @@ export function createCustomersRouter(): RouterType {
 
   // Must be registered before "/:id" — otherwise "summary" would be
   // captured as the :id param instead of matching this route.
-  router.get("/summary", requireRole("admin", "manager"), async (req, res, next) => {
+  router.get("/summary", requireRole("admin"), async (req, res, next) => {
     try {
       const parsed = customersSummaryQuerySchema.safeParse(req.query);
       if (!parsed.success) {
@@ -47,7 +47,7 @@ export function createCustomersRouter(): RouterType {
   });
 
   // Same registration-order note as "/summary" above.
-  router.get("/lead-types", requireRole("admin", "manager"), async (_req, res, next) => {
+  router.get("/lead-types", requireRole("admin"), async (_req, res, next) => {
     try {
       res.json({ leadTypes: await customersService.listDistinctLeadTypes() });
     } catch (err) {
@@ -56,7 +56,7 @@ export function createCustomersRouter(): RouterType {
   });
 
   // Same registration-order note as "/summary" above.
-  router.get("/questionnaire-ids", requireRole("admin", "manager"), async (_req, res, next) => {
+  router.get("/questionnaire-ids", requireRole("admin"), async (_req, res, next) => {
     try {
       res.json({ questionnaireIds: await customersService.listDistinctQuestionnaireIds() });
     } catch (err) {
@@ -64,7 +64,7 @@ export function createCustomersRouter(): RouterType {
     }
   });
 
-  router.get("/:id", requireRole("admin", "manager"), async (req, res, next) => {
+  router.get("/:id", requireRole("admin"), async (req, res, next) => {
     try {
       const customer = await customersService.getCustomer(req.params.id as string);
       if (!customer) {
@@ -83,7 +83,7 @@ export function createCustomersRouter(): RouterType {
   // action, not automatic — the link should go out only once the lead has
   // actually agreed to fill out the form, which today means a staff member
   // clicked this after hearing "yes" (no automated agreement-detection yet).
-  router.post("/:id/intake-link", requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
+  router.post("/:id/intake-link", requireRole("admin"), requireCsrf, async (req, res, next) => {
     try {
       const customer = await customersService.getCustomer(req.params.id as string);
       if (!customer) {
@@ -102,7 +102,7 @@ export function createCustomersRouter(): RouterType {
   // abandoned-cart/meta-lead email, review requests) for this person, or
   // null if nothing's armed — surfaced on the conversation detail page so
   // staff can see "there's a text/email due Thursday" without having to ask.
-  router.get("/:id/upcoming-trigger", requireRole("admin", "manager"), async (req, res, next) => {
+  router.get("/:id/upcoming-trigger", requireRole("admin"), async (req, res, next) => {
     try {
       const trigger = await getUpcomingTrigger(req.params.id as string);
       res.json({ trigger: trigger ? { ...trigger, dueAt: trigger.dueAt.toISOString() } : null });

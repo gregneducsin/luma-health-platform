@@ -4,7 +4,7 @@ import { createApp } from "../app.js";
 
 const PASSWORD = "CorrectHorseBattery1";
 
-async function seedUser(email: string, role: "admin" | "manager" | "employee") {
+async function seedUser(email: string, role: "admin" | "manager" | "customer_service") {
   const { db, appUsersTable } = await import("@luma/db");
   const { hashPassword } = await import("../lib/crypto.js");
   const [user] = await db
@@ -33,9 +33,16 @@ describe("AI assistant", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects employee role", async () => {
-    await seedUser("ai-emp@example.com", "employee");
-    const { agent, csrf } = await loginAgent(app, "ai-emp@example.com");
+  it("rejects customer_service role", async () => {
+    await seedUser("ai-cs@example.com", "customer_service");
+    const { agent, csrf } = await loginAgent(app, "ai-cs@example.com");
+    const res = await agent.post("/api/app/ai-assistant/ask").set("x-csrf-token", csrf).send({ question: "How many leads?" });
+    expect(res.status).toBe(403);
+  });
+
+  it("rejects manager role — this is admin-only", async () => {
+    await seedUser("ai-mgr@example.com", "manager");
+    const { agent, csrf } = await loginAgent(app, "ai-mgr@example.com");
     const res = await agent.post("/api/app/ai-assistant/ask").set("x-csrf-token", csrf).send({ question: "How many leads?" });
     expect(res.status).toBe(403);
   });

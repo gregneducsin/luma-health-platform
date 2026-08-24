@@ -26,7 +26,7 @@ const { recordAndClassifyUnmatchedSms } = await import("../services/unmatched-in
 
 const PASSWORD = "CorrectHorseBattery1";
 
-async function seedUser(email: string, role: "admin" | "manager" | "employee") {
+async function seedUser(email: string, role: "admin" | "manager" | "customer_service") {
   const { appUsersTable } = await import("@luma/db");
   const { hashPassword } = await import("../lib/crypto.js");
   const [user] = await db
@@ -65,11 +65,18 @@ describe("Unmatched SMS", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects employee role", async () => {
-    await seedUser("unmatched-sms-emp1@example.com", "employee");
-    const { agent } = await loginAgent(app, "unmatched-sms-emp1@example.com");
+  it("rejects manager role — unmatched contacts is customer_service's scope, not manager's", async () => {
+    await seedUser("unmatched-sms-mgr1@example.com", "manager");
+    const { agent } = await loginAgent(app, "unmatched-sms-mgr1@example.com");
     const res = await agent.get("/api/app/unmatched-sms");
     expect(res.status).toBe(403);
+  });
+
+  it("allows customer_service role", async () => {
+    await seedUser("unmatched-sms-cs1@example.com", "customer_service");
+    const { agent } = await loginAgent(app, "unmatched-sms-cs1@example.com");
+    const res = await agent.get("/api/app/unmatched-sms");
+    expect(res.status).toBe(200);
   });
 
   it("lists, fetches by id, replies (sends through the real provider), and dismisses", async () => {

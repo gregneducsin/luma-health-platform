@@ -7,7 +7,7 @@ import { requireCsrf } from "../middleware/csrf.js";
 export function createUnmatchedSmsRouter(): RouterType {
   const router: RouterType = Router();
 
-  router.get("/", requireRole("admin", "manager"), async (_req, res, next) => {
+  router.get("/", requireRole("admin", "customer_service"), async (_req, res, next) => {
     try {
       const items = await unmatchedSmsService.listUnmatchedSmsThreads();
       res.json({ items });
@@ -16,7 +16,7 @@ export function createUnmatchedSmsRouter(): RouterType {
     }
   });
 
-  router.get("/:id", requireRole("admin", "manager"), async (req, res, next) => {
+  router.get("/:id", requireRole("admin", "customer_service"), async (req, res, next) => {
     try {
       const detail = await unmatchedSmsService.getUnmatchedSmsThreadDetail(req.params.id as string);
       if (!detail) {
@@ -29,7 +29,7 @@ export function createUnmatchedSmsRouter(): RouterType {
     }
   });
 
-  router.post("/:id/reply", requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
+  router.post("/:id/reply", requireRole("admin", "customer_service"), requireCsrf, async (req, res, next) => {
     try {
       const parsed = sendUnmatchedSmsReplyRequestSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -47,7 +47,7 @@ export function createUnmatchedSmsRouter(): RouterType {
     }
   });
 
-  router.post("/:id/dismiss", requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
+  router.post("/:id/dismiss", requireRole("admin", "customer_service"), requireCsrf, async (req, res, next) => {
     try {
       const ok = await unmatchedSmsService.dismissUnmatchedSmsThread(req.params.id as string);
       if (!ok) {

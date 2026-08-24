@@ -4,7 +4,7 @@ import { createApp } from "../app.js";
 
 const PASSWORD = "CorrectHorseBattery1";
 
-async function seedUser(email: string, role: "admin" | "manager" | "employee") {
+async function seedUser(email: string, role: "admin" | "manager" | "customer_service") {
   const { db, appUsersTable } = await import("@luma/db");
   const { hashPassword } = await import("../lib/crypto.js");
   const [user] = await db
@@ -33,9 +33,16 @@ describe("Questionnaires performance", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects employee role", async () => {
-    await seedUser("quest-emp@example.com", "employee");
-    const { agent } = await loginAgent(app, "quest-emp@example.com");
+  it("rejects customer_service role", async () => {
+    await seedUser("quest-cs@example.com", "customer_service");
+    const { agent } = await loginAgent(app, "quest-cs@example.com");
+    const res = await agent.get("/api/app/questionnaires");
+    expect(res.status).toBe(403);
+  });
+
+  it("rejects manager role — this is admin-only", async () => {
+    await seedUser("quest-mgr@example.com", "manager");
+    const { agent } = await loginAgent(app, "quest-mgr@example.com");
     const res = await agent.get("/api/app/questionnaires");
     expect(res.status).toBe(403);
   });

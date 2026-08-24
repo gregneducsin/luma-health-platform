@@ -4,7 +4,7 @@ import { createApp } from "../app.js";
 
 const PASSWORD = "CorrectHorseBattery1";
 
-async function seedUser(email: string, role: "admin" | "manager" | "employee") {
+async function seedUser(email: string, role: "admin" | "manager" | "customer_service") {
   const { db, appUsersTable } = await import("@luma/db");
   const { hashPassword } = await import("../lib/crypto.js");
   const [user] = await db
@@ -33,19 +33,19 @@ describe("Customers CRUD", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects employee role (requires admin/manager)", async () => {
-    await seedUser("employee1@example.com", "employee");
-    const { agent } = await loginAgent(app, "employee1@example.com");
+  it("rejects customer_service role (admin only)", async () => {
+    await seedUser("cs1@example.com", "customer_service");
+    const { agent } = await loginAgent(app, "cs1@example.com");
     const res = await agent.get("/api/app/customers");
     expect(res.status).toBe(403);
   });
 
-  it("allows manager to read but not create", async () => {
+  it("rejects manager role — customers is admin-only, manager's scope is payroll/employees only", async () => {
     await seedUser("manager1@example.com", "manager");
     const { agent, csrf } = await loginAgent(app, "manager1@example.com");
 
     const listRes = await agent.get("/api/app/customers");
-    expect(listRes.status).toBe(200);
+    expect(listRes.status).toBe(403);
 
     const createRes = await agent
       .post("/api/app/customers")
@@ -656,6 +656,16 @@ describe("Purchases", () => {
     expect(res.status).toBe(401);
   });
 
+  it("rejects manager and customer_service roles — purchases is admin-only", async () => {
+    await seedUser("purchases-manager1@example.com", "manager");
+    const manager = await loginAgent(app, "purchases-manager1@example.com");
+    expect((await manager.agent.get("/api/app/purchases")).status).toBe(403);
+
+    await seedUser("purchases-cs1@example.com", "customer_service");
+    const cs = await loginAgent(app, "purchases-cs1@example.com");
+    expect((await cs.agent.get("/api/app/purchases")).status).toBe(403);
+  });
+
   it("computes purchasing/new/recurring customer counts and revenue, completed orders only", async () => {
     await seedUser("admin-orders-summary@example.com", "admin");
     const { agent, csrf } = await loginAgent(app, "admin-orders-summary@example.com");
@@ -719,22 +729,13 @@ describe("Intake link", () => {
     process.env = originalEnv;
   });
 
-  it("manager can generate a signup link for a lead", async () => {
-    await seedUser("intake-manager1@example.com", "manager");
-    const { agent, csrf } = await loginAgent(app, "intake-manager1@example.com");
+  it("admin can generate a signup link for a lead", async () => {
+    await seedUser("intake-admin1@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "intake-admin1@example.com");
 
-    const createRes = await agent
+    const customerRes = await agent
       .post("/api/app/customers")
       .set("x-csrf-token", csrf)
-      .send({ firstName: "Intake", lastName: "Lead", email: "intake1@example.com", leadReceivedDate: "2026-08-15" });
-    // Manager can't create (admin-only) — seed via a fresh admin instead.
-    expect(createRes.status).toBe(403);
-
-    await seedUser("intake-admin1@example.com", "admin");
-    const adminAgent = await loginAgent(app, "intake-admin1@example.com");
-    const customerRes = await adminAgent.agent
-      .post("/api/app/customers")
-      .set("x-csrf-token", adminAgent.csrf)
       .send({ firstName: "Intake", lastName: "Lead", email: "intake2@example.com", leadReceivedDate: "2026-08-15" });
     const customerId = customerRes.body.customer.id;
 
@@ -744,7 +745,7 @@ describe("Intake link", () => {
     expect(new Date(res.body.expiresAt).getTime()).toBeGreaterThan(Date.now());
   });
 
-  it("rejects employee role", async () => {
+  it("rejects manager and customer_service roles — intake links are admin-only", async () => {
     await seedUser("intake-admin2@example.com", "admin");
     const admin = await loginAgent(app, "intake-admin2@example.com");
     const customerRes = await admin.agent
@@ -753,8 +754,16 @@ describe("Intake link", () => {
       .send({ firstName: "Intake", lastName: "Lead", email: "intake3@example.com", leadReceivedDate: "2026-08-15" });
     const customerId = customerRes.body.customer.id;
 
-    await seedUser("intake-employee1@example.com", "employee");
-    const { agent, csrf } = await loginAgent(app, "intake-employee1@example.com");
+    await seedUser("intake-manager1@example.com", "manager");
+    const manager = await loginAgent(app, "intake-manager1@example.com");
+    const managerRes = await manager.agent
+      .post(`/api/app/customers/${customerId}/intake-link`)
+      .set("x-csrf-token", manager.csrf)
+      .send({});
+    expect(managerRes.status).toBe(403);
+
+    await seedUser("intake-cs1@example.com", "customer_service");
+    const { agent, csrf } = await loginAgent(app, "intake-cs1@example.com");
     const res = await agent.post(`/api/app/customers/${customerId}/intake-link`).set("x-csrf-token", csrf).send({});
     expect(res.status).toBe(403);
   });

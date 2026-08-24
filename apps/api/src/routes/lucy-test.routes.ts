@@ -18,7 +18,7 @@ export function createLucyTestRouter(): RouterType {
   const router: RouterType = Router();
   const limiter = createLucyTestLimiter();
 
-  router.post("/message", limiter, requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
+  router.post("/message", limiter, requireRole("admin", "customer_service"), requireCsrf, async (req, res, next) => {
     try {
       const parsed = sendLucyTestMessageRequestSchema.safeParse(req.body);
       if (!parsed.success) {

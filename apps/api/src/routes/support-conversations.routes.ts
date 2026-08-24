@@ -14,7 +14,7 @@ function channelFromQuery(req: { query: { channel?: unknown } }): "sms" | "email
 export function createSupportConversationsRouter(): RouterType {
   const router: RouterType = Router();
 
-  router.get("/", requireRole("admin", "manager"), async (req, res, next) => {
+  router.get("/", requireRole("admin", "customer_service"), async (req, res, next) => {
     try {
       if (channelFromQuery(req) === "email") {
         const conversations = await supportEmailConversationsService.listSupportEmailConversationSummaries();
@@ -28,7 +28,7 @@ export function createSupportConversationsRouter(): RouterType {
     }
   });
 
-  router.get("/:id", requireRole("admin", "manager"), async (req, res, next) => {
+  router.get("/:id", requireRole("admin", "customer_service"), async (req, res, next) => {
     try {
       const detail =
         channelFromQuery(req) === "email"
@@ -44,7 +44,7 @@ export function createSupportConversationsRouter(): RouterType {
     }
   });
 
-  router.post("/:id/clear-attention", requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
+  router.post("/:id/clear-attention", requireRole("admin", "customer_service"), requireCsrf, async (req, res, next) => {
     try {
       const channel = channelFromQuery(req);
       if (channel === "email") {
@@ -69,7 +69,7 @@ export function createSupportConversationsRouter(): RouterType {
     }
   });
 
-  router.post("/:id/reply", requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
+  router.post("/:id/reply", requireRole("admin", "customer_service"), requireCsrf, async (req, res, next) => {
     try {
       const parsed = sendSupportConversationReplyRequestSchema.safeParse(req.body);
       if (!parsed.success) {

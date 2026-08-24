@@ -5,7 +5,7 @@ import { requireRole } from "../middleware/requireAuth.js";
 export function createReportingRouter(): RouterType {
   const router: RouterType = Router();
 
-  router.get("/funnel", requireRole("admin", "manager"), async (_req, res, next) => {
+  router.get("/funnel", requireRole("admin"), async (_req, res, next) => {
     try {
       const funnel = await getFunnelSummary();
       res.json(funnel);
@@ -14,7 +14,7 @@ export function createReportingRouter(): RouterType {
     }
   });
 
-  router.get("/messages", requireRole("admin", "manager"), async (_req, res, next) => {
+  router.get("/messages", requireRole("admin"), async (_req, res, next) => {
     try {
       const [volume, responseTimes] = await Promise.all([getMessageVolumeByChannel(), getResponseTimeStats()]);
       res.json({ volume, responseTimes });

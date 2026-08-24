@@ -19,7 +19,7 @@ const { createApp } = await import("../app.js");
 
 const PASSWORD = "CorrectHorseBattery1";
 
-async function seedUser(email: string, role: "admin" | "manager" | "employee") {
+async function seedUser(email: string, role: "admin" | "manager" | "customer_service") {
   const { appUsersTable } = await import("@luma/db");
   const { hashPassword } = await import("../lib/crypto.js");
   const [user] = await db
@@ -64,16 +64,16 @@ describe("Conversations", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects employee role", async () => {
-    await seedUser("convo-emp1@example.com", "employee");
-    const { agent } = await loginAgent(app, "convo-emp1@example.com");
+  it("rejects manager role — Lucy/Sarah chats are customer_service's scope, not manager's", async () => {
+    await seedUser("convo-mgr1@example.com", "manager");
+    const { agent } = await loginAgent(app, "convo-mgr1@example.com");
     const res = await agent.get("/api/app/conversations");
     expect(res.status).toBe(403);
   });
 
   it("lists conversation summaries with the customer's name and last message", async () => {
-    await seedUser("convo-manager1@example.com", "manager");
-    const { agent } = await loginAgent(app, "convo-manager1@example.com");
+    await seedUser("convo-cs1@example.com", "customer_service");
+    const { agent } = await loginAgent(app, "convo-cs1@example.com");
 
     const personId = await seedCustomer();
     const conversation = await getOrCreateConversation(personId);
@@ -281,8 +281,8 @@ describe("Conversations", () => {
       expect(res.status).toBe(401);
     });
 
-    it("rejects employee role", async () => {
-      await seedUser("convo-reply4@example.com", "employee");
+    it("rejects manager role", async () => {
+      await seedUser("convo-reply4@example.com", "manager");
       const { agent, csrf } = await loginAgent(app, "convo-reply4@example.com");
       const personId = await seedCustomer();
       const conversation = await getOrCreateConversation(personId);

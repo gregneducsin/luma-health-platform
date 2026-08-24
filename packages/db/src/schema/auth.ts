@@ -13,9 +13,9 @@ export const appUsersTable = pgTable(
     firstName: text("first_name").notNull().default(""),
     lastName: text("last_name").notNull().default(""),
     passwordHash: text("password_hash"),
-    role: text("role", { enum: ["admin", "manager", "employee"] })
+    role: text("role", { enum: ["admin", "manager", "customer_service"] })
       .notNull()
-      .default("employee"),
+      .default("customer_service"),
     status: text("status", { enum: ["invited", "active", "locked", "disabled"] })
       .notNull()
       .default("invited"),

@@ -9,7 +9,7 @@ const PERSONAS = new Set(["lucy", "sarah"]);
 export function createNeedsAttentionRouter(): RouterType {
   const router: RouterType = Router();
 
-  router.get("/", requireRole("admin", "manager"), async (_req, res, next) => {
+  router.get("/", requireRole("admin", "customer_service"), async (_req, res, next) => {
     try {
       const items = await needsAttentionService.listNeedsAttention();
       res.json({ items });
@@ -18,7 +18,7 @@ export function createNeedsAttentionRouter(): RouterType {
     }
   });
 
-  router.get("/:channel/:persona/:id/messages", requireRole("admin", "manager"), async (req, res, next) => {
+  router.get("/:channel/:persona/:id/messages", requireRole("admin", "customer_service"), async (req, res, next) => {
     try {
       const { channel, persona, id } = req.params;
       if (!CHANNELS.has(channel as string) || !PERSONAS.has(persona as string)) {
@@ -32,7 +32,7 @@ export function createNeedsAttentionRouter(): RouterType {
     }
   });
 
-  router.post("/:channel/:persona/:id/clear", requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
+  router.post("/:channel/:persona/:id/clear", requireRole("admin", "customer_service"), requireCsrf, async (req, res, next) => {
     try {
       const { channel, persona, id } = req.params;
       if (!CHANNELS.has(channel as string) || !PERSONAS.has(persona as string)) {

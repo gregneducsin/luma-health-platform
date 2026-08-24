@@ -10,6 +10,7 @@ import { createGeneralLimiter } from "./middleware/rateLimit.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import healthRouter from "./routes/health.routes.js";
 import { createAuthRouter } from "./routes/auth.routes.js";
+import { createUsersRouter } from "./routes/users.routes.js";
 import { createCustomersRouter } from "./routes/customers.routes.js";
 import { createPurchasesRouter } from "./routes/purchases.routes.js";
 import { createQuestionnairesRouter } from "./routes/questionnaires.routes.js";
@@ -91,6 +92,7 @@ export function createApp(): Express {
   // deliberately not a blanket router-level CSRF gate, so safe GET routes
   // (csrf-token, me) are never accidentally blocked by it.
   app.use("/api/app/auth", createAuthRouter());
+  app.use("/api/app/users", createUsersRouter());
   app.use("/api/app/customers", createCustomersRouter());
   app.use("/api/app/purchases", createPurchasesRouter());
   app.use("/api/app/questionnaires", createQuestionnairesRouter());

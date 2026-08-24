@@ -28,7 +28,7 @@ export function createEmployeesRouter(): RouterType {
     }
   });
 
-  router.post("/", requireRole("admin"), requireCsrf, async (req, res, next) => {
+  router.post("/", requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
     try {
       const parsed = createEmployeeRequestSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -42,7 +42,7 @@ export function createEmployeesRouter(): RouterType {
     }
   });
 
-  router.patch("/:id", requireRole("admin"), requireCsrf, async (req, res, next) => {
+  router.patch("/:id", requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
     try {
       const parsed = updateEmployeeRequestSchema.safeParse(req.body);
       if (!parsed.success) {

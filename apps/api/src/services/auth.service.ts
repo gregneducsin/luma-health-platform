@@ -11,6 +11,8 @@ import type { AuthUser } from "@luma/shared";
 import { dummyVerify, generateRawToken, hashPassword, hashToken, verifyPassword } from "../lib/crypto.js";
 import { logger } from "../lib/logger.js";
 import { writeUserAuditEvent } from "./audit.service.js";
+import { getEmailProvider } from "../lib/email-provider.js";
+import { renderStaffInvitationEmail } from "../lib/email/staff-invite-email.js";
 
 const MAX_FAILED_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
@@ -244,4 +246,62 @@ export async function acceptInvitation(rawToken: string, newPassword: string): P
   await writeUserAuditEvent({ actorUserId: redeemed.userId, targetUserId: redeemed.userId, action: "invitation_accepted" });
 
   return { ok: true };
+}
+
+// ── User management (admin) ─────────────────────────────────────────────────
+
+export type InviteUserResult = { ok: true; user: AuthUser } | { ok: false; reason: "email_taken" };
+
+/**
+ * Creates the user row (status "invited"), issues an invitation token, and
+ * emails the accept-invitation link — the actual "email invites" ask,
+ * distinct from createInvitation above (which only mints a token for a
+ * user that already exists, e.g. the bootstrap-admin seed step). The email
+ * send is fail-soft: a provider outage shouldn't undo the invite itself —
+ * the link still works if shared manually, and getEmailProvider's own
+ * failure-alert wrapper already reports the send failure to Slack.
+ */
+export async function inviteUser(params: {
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: AuthUser["role"];
+  actorUserId: string;
+}): Promise<InviteUserResult> {
+  const normalizedEmail = normalizeEmail(params.email);
+  const [existing] = await db.select({ id: appUsersTable.id }).from(appUsersTable).where(eq(appUsersTable.normalizedEmail, normalizedEmail));
+  if (existing) return { ok: false, reason: "email_taken" };
+
+  const [created] = await db
+    .insert(appUsersTable)
+    .values({
+      email: params.email,
+      normalizedEmail,
+      firstName: params.firstName,
+      lastName: params.lastName,
+      role: params.role,
+      status: "invited",
+      invitedAt: new Date(),
+    })
+    .returning();
+
+  const { rawToken } = await createInvitation(created.id);
+  await writeUserAuditEvent({ actorUserId: params.actorUserId, targetUserId: created.id, action: "user_invited", newValues: { role: created.role } });
+
+  const base = process.env.WEB_PUBLIC_URL?.replace(/\/$/, "") ?? "";
+  const inviteUrl = `${base}/accept-invitation?token=${rawToken}`;
+  try {
+    const { provider, fromName } = getEmailProvider("system");
+    const rendered = renderStaffInvitationEmail(created.firstName, created.role, inviteUrl);
+    await provider.sendEmail(created.email, rendered.subject, rendered.html, { fromName });
+  } catch (err) {
+    logger.warn({ userId: created.id, reason: err instanceof Error ? err.message : String(err) }, "invitation email send failed");
+  }
+
+  return { ok: true, user: toAuthUser(created) };
+}
+
+export async function listUsers(): Promise<AuthUser[]> {
+  const rows = await db.select().from(appUsersTable).orderBy(appUsersTable.createdAt);
+  return rows.map(toAuthUser);
 }

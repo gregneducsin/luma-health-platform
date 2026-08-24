@@ -28,7 +28,7 @@ export function createPayrollWeeksRouter(): RouterType {
     }
   });
 
-  router.post("/", requireRole("admin"), requireCsrf, async (req, res, next) => {
+  router.post("/", requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
     try {
       const parsed = createPayrollWeekRequestSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -42,7 +42,7 @@ export function createPayrollWeeksRouter(): RouterType {
     }
   });
 
-  router.post("/:id/approve", requireRole("admin"), requireCsrf, async (req, res, next) => {
+  router.post("/:id/approve", requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
     try {
       const result = await payrollWeeksService.approvePayrollWeek(req.params.id as string, req.user!);
       if (!result.ok) {
@@ -55,7 +55,7 @@ export function createPayrollWeeksRouter(): RouterType {
     }
   });
 
-  router.post("/:id/pay", requireRole("admin"), requireCsrf, async (req, res, next) => {
+  router.post("/:id/pay", requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
     try {
       const result = await payrollWeeksService.payPayrollWeek(req.params.id as string, req.user!);
       if (!result.ok) {
@@ -68,7 +68,7 @@ export function createPayrollWeeksRouter(): RouterType {
     }
   });
 
-  router.put("/:id/hours", requireRole("admin"), requireCsrf, async (req, res, next) => {
+  router.put("/:id/hours", requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
     try {
       const parsed = upsertWeeklyHoursRequestSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -86,7 +86,7 @@ export function createPayrollWeeksRouter(): RouterType {
     }
   });
 
-  router.post("/:id/bonuses", requireRole("admin"), requireCsrf, async (req, res, next) => {
+  router.post("/:id/bonuses", requireRole("admin", "manager"), requireCsrf, async (req, res, next) => {
     try {
       const parsed = createBonusRequestSchema.safeParse(req.body);
       if (!parsed.success) {
