@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from "react";
 import type { AuthUser } from "@luma/shared";
-import { useUsers, useInviteUser } from "../hooks/useUsers";
+import { useUsers, useInviteUser, useUpdateUser } from "../hooks/useUsers";
 import { Badge, Button, Card, ErrorText, Field, Input } from "../components/ui";
-import { ApiError } from "../hooks/useAuth";
+import { ApiError, useCurrentUser } from "../hooks/useAuth";
 
 const ROLE_LABEL: Record<AuthUser["role"], string> = {
   admin: "Admin",
@@ -20,6 +20,7 @@ const STATUS_COLOR: Record<AuthUser["status"], "green" | "yellow" | "red" | "gra
 export function UsersPage() {
   const [showInvite, setShowInvite] = useState(false);
   const { data, isLoading } = useUsers();
+  const { data: currentUser } = useCurrentUser();
 
   return (
     <div className="space-y-4">
@@ -41,24 +42,16 @@ export function UsersPage() {
                 <th className="px-4 py-2">Email</th>
                 <th className="px-4 py-2">Role</th>
                 <th className="px-4 py-2">Status</th>
+                <th className="px-4 py-2"></th>
               </tr>
             </thead>
             <tbody>
               {data?.users.map((u) => (
-                <tr key={u.id} className="border-b border-gray-100 last:border-0">
-                  <td className="px-4 py-2 text-gray-800">
-                    {u.firstName} {u.lastName}
-                  </td>
-                  <td className="px-4 py-2 text-gray-600">{u.email}</td>
-                  <td className="px-4 py-2 text-gray-600">{ROLE_LABEL[u.role]}</td>
-                  <td className="px-4 py-2">
-                    <Badge color={STATUS_COLOR[u.status]}>{u.status}</Badge>
-                  </td>
-                </tr>
+                <UserRow key={u.id} user={u} isSelf={u.id === currentUser?.user?.id} />
               ))}
               {data?.users.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-6 text-center text-sm text-gray-400">
+                  <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-400">
                     No users yet.
                   </td>
                 </tr>
@@ -68,6 +61,53 @@ export function UsersPage() {
         )}
       </Card>
     </div>
+  );
+}
+
+function UserRow({ user, isSelf }: { user: AuthUser; isSelf: boolean }) {
+  const updateUser = useUpdateUser();
+  const canToggleStatus = user.status === "active" || user.status === "disabled";
+
+  return (
+    <tr className="border-b border-gray-100 last:border-0">
+      <td className="px-4 py-2 text-gray-800">
+        {user.firstName} {user.lastName}
+        {isSelf && <span className="ml-1 text-xs text-gray-400">(you)</span>}
+      </td>
+      <td className="px-4 py-2 text-gray-600">{user.email}</td>
+      <td className="px-4 py-2">
+        {isSelf ? (
+          <span className="text-gray-600">{ROLE_LABEL[user.role]}</span>
+        ) : (
+          <select
+            className="rounded-md border border-gray-300 px-2 py-1 text-xs"
+            value={user.role}
+            disabled={updateUser.isPending}
+            onChange={(e) => updateUser.mutate({ id: user.id, input: { role: e.target.value as AuthUser["role"] } })}
+          >
+            <option value="customer_service">Customer Service</option>
+            <option value="manager">Manager</option>
+            <option value="admin">Admin</option>
+          </select>
+        )}
+      </td>
+      <td className="px-4 py-2">
+        <Badge color={STATUS_COLOR[user.status]}>{user.status}</Badge>
+      </td>
+      <td className="px-4 py-2">
+        {!isSelf && canToggleStatus && (
+          <Button
+            variant="secondary"
+            disabled={updateUser.isPending}
+            onClick={() =>
+              updateUser.mutate({ id: user.id, input: { status: user.status === "disabled" ? "active" : "disabled" } })
+            }
+          >
+            {user.status === "disabled" ? "Reactivate" : "Disable"}
+          </Button>
+        )}
+      </td>
+    </tr>
   );
 }
 

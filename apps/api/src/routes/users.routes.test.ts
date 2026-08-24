@@ -41,13 +41,19 @@ describe("Users", () => {
   });
 
   it("rejects manager and customer_service roles — user management is admin-only", async () => {
-    await seedUser("users-mgr@example.com", "manager");
+    const target = await seedUser("users-mgr@example.com", "manager");
     const manager = await loginAgent(app, "users-mgr@example.com");
     expect((await manager.agent.get("/api/app/users")).status).toBe(403);
+    expect(
+      (await manager.agent.patch(`/api/app/users/${target.id}`).set("x-csrf-token", manager.csrf).send({ role: "admin" })).status,
+    ).toBe(403);
 
     await seedUser("users-cs@example.com", "customer_service");
     const cs = await loginAgent(app, "users-cs@example.com");
     expect((await cs.agent.get("/api/app/users")).status).toBe(403);
+    expect(
+      (await cs.agent.patch(`/api/app/users/${target.id}`).set("x-csrf-token", cs.csrf).send({ role: "admin" })).status,
+    ).toBe(403);
   });
 
   it("admin invites a new user: creates the row, sends the invite email, and lists it", async () => {
@@ -113,5 +119,53 @@ describe("Users", () => {
       .send({ email: "email-fails@example.com", firstName: "A", lastName: "B", role: "customer_service" });
     expect(res.status).toBe(201);
     expect(res.body.user.status).toBe("invited");
+  });
+
+  it("admin changes a user's role, but can't target themselves or a nonexistent user", async () => {
+    const admin = await seedUser("users-admin5@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "users-admin5@example.com");
+    const target = await seedUser("users-target1@example.com", "customer_service");
+
+    const roleRes = await agent.patch(`/api/app/users/${target.id}`).set("x-csrf-token", csrf).send({ role: "manager" });
+    expect(roleRes.status).toBe(200);
+    expect(roleRes.body.user.role).toBe("manager");
+
+    const selfRes = await agent.patch(`/api/app/users/${admin.id}`).set("x-csrf-token", csrf).send({ role: "manager" });
+    expect(selfRes.status).toBe(400);
+
+    const missingRes = await agent
+      .patch("/api/app/users/00000000-0000-0000-0000-000000000000")
+      .set("x-csrf-token", csrf)
+      .send({ role: "manager" });
+    expect(missingRes.status).toBe(404);
+  });
+
+  it("disabling a user revokes their existing session immediately; reactivating lets them log in again", async () => {
+    await seedUser("users-target2@example.com", "customer_service");
+    const target = await loginAgent(app, "users-target2@example.com");
+    expect((await target.agent.get("/api/app/conversations")).status).toBe(200);
+
+    await seedUser("users-admin6@example.com", "admin");
+    const admin = await loginAgent(app, "users-admin6@example.com");
+    const { db, appUsersTable } = await import("@luma/db");
+    const { eq } = await import("drizzle-orm");
+    const [targetUser] = await db.select().from(appUsersTable).where(eq(appUsersTable.normalizedEmail, "users-target2@example.com"));
+
+    const disableRes = await admin.agent
+      .patch(`/api/app/users/${targetUser!.id}`)
+      .set("x-csrf-token", admin.csrf)
+      .send({ status: "disabled" });
+    expect(disableRes.status).toBe(200);
+    expect(disableRes.body.user.status).toBe("disabled");
+
+    // Same session cookie, but the session row was revoked server-side.
+    expect((await target.agent.get("/api/app/conversations")).status).toBe(401);
+
+    const reactivateRes = await admin.agent
+      .patch(`/api/app/users/${targetUser!.id}`)
+      .set("x-csrf-token", admin.csrf)
+      .send({ status: "active" });
+    expect(reactivateRes.status).toBe(200);
+    expect(reactivateRes.body.user.status).toBe("active");
   });
 });

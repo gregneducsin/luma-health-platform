@@ -305,3 +305,55 @@ export async function listUsers(): Promise<AuthUser[]> {
   const rows = await db.select().from(appUsersTable).orderBy(appUsersTable.createdAt);
   return rows.map(toAuthUser);
 }
+
+export type UpdateUserResult = { ok: true; user: AuthUser } | { ok: false; reason: "not_found" | "self" };
+
+/**
+ * Admin-driven role change and/or enable/disable, distinct from the
+ * self-service password/invitation flows above. Disabling revokes every
+ * existing session immediately — same reasoning as resetPassword: a
+ * disabled account shouldn't keep working just because it's still logged in
+ * somewhere. Can't target yourself — an admin locking out or demoting their
+ * own account has no recovery path but another admin, and today nothing
+ * guarantees a second one exists.
+ */
+export async function updateUser(
+  targetUserId: string,
+  input: { role?: AuthUser["role"]; status?: "active" | "disabled" },
+  actorUserId: string,
+): Promise<UpdateUserResult> {
+  if (targetUserId === actorUserId) return { ok: false, reason: "self" };
+
+  const [existing] = await db.select().from(appUsersTable).where(eq(appUsersTable.id, targetUserId));
+  if (!existing) return { ok: false, reason: "not_found" };
+
+  const patch: Partial<typeof appUsersTable.$inferInsert> = {};
+  if (input.role !== undefined) patch.role = input.role;
+  if (input.status !== undefined) patch.status = input.status;
+
+  const [updated] = await db.update(appUsersTable).set(patch).where(eq(appUsersTable.id, targetUserId)).returning();
+
+  if (input.role !== undefined && input.role !== existing.role) {
+    await writeUserAuditEvent({
+      actorUserId,
+      targetUserId,
+      action: "role_changed",
+      previousValues: { role: existing.role },
+      newValues: { role: input.role },
+    });
+  }
+  if (input.status !== undefined && input.status !== existing.status) {
+    await writeUserAuditEvent({
+      actorUserId,
+      targetUserId,
+      action: input.status === "disabled" ? "user_disabled" : "user_reactivated",
+      previousValues: { status: existing.status },
+      newValues: { status: input.status },
+    });
+    if (input.status === "disabled") {
+      await db.update(userSessionsTable).set({ revokedAt: new Date() }).where(eq(userSessionsTable.userId, targetUserId));
+    }
+  }
+
+  return { ok: true, user: toAuthUser(updated) };
+}

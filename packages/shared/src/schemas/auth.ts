@@ -46,3 +46,14 @@ export const inviteUserRequestSchema = z.object({
   role: z.enum(["admin", "manager", "customer_service"]),
 });
 export type InviteUserRequest = z.infer<typeof inviteUserRequestSchema>;
+
+// "invited" and "locked" are system-managed transitions (accept-invitation,
+// failed-login lockout) — an admin can only move a user between "active" and
+// "disabled" directly.
+export const updateUserRequestSchema = z
+  .object({
+    role: z.enum(["admin", "manager", "customer_service"]).optional(),
+    status: z.enum(["active", "disabled"]).optional(),
+  })
+  .refine((v) => v.role !== undefined || v.status !== undefined, { message: "Provide role and/or status to update." });
+export type UpdateUserRequest = z.infer<typeof updateUserRequestSchema>;
