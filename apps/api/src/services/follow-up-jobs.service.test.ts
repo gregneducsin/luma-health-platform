@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { db, customersTable, intakeLinkTokensTable, followUpJobsTable, questionnaireEventsTable, purchasesTable, conversationsTable, conversationMessagesTable } from "@luma/db";
 import { hashToken } from "../lib/crypto.js";
+import { setCustomerSmsDnd } from "./dnd.service.js";
 
 const sendMessageMock = vi.fn();
 vi.mock("../lib/sms-provider.js", async () => {
@@ -159,6 +160,34 @@ describe("sweepFollowUpJobs", () => {
     expect(job.status).toBe("cancelled");
   });
 
+  it("ignores a purchase whose row was actually created before the click, even if its purchaseDate is the same calendar day", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_same_day" });
+    const personId = await seedCustomer();
+    const clickedAt = new Date(Date.now() - 3 * 60 * 60 * 1000);
+
+    // Recorded well before the click, but purchaseDate (a date-only, no
+    // time-of-day column) happens to fall on the same calendar day as
+    // clickedAt — a date-only comparison would wrongly treat this as
+    // "completed since click".
+    await db.insert(purchasesTable).values({
+      customerId: personId,
+      purchaseDate: new Date().toISOString().slice(0, 10),
+      orderNumber: `ORD-${crypto.randomUUID()}`,
+      productName: "Semaglutide",
+      amountPaid: "120.00",
+      status: "completed",
+      createdAt: new Date(clickedAt.getTime() - 60 * 60 * 1000),
+    });
+
+    const { jobId } = await seedPendingJob(personId, clickedAt, new Date(Date.now() - 60_000));
+
+    await sweepFollowUpJobs();
+
+    const [job] = await db.select().from(followUpJobsTable).where(eq(followUpJobsTable.id, jobId));
+    expect(job.status).toBe("sent");
+  });
+
   it("ignores a questionnaire submission that happened before the link was clicked", async () => {
     sendMessageMock.mockClear();
     sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_789" });
@@ -178,6 +207,21 @@ describe("sweepFollowUpJobs", () => {
 
     const [job] = await db.select().from(followUpJobsTable).where(eq(followUpJobsTable.id, jobId));
     expect(job.status).toBe("sent");
+  });
+
+  it("cancels a due job when the person is do-not-disturb by the time it's due, instead of texting an opted-out customer", async () => {
+    sendMessageMock.mockClear();
+    const personId = await seedCustomer();
+    const { jobId } = await seedPendingJob(personId, new Date(Date.now() - 3 * 60 * 60 * 1000), new Date(Date.now() - 60_000));
+    await setCustomerSmsDnd(personId, true);
+
+    const result = await sweepFollowUpJobs();
+
+    expect(result.cancelledCount).toBe(1);
+    expect(sendMessageMock).not.toHaveBeenCalled();
+    const [job] = await db.select().from(followUpJobsTable).where(eq(followUpJobsTable.id, jobId));
+    expect(job.status).toBe("cancelled");
+    expect(job.cancelledReason).toBe("opted_out");
   });
 
   it("marks a job failed with NO_PHONE_NUMBER when the customer has no phone on file", async () => {

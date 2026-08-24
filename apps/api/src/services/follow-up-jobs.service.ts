@@ -3,6 +3,7 @@ import { db, followUpJobsTable, intakeLinkTokensTable, questionnaireEventsTable,
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { renderFollowUpMessage } from "../lib/messaging/follow-up-templates.js";
 import { getOrCreateConversation, appendMessage } from "./conversations.service.js";
+import { isCustomerSmsDnd } from "./dnd.service.js";
 import { logger } from "../lib/logger.js";
 
 const SECOND_STEP_DELAY_MS = 60 * 60 * 1000;
@@ -57,6 +58,19 @@ export async function sweepFollowUpJobs(): Promise<FollowUpSweepResult> {
       await db
         .update(followUpJobsTable)
         .set({ status: "cancelled", cancelledReason: "completed_before_followup" })
+        .where(eq(followUpJobsTable.id, job.jobId));
+      cancelledCount++;
+      continue;
+    }
+
+    // Every SMS send path must check this — see dnd.service.ts. Checked
+    // right before sending (not just at job-creation time) since a person
+    // can text STOP any time between clicking the link and this sweep
+    // running.
+    if (await isCustomerSmsDnd(job.personId)) {
+      await db
+        .update(followUpJobsTable)
+        .set({ status: "cancelled", cancelledReason: "opted_out" })
         .where(eq(followUpJobsTable.id, job.jobId));
       cancelledCount++;
       continue;
@@ -148,10 +162,15 @@ async function hasCompletedSinceClick(personId: string, clickedAt: Date | null):
     .limit(1);
   if (submitted) return true;
 
+  // purchaseDate is a customer-facing date with no time-of-day component, so
+  // comparing it against clickedAt (cast to a date) would treat a purchase
+  // made earlier the same calendar day — before the click — as "completed
+  // since click." createdAt is the row's real insert timestamp, giving this
+  // the same full-precision comparison the questionnaire check above uses.
   const [purchased] = await db
     .select({ id: purchasesTable.id })
     .from(purchasesTable)
-    .where(and(eq(purchasesTable.customerId, personId), eq(purchasesTable.status, "completed"), sql`${purchasesTable.purchaseDate} >= ${clickedAt}::date`))
+    .where(and(eq(purchasesTable.customerId, personId), eq(purchasesTable.status, "completed"), sql`${purchasesTable.createdAt} >= ${clickedAt}`))
     .limit(1);
   return Boolean(purchased);
 }
