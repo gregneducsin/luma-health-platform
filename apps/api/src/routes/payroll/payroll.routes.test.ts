@@ -225,6 +225,17 @@ describe("Marketing spend weeks", () => {
     expect(res.body.error).toMatch(/Friday/);
   });
 
+  it("rejects manager role — marketing spend is admin-only, manager's Orders/Leads access is read-only elsewhere", async () => {
+    await seedUser("marketing-spend-mgr@example.com", "manager");
+    const manager = await loginAgent(app, "marketing-spend-mgr@example.com");
+    expect((await manager.agent.get("/api/app/payroll/marketing-spend")).status).toBe(403);
+    const createRes = await manager.agent
+      .post("/api/app/payroll/marketing-spend")
+      .set("x-csrf-token", manager.csrf)
+      .send({ weekStart: "2026-03-13" });
+    expect(createRes.status).toBe(403);
+  });
+
   it("updates per-source spend via PATCH, clears it with an empty string, and GET reflects CPA metrics", async () => {
     const createRes = await agent.post("/api/app/payroll/marketing-spend").set("x-csrf-token", csrf).send({ weekStart: "2026-04-03" });
     const weekId = createRes.body.week.id;

@@ -40,12 +40,12 @@ describe("Customers CRUD", () => {
     expect(res.status).toBe(403);
   });
 
-  it("rejects manager role — customers is admin-only, manager's scope is payroll/employees only", async () => {
+  it("manager can read customers but not create one — read-only access to Leads", async () => {
     await seedUser("manager1@example.com", "manager");
     const { agent, csrf } = await loginAgent(app, "manager1@example.com");
 
     const listRes = await agent.get("/api/app/customers");
-    expect(listRes.status).toBe(403);
+    expect(listRes.status).toBe(200);
 
     const createRes = await agent
       .post("/api/app/customers")
@@ -679,10 +679,12 @@ describe("Purchases", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects manager and customer_service roles — purchases is admin-only", async () => {
+  it("manager can read purchases but not edit one (read-only Orders access); customer_service still cannot read", async () => {
     await seedUser("purchases-manager1@example.com", "manager");
     const manager = await loginAgent(app, "purchases-manager1@example.com");
-    expect((await manager.agent.get("/api/app/purchases")).status).toBe(403);
+    expect((await manager.agent.get("/api/app/purchases")).status).toBe(200);
+    const editRes = await manager.agent.patch("/api/app/purchases/1").set("x-csrf-token", manager.csrf).send({ status: "completed" });
+    expect(editRes.status).toBe(403);
 
     await seedUser("purchases-cs1@example.com", "customer_service");
     const cs = await loginAgent(app, "purchases-cs1@example.com");

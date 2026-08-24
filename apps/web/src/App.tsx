@@ -31,19 +31,19 @@ export default function App() {
       </Route>
 
       <Route path="/customers">
-        <ProtectedRoute roles={["admin"]}>
+        <ProtectedRoute roles={["admin", "manager"]}>
           <LeadsPage />
         </ProtectedRoute>
       </Route>
 
       <Route path="/customers/:id">
-        <ProtectedRoute roles={["admin"]}>
+        <ProtectedRoute roles={["admin", "manager"]}>
           <CustomerDetailPage />
         </ProtectedRoute>
       </Route>
 
       <Route path="/orders">
-        <ProtectedRoute roles={["admin"]}>
+        <ProtectedRoute roles={["admin", "manager"]}>
           <OrdersPage />
         </ProtectedRoute>
       </Route>
@@ -67,7 +67,7 @@ export default function App() {
       </Route>
 
       <Route path="/marketing-cpa">
-        <ProtectedRoute roles={["admin", "manager"]}>
+        <ProtectedRoute roles={["admin"]}>
           <MarketingCpaPage />
         </ProtectedRoute>
       </Route>

@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link } from "wouter";
 import { useCustomersList, useCreateCustomer, useCustomersSummary, useLeadTypes, useQuestionnaireIds } from "../hooks/useCustomers";
 import { Badge, Button, Card, ErrorText, Field, Input } from "../components/ui";
-import { ApiError } from "../hooks/useAuth";
+import { ApiError, useCurrentUser } from "../hooks/useAuth";
 import type { CustomersSummaryQuery } from "@luma/shared";
 
 const PERIOD_OPTIONS: { value: CustomersSummaryQuery["period"]; label: string }[] = [
@@ -118,6 +118,8 @@ export function LeadsPage() {
   const [sortBy, setSortBy] = useState<SortBy>("leadReceivedDate");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [showCreate, setShowCreate] = useState(false);
+  const { data: currentUser } = useCurrentUser();
+  const canEdit = currentUser?.user?.role === "admin";
 
   function handleSort(column: SortBy) {
     if (column === sortBy) {
@@ -145,12 +147,12 @@ export function LeadsPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-gray-900">Leads</h1>
-        <Button onClick={() => setShowCreate((s) => !s)}>{showCreate ? "Cancel" : "New lead"}</Button>
+        {canEdit && <Button onClick={() => setShowCreate((s) => !s)}>{showCreate ? "Cancel" : "New lead"}</Button>}
       </div>
 
       <SummaryBar />
 
-      {showCreate && <CreateCustomerForm onDone={() => setShowCreate(false)} />}
+      {canEdit && showCreate && <CreateCustomerForm onDone={() => setShowCreate(false)} />}
 
       <div className="flex flex-wrap items-center gap-3">
         <Input

@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useParams, Link } from "wouter";
 import { useCustomer, useCreatePurchase, useUpdatePurchase, useCreateIntakeLink } from "../hooks/useCustomers";
 import { Badge, Button, Card, ErrorText, Field, Input } from "../components/ui";
-import { ApiError } from "../hooks/useAuth";
+import { ApiError, useCurrentUser } from "../hooks/useAuth";
 import { formatDate, formatDateTime } from "../lib/formatTime";
 
 const STATUS_COLORS: Record<string, "gray" | "green" | "yellow" | "red"> = {
@@ -22,6 +22,8 @@ export function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data, isLoading } = useCustomer(id);
   const [showAddPurchase, setShowAddPurchase] = useState(false);
+  const { data: currentUser } = useCurrentUser();
+  const canEdit = currentUser?.user?.role === "admin";
 
   if (isLoading) return <p className="text-sm text-gray-500">Loading…</p>;
   if (!data) return <p className="text-sm text-gray-500">Customer not found.</p>;
@@ -92,14 +94,14 @@ export function CustomerDetailPage() {
         </Card>
       )}
 
-      <IntakeLinkCard customerId={customer.id} />
+      {canEdit && <IntakeLinkCard customerId={customer.id} />}
 
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-gray-900">Purchase history</h2>
-        <Button onClick={() => setShowAddPurchase((s) => !s)}>{showAddPurchase ? "Cancel" : "Add purchase"}</Button>
+        {canEdit && <Button onClick={() => setShowAddPurchase((s) => !s)}>{showAddPurchase ? "Cancel" : "Add purchase"}</Button>}
       </div>
 
-      {showAddPurchase && <AddPurchaseForm customerId={customer.id} onDone={() => setShowAddPurchase(false)} />}
+      {canEdit && showAddPurchase && <AddPurchaseForm customerId={customer.id} onDone={() => setShowAddPurchase(false)} />}
 
       <Card className="overflow-x-auto p-0">
         <table className="w-full text-sm">
@@ -115,7 +117,7 @@ export function CustomerDetailPage() {
           </thead>
           <tbody>
             {purchases.map((p) => (
-              <PurchaseRow key={p.id} purchase={p} customerId={customer.id} />
+              <PurchaseRow key={p.id} purchase={p} customerId={customer.id} canEdit={canEdit} />
             ))}
             {purchases.length === 0 && (
               <tr>
@@ -178,9 +180,11 @@ function IntakeLinkCard({ customerId }: { customerId: string }) {
 function PurchaseRow({
   purchase,
   customerId,
+  canEdit,
 }: {
   purchase: { id: number; purchaseDate: string; orderNumber: string; productName: string; amountPaid: string; status: string; orderClassification: string | null };
   customerId: string;
+  canEdit: boolean;
 }) {
   const updatePurchase = useUpdatePurchase(customerId);
 
@@ -194,6 +198,9 @@ function PurchaseRow({
         <Badge color={STATUS_COLORS[purchase.status] ?? "gray"}>{purchase.status}</Badge>
       </td>
       <td className="px-4 py-2">
+        {!canEdit ? (
+          <span className="text-xs text-gray-600">{purchase.orderClassification ?? "—"}</span>
+        ) : (
         <select
           className="rounded-md border border-gray-300 px-2 py-1 text-xs"
           value={purchase.orderClassification ?? ""}
@@ -208,6 +215,7 @@ function PurchaseRow({
           <option value="recurring">Recurring</option>
           <option value="unknown">Unknown</option>
         </select>
+        )}
       </td>
     </tr>
   );
