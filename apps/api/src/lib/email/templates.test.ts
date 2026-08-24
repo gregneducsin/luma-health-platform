@@ -5,6 +5,8 @@ import {
   renderOrderReceivedEmail,
   renderPrescriptionWrittenEmail,
   renderOrderShippedEmail,
+  renderPaymentFailedFirstOrderEmail,
+  renderPaymentFailedRecurringEmail,
   renderAbandonedCartOpenerEmail,
   renderAbandonedCartUrgencyEmail,
   renderAbandonedCartEducationalEmail,
@@ -52,6 +54,8 @@ describe("fixed trigger-email templates", () => {
     ["order received", () => renderOrderReceivedEmail("Jamie", UNSUB_URL)],
     ["prescription written", () => renderPrescriptionWrittenEmail("Jamie", UNSUB_URL)],
     ["order shipped", () => renderOrderShippedEmail("Jamie", "1Z999AA10123456784", UNSUB_URL)],
+    ["payment failed (first order)", () => renderPaymentFailedFirstOrderEmail("Jamie", UNSUB_URL)],
+    ["payment failed (recurring)", () => renderPaymentFailedRecurringEmail("Jamie", UNSUB_URL)],
     ["abandoned cart opener", () => renderAbandonedCartOpenerEmail("Jamie", CTA_URL, UNSUB_URL)],
     ["abandoned cart urgency", () => renderAbandonedCartUrgencyEmail("Jamie", CTA_URL, UNSUB_URL)],
     ["abandoned cart educational", () => renderAbandonedCartEducationalEmail("Jamie", CTA_URL, UNSUB_URL)],
@@ -75,6 +79,15 @@ describe("fixed trigger-email templates", () => {
   it("falls back to 'there' for a blank first name", () => {
     const { html } = renderOrderReceivedEmail("   ", UNSUB_URL);
     expect(html).toContain("there");
+  });
+
+  it("payment-failed (recurring) asks whether they still want the refill; payment-failed (first order) does not", () => {
+    const recurring = renderPaymentFailedRecurringEmail("Jamie", UNSUB_URL);
+    expect(recurring.html).toMatch(/still interested/i);
+    expect(recurring.html).toContain("refill");
+
+    const firstOrder = renderPaymentFailedFirstOrderEmail("Jamie", UNSUB_URL);
+    expect(firstOrder.html).not.toMatch(/still interested/i);
   });
 
   it("each abandoned-cart drip step's CTA button links to the minted per-lead ctaUrl, not a static link", () => {

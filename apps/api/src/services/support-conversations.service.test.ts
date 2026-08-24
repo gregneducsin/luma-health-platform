@@ -116,7 +116,7 @@ describe("toSarahPreviewBody", () => {
     const messages = await appendSupportMessage(conversation.id, "inbound", "thanks!").then(() => listSupportMessages(conversation.id));
 
     const body = toSarahPreviewBody(updated, messages);
-    expect(body.orderState).toEqual({ prescriptionWritten: true, orderShipped: true, trackingNumber: "TRACK999" });
+    expect(body.orderState).toEqual({ prescriptionWritten: true, orderShipped: true, trackingNumber: "TRACK999", paymentFailed: false });
     expect(body.reviewRequested).toBe(true);
     expect(body.lastQuestion).toBe("Anything else?");
     expect(body.messages).toEqual([{ direction: "inbound", body: "thanks!" }]);

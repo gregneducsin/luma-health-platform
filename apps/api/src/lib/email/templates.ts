@@ -369,6 +369,175 @@ export function renderOrderShippedEmail(firstName: string, trackingNumber: strin
 }
 
 /**
+ * Fired from handlePaymentFailed when a bask_payment_failed webhook
+ * arrives — correcting course after the order-received email already went
+ * out the moment the order landed, before payment was actually confirmed.
+ * No CTA button/link here (unlike the other status emails) — there's no
+ * confirmed self-service payment-retry page, so this is deliberately
+ * staff-assisted: ask the patient to reply or call, same as the SMS
+ * variant, rather than pointing at a URL that might not exist.
+ */
+export function renderPaymentFailedFirstOrderEmail(firstName: string, unsubscribeUrl: string): RenderedEmail {
+  const name = firstName.trim() || "there";
+  const html = `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>We couldn't process the payment for your Luma Health order</title>
+<!--[if mso]>
+<noscript>
+<xml>
+<o:OfficeDocumentSettings>
+<o:PixelsPerInch>96</o:PixelsPerInch>
+</o:OfficeDocumentSettings>
+</xml>
+</noscript>
+<![endif]-->
+<style>
+  body, table, td { font-family: 'Georgia', 'Times New Roman', serif; }
+  body { margin: 0; padding: 0; background-color: #f5f1ea; }
+  .email-wrapper { width: 100%; background-color: #f5f1ea; padding: 40px 0; }
+  .email-container { max-width: 600px; margin: 0 auto; background-color: #fffdf9; border: 1px solid #e8dfd0; }
+  .header { background-color: #2b2420; padding: 36px 40px; text-align: center; }
+  .logo-text { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 30px; letter-spacing: 3px; color: #d4af6a; margin: 0; font-weight: 500; }
+  .header-sub { font-family: Arial, sans-serif; font-size: 11px; letter-spacing: 2px; color: #cbbfa8; text-transform: uppercase; margin-top: 6px; }
+  .body-content { padding: 44px 40px 20px 40px; }
+  .greeting { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 26px; color: #2b2420; margin: 0 0 22px 0; font-weight: 500; }
+  .paragraph { font-family: Arial, Helvetica, sans-serif; font-size: 15px; line-height: 26px; color: #4a4038; margin: 0 0 20px 0; }
+  .status-box { background-color: #2b2420; border-radius: 4px; padding: 26px 24px; margin: 0 0 26px 0; text-align: center; }
+  .status-label { font-family: Arial, sans-serif; font-size: 11px; letter-spacing: 2px; color: #cbbfa8; text-transform: uppercase; margin: 0 0 8px 0; }
+  .status-value { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 26px; color: #d4af6a; margin: 0; font-weight: 500; }
+  .divider { border: none; border-top: 1px solid #e8dfd0; margin: 30px 0; }
+  .footer { padding: 28px 40px 40px 40px; text-align: center; }
+  .footer-text { font-family: Arial, sans-serif; font-size: 12px; line-height: 20px; color: #948a7c; margin: 4px 0; }
+  .footer-phone { color: #b8935a; text-decoration: none; font-weight: bold; }
+  a { color: #b8935a; }
+</style>
+</head>
+<body>
+<div class="email-wrapper">
+  <table class="email-container" role="presentation" cellpadding="0" cellspacing="0" width="100%">
+    <tr>
+      <td class="header">
+        <p class="logo-text">LUMA HEALTH</p>
+        <p class="header-sub">Your Journey to Wellness</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="body-content">
+        <p class="greeting">Dear ${name},</p>
+
+        <p class="paragraph">We weren't able to process the payment for your order, so we can't move forward with it yet.</p>
+
+        <div class="status-box">
+          <p class="status-label">Order Status</p>
+          <p class="status-value">Payment Needed</p>
+        </div>
+
+        <p class="paragraph">Just reply to this email, or call or text us at <a href="tel:6592177086" class="footer-phone">659-217-7086</a>, and we'll get your payment sorted out.</p>
+
+        <p class="paragraph" style="margin-bottom:0;">We're here to help.<br><!--[if mso]>&nbsp;<![endif]--><br>Warmly,<br>The Luma Health Team</p>
+      </td>
+    </tr>
+    <tr>
+      <td><hr class="divider" style="margin-left:40px; margin-right:40px;"></td>
+    </tr>
+    <tr>
+      <td class="footer">
+        <p class="footer-text">Luma Health &middot; 2500 Quantum Lakes Drive, Boynton Beach, FL 33426</p>
+        <p class="footer-text"><a href="tel:6592177086" class="footer-phone">659-217-7086</a></p>
+        <p class="footer-text"><a href="${unsubscribeUrl}" class="footer-phone">Unsubscribe</a> from future emails.</p>
+      </td>
+    </tr>
+  </table>
+</div>
+</body>
+</html>`;
+  return { subject: "We couldn't process the payment for your Luma Health order", html };
+}
+
+export function renderPaymentFailedRecurringEmail(firstName: string, unsubscribeUrl: string): RenderedEmail {
+  const name = firstName.trim() || "there";
+  const html = `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>We couldn't process the payment for your Luma Health refill</title>
+<!--[if mso]>
+<noscript>
+<xml>
+<o:OfficeDocumentSettings>
+<o:PixelsPerInch>96</o:PixelsPerInch>
+</o:OfficeDocumentSettings>
+</xml>
+</noscript>
+<![endif]-->
+<style>
+  body, table, td { font-family: 'Georgia', 'Times New Roman', serif; }
+  body { margin: 0; padding: 0; background-color: #f5f1ea; }
+  .email-wrapper { width: 100%; background-color: #f5f1ea; padding: 40px 0; }
+  .email-container { max-width: 600px; margin: 0 auto; background-color: #fffdf9; border: 1px solid #e8dfd0; }
+  .header { background-color: #2b2420; padding: 36px 40px; text-align: center; }
+  .logo-text { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 30px; letter-spacing: 3px; color: #d4af6a; margin: 0; font-weight: 500; }
+  .header-sub { font-family: Arial, sans-serif; font-size: 11px; letter-spacing: 2px; color: #cbbfa8; text-transform: uppercase; margin-top: 6px; }
+  .body-content { padding: 44px 40px 20px 40px; }
+  .greeting { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 26px; color: #2b2420; margin: 0 0 22px 0; font-weight: 500; }
+  .paragraph { font-family: Arial, Helvetica, sans-serif; font-size: 15px; line-height: 26px; color: #4a4038; margin: 0 0 20px 0; }
+  .status-box { background-color: #2b2420; border-radius: 4px; padding: 26px 24px; margin: 0 0 26px 0; text-align: center; }
+  .status-label { font-family: Arial, sans-serif; font-size: 11px; letter-spacing: 2px; color: #cbbfa8; text-transform: uppercase; margin: 0 0 8px 0; }
+  .status-value { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 26px; color: #d4af6a; margin: 0; font-weight: 500; }
+  .divider { border: none; border-top: 1px solid #e8dfd0; margin: 30px 0; }
+  .footer { padding: 28px 40px 40px 40px; text-align: center; }
+  .footer-text { font-family: Arial, sans-serif; font-size: 12px; line-height: 20px; color: #948a7c; margin: 4px 0; }
+  .footer-phone { color: #b8935a; text-decoration: none; font-weight: bold; }
+  a { color: #b8935a; }
+</style>
+</head>
+<body>
+<div class="email-wrapper">
+  <table class="email-container" role="presentation" cellpadding="0" cellspacing="0" width="100%">
+    <tr>
+      <td class="header">
+        <p class="logo-text">LUMA HEALTH</p>
+        <p class="header-sub">Your Journey to Wellness</p>
+      </td>
+    </tr>
+    <tr>
+      <td class="body-content">
+        <p class="greeting">Dear ${name},</p>
+
+        <p class="paragraph">We weren't able to process the payment for your refill.</p>
+
+        <div class="status-box">
+          <p class="status-label">Refill Status</p>
+          <p class="status-value">Payment Needed</p>
+        </div>
+
+        <p class="paragraph">Are you still interested in moving forward with it? Just reply to this email, or call or text us at <a href="tel:6592177086" class="footer-phone">659-217-7086</a>, and we'll get it sorted out.</p>
+
+        <p class="paragraph" style="margin-bottom:0;">We're here to help.<br><!--[if mso]>&nbsp;<![endif]--><br>Warmly,<br>The Luma Health Team</p>
+      </td>
+    </tr>
+    <tr>
+      <td><hr class="divider" style="margin-left:40px; margin-right:40px;"></td>
+    </tr>
+    <tr>
+      <td class="footer">
+        <p class="footer-text">Luma Health &middot; 2500 Quantum Lakes Drive, Boynton Beach, FL 33426</p>
+        <p class="footer-text"><a href="tel:6592177086" class="footer-phone">659-217-7086</a></p>
+        <p class="footer-text"><a href="${unsubscribeUrl}" class="footer-phone">Unsubscribe</a> from future emails.</p>
+      </td>
+    </tr>
+  </table>
+</div>
+</body>
+</html>`;
+  return { subject: "We couldn't process the payment for your Luma Health refill", html };
+}
+
+/**
  * `ctaUrl` must be a freshly-minted per-lead intake link (createIntakeLink
  * with promo "first_month_20"), not the bare Bask questionnaire URL —
  * clicking it is what arms the 2-hour follow-up job (see

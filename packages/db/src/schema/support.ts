@@ -21,6 +21,9 @@ export const supportConversationsTable = pgTable(
     orderShipped: boolean("order_shipped").notNull().default(false),
     orderShippedAt: timestamp("order_shipped_at", { withTimezone: true }),
     trackingNumber: text("tracking_number"),
+    /** Set when a bask_payment_failed webhook arrives for this customer's order — see handlePaymentFailed. Never auto-cleared; a person clears it (or a future successful order overwrites the picture) once it's resolved. */
+    paymentFailed: boolean("payment_failed").notNull().default(false),
+    paymentFailedAt: timestamp("payment_failed_at", { withTimezone: true }),
     /** Set once the post-delivery "how was your experience" check-in has been sent — never re-asked. */
     reviewRequested: boolean("review_requested").notNull().default(false),
     reviewSentiment: text("review_sentiment", { enum: ["positive", "neutral", "negative"] }),

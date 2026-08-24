@@ -872,6 +872,144 @@ describe("Webhooks", () => {
         .where(eq(externalIdentitiesTable.externalId, "bask-person-unknown"));
       expect(identities).toHaveLength(0);
     });
+
+    it("corrects a first order's purchase status off completed and sends the first-order copy, not the recurring one", async () => {
+      const { db, customersTable, purchasesTable } = await import("@luma/db");
+      const { eq } = await import("drizzle-orm");
+
+      // handleBaskOrderWebhook already sent "we received your order" and
+      // marked the purchase completed — this is the payment-failed webhook
+      // Bask fires afterward for the same transaction.
+      sendMessageMock.mockClear();
+      sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_order_received" });
+      await request(app)
+        .post("/api/webhooks/bask-order")
+        .set("x-webhook-secret", ORDER_SECRET)
+        .send({
+          eventId: "bask-order-evt-fp-first",
+          externalPersonId: "bask-person-fp-first",
+          email: "fp-first@example.com",
+          firstName: "First",
+          lastName: "Order",
+          phone: "+15551110100",
+          orderId: "BASK-FP-FIRST",
+          productName: "Program",
+          amountPaid: 199,
+          purchasedAt: "2026-02-01T10:00:00.000Z",
+          transactionId: "txn-fp-first",
+        });
+
+      sendMessageMock.mockClear();
+      sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_payment_failed" });
+      const res = await request(app)
+        .post("/api/webhooks/bask-payment-failed")
+        .set("x-webhook-secret", PAYMENT_FAILED_SECRET)
+        .send({
+          eventId: "bask-fp-evt-first",
+          transactionId: "txn-fp-first",
+          externalPersonId: "bask-person-fp-first",
+          amount: "199.00",
+          failureDate: new Date().toISOString(),
+        });
+      expect(res.status).toBe(200);
+
+      const [customer] = await db.select().from(customersTable).where(eq(customersTable.email, "fp-first@example.com"));
+      const [purchase] = await db.select().from(purchasesTable).where(eq(purchasesTable.customerId, customer!.id));
+      expect(purchase.status).toBe("payment_failed");
+
+      expect(sendMessageMock).toHaveBeenCalledWith("+15551110100", expect.stringContaining("Reply here"));
+      expect(sendMessageMock).toHaveBeenCalledWith("+15551110100", expect.not.stringContaining("still interested"));
+
+      const { supportConversationsTable } = await import("@luma/db");
+      const [conversation] = await db.select().from(supportConversationsTable).where(eq(supportConversationsTable.personId, customer!.id));
+      expect(conversation.paymentFailed).toBe(true);
+      expect(conversation.paymentFailedAt).toBeTruthy();
+      expect(conversation.needsAttention).toBe(true);
+    });
+
+    it("sends the recurring copy, asking if they still want the refill, for a recurring order's payment failure", async () => {
+      const { db, customersTable, externalIdentitiesTable, purchasesTable } = await import("@luma/db");
+      const { eq } = await import("drizzle-orm");
+
+      const [customer] = await db
+        .insert(customersTable)
+        .values({ firstName: "Refill", lastName: "Customer", email: "fp-recurring@example.com", phone: "+15551110101", leadReceivedDate: "2026-01-01" })
+        .returning();
+      await db.insert(externalIdentitiesTable).values({ personId: customer!.id, system: "bask", externalId: "bask-person-fp-recurring" });
+      // Existing purchase history so the next order webhook classifies as recurring.
+      await db.insert(purchasesTable).values({
+        customerId: customer!.id,
+        purchaseDate: "2026-01-01",
+        orderNumber: "BASK-FP-RECUR-EARLIER",
+        productName: "Program",
+        amountPaid: "199.00",
+        orderClassification: "first_order",
+        orderClassificationSource: "manual",
+      });
+
+      sendMessageMock.mockClear();
+      await request(app)
+        .post("/api/webhooks/bask-order")
+        .set("x-webhook-secret", ORDER_SECRET)
+        .send({
+          eventId: "bask-order-evt-fp-recurring",
+          externalPersonId: "bask-person-fp-recurring",
+          email: "fp-recurring@example.com",
+          orderId: "BASK-FP-RECUR",
+          productName: "Program",
+          amountPaid: 199,
+          purchasedAt: "2026-02-01T10:00:00.000Z",
+          transactionId: "txn-fp-recurring",
+        });
+
+      sendMessageMock.mockClear();
+      sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_payment_failed_recurring" });
+      const res = await request(app)
+        .post("/api/webhooks/bask-payment-failed")
+        .set("x-webhook-secret", PAYMENT_FAILED_SECRET)
+        .send({
+          eventId: "bask-fp-evt-recurring",
+          transactionId: "txn-fp-recurring",
+          externalPersonId: "bask-person-fp-recurring",
+          amount: "199.00",
+          failureDate: new Date().toISOString(),
+        });
+      expect(res.status).toBe(200);
+
+      const [failedPurchase] = await db.select().from(purchasesTable).where(eq(purchasesTable.orderNumber, "BASK-FP-RECUR"));
+      expect(failedPurchase.status).toBe("payment_failed");
+
+      expect(sendMessageMock).toHaveBeenCalledWith("+15551110101", expect.stringMatching(/still interested/i));
+      expect(sendMessageMock).toHaveBeenCalledWith("+15551110101", expect.stringContaining("refill"));
+    });
+
+    it("leaves the purchase status untouched and does not crash when no matching purchase is found", async () => {
+      const { db, customersTable, externalIdentitiesTable, purchasesTable } = await import("@luma/db");
+      const { eq } = await import("drizzle-orm");
+
+      const [customer] = await db
+        .insert(customersTable)
+        .values({ firstName: "No", lastName: "MatchingPurchase", email: "fp-nomatch@example.com", leadReceivedDate: "2026-01-01" })
+        .returning();
+      await db.insert(externalIdentitiesTable).values({ personId: customer!.id, system: "bask", externalId: "bask-person-fp-nomatch" });
+
+      sendMessageMock.mockClear();
+      const res = await request(app)
+        .post("/api/webhooks/bask-payment-failed")
+        .set("x-webhook-secret", PAYMENT_FAILED_SECRET)
+        .send({
+          eventId: "bask-fp-evt-nomatch",
+          transactionId: "txn-fp-nomatch-does-not-exist",
+          externalPersonId: "bask-person-fp-nomatch",
+          amount: "49.99",
+          failureDate: new Date().toISOString(),
+        });
+      expect(res.status).toBe(200);
+
+      const purchases = await db.select().from(purchasesTable).where(eq(purchasesTable.customerId, customer!.id));
+      expect(purchases).toHaveLength(0);
+      expect(sendMessageMock).not.toHaveBeenCalled();
+    });
   });
 
   describe("iBluSend message webhook", () => {

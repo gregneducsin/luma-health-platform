@@ -30,3 +30,23 @@ export function renderReviewRequestMessage(firstName: string): string {
   const name = firstName.trim() || "there";
   return `Hi ${name}, this is Sarah with Luma Health. Now that you've had a chance to receive your medication, how has your experience with us been so far?`;
 }
+
+/**
+ * Fired from handlePaymentFailed when a bask_payment_failed webhook arrives
+ * — correcting course after handleBaskOrderWebhook already sent the
+ * "we received your order" message the moment the order landed, before
+ * payment was actually confirmed. Two variants, owner-specified: a first
+ * order goes straight to "reply and we'll help," since there's no existing
+ * relationship to check in on — a recurring/refill order asks first whether
+ * they still want to move forward, since that's a real yes/no question for
+ * an existing patient rather than an assumed "of course."
+ */
+export function renderPaymentFailedFirstOrderMessage(firstName: string): string {
+  const name = firstName.trim() || "there";
+  return `Hi ${name}, this is Sarah with Luma Health. We weren't able to process the payment for your order, so we can't move forward with it yet. Reply here and we'll get your payment sorted.`;
+}
+
+export function renderPaymentFailedRecurringMessage(firstName: string): string {
+  const name = firstName.trim() || "there";
+  return `Hi ${name}, this is Sarah with Luma Health. We weren't able to process the payment for your refill. Are you still interested in moving forward with it? Reply here and let us know.`;
+}

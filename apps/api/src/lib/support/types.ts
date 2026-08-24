@@ -45,6 +45,7 @@ export interface SarahPreviewRequestBody {
     readonly prescriptionWritten: boolean;
     readonly orderShipped: boolean;
     readonly trackingNumber: string | null;
+    readonly paymentFailed: boolean;
   };
   /**
    * True once the post-delivery review check-in has been sent this session —

@@ -2,7 +2,7 @@ import { pgTable, text, serial, uuid, integer, date, numeric, timestamp, index, 
 import { sql } from "drizzle-orm";
 import { customersTable } from "./customers";
 
-export const purchaseStatusEnum = ["pending", "completed", "refunded", "cancelled"] as const;
+export const purchaseStatusEnum = ["pending", "completed", "refunded", "cancelled", "payment_failed"] as const;
 export type PurchaseStatus = (typeof purchaseStatusEnum)[number];
 
 export const purchaseClassificationEnum = ["first_order", "recurring", "unknown"] as const;

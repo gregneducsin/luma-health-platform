@@ -17,6 +17,8 @@ export interface SupportEmailConversationStatePatch {
   readonly orderShipped?: boolean;
   readonly orderShippedAt?: Date;
   readonly trackingNumber?: string | null;
+  readonly paymentFailed?: boolean;
+  readonly paymentFailedAt?: Date;
   readonly reviewRequested?: boolean;
   readonly reviewSentiment?: "positive" | "neutral" | "negative" | null;
   readonly lastQuestion?: string | null;
@@ -91,6 +93,7 @@ export function toSupportEmailPreviewBody(conversation: SupportEmailConversation
       prescriptionWritten: conversation.prescriptionWritten,
       orderShipped: conversation.orderShipped,
       trackingNumber: conversation.trackingNumber,
+      paymentFailed: conversation.paymentFailed,
     },
     reviewRequested: conversation.reviewRequested,
     lastQuestion: conversation.lastQuestion,

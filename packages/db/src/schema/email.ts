@@ -86,6 +86,9 @@ export const supportEmailConversationsTable = pgTable(
     orderShipped: boolean("order_shipped").notNull().default(false),
     orderShippedAt: timestamp("order_shipped_at", { withTimezone: true }),
     trackingNumber: text("tracking_number"),
+    /** Email twin of supportConversationsTable.paymentFailed — see its docstring. */
+    paymentFailed: boolean("payment_failed").notNull().default(false),
+    paymentFailedAt: timestamp("payment_failed_at", { withTimezone: true }),
     reviewRequested: boolean("review_requested").notNull().default(false),
     reviewSentiment: text("review_sentiment", { enum: ["positive", "neutral", "negative"] }),
     lastQuestion: text("last_question"),

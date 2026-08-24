@@ -21,7 +21,7 @@ import { scheduleAbandonedCartOpener } from "./abandoned-cart.service.js";
 import { scheduleAbandonedCartEmailSequence } from "./abandoned-cart-email.service.js";
 import { sendMetaLeadOpener } from "./meta-lead.service.js";
 import { scheduleMetaLeadEmailSequence } from "./meta-lead-email.service.js";
-import { sendOrderReceivedOpener, handlePrescriptionWritten, handleOrderShipped } from "./order-fulfillment.service.js";
+import { sendOrderReceivedOpener, handlePrescriptionWritten, handleOrderShipped, handlePaymentFailed } from "./order-fulfillment.service.js";
 import { setCustomerSmsDnd, setCustomerEmailDnd } from "./dnd.service.js";
 import { normalizePhone } from "../lib/phone.js";
 import { logger } from "../lib/logger.js";
@@ -445,6 +445,33 @@ export async function handleBaskPaymentFailedWebhook(payload: BaskPaymentFailedW
       testMode: payload.testMode ?? false,
       rawPayload: payload,
     });
+
+    // Correct the record and notify the customer — handleBaskOrderWebhook
+    // already marked the purchase "completed" and sent the "we received
+    // your order" notice the instant the order landed, before payment was
+    // confirmed. Correlated via ecommerceOrderId (has a unique index),
+    // which handleBaskOrderWebhook populates from the order webhook's own
+    // ecommerceOrderId, falling back to ITS transactionId — matching this
+    // payload's transactionId is the best available signal that the two
+    // independent Bask webhooks refer to the same underlying transaction,
+    // not yet confirmed against a real pair of Bask payloads for the same
+    // order (same "SPECULATIVE, confirm against the real payload" caveat as
+    // this file's other Bask webhook assumptions).
+    if (customerId) {
+      const [purchase] = await db
+        .select({ id: purchasesTable.id, status: purchasesTable.status, orderClassification: purchasesTable.orderClassification })
+        .from(purchasesTable)
+        .where(and(eq(purchasesTable.customerId, customerId), eq(purchasesTable.ecommerceOrderId, payload.transactionId)));
+
+      if (purchase && purchase.status === "completed") {
+        await db.update(purchasesTable).set({ status: "payment_failed" }).where(eq(purchasesTable.id, purchase.id));
+        await handlePaymentFailed(customerId, purchase.orderClassification === "first_order");
+      } else if (!purchase) {
+        logger.warn({ customerId, transactionId: payload.transactionId }, "payment-failed webhook: no matching purchase found to correct — recorded for reporting only");
+      }
+    } else {
+      logger.warn({ transactionId: payload.transactionId }, "payment-failed webhook: could not resolve a customer — recorded for reporting only");
+    }
 
     await markWebhookEventProcessed(recorded.id, customerId);
   } catch (err) {

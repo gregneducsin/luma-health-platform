@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { renderOrderReceivedMessage, renderPrescriptionWrittenMessage, renderOrderShippedMessage, renderReviewRequestMessage } from "./templates.js";
+import {
+  renderOrderReceivedMessage,
+  renderPrescriptionWrittenMessage,
+  renderOrderShippedMessage,
+  renderReviewRequestMessage,
+  renderPaymentFailedFirstOrderMessage,
+  renderPaymentFailedRecurringMessage,
+} from "./templates.js";
 
 describe("renderOrderReceivedMessage", () => {
   it("introduces Sarah and mentions the portal link", () => {
@@ -50,5 +57,33 @@ describe("renderReviewRequestMessage", () => {
   it("interpolates the first name, falling back to 'there' when blank", () => {
     expect(renderReviewRequestMessage("Jamie")).toContain("Jamie");
     expect(renderReviewRequestMessage("  ")).toContain("there");
+  });
+});
+
+describe("renderPaymentFailedFirstOrderMessage", () => {
+  it("asks the patient to reply, not to expect a self-service link", () => {
+    const text = renderPaymentFailedFirstOrderMessage("Jamie");
+    expect(text).toContain("Reply here");
+    expect(text).not.toMatch(/—|--/);
+  });
+
+  it("interpolates the first name, falling back to 'there' when blank", () => {
+    expect(renderPaymentFailedFirstOrderMessage("Jamie")).toContain("Jamie");
+    expect(renderPaymentFailedFirstOrderMessage("  ")).toContain("there");
+  });
+});
+
+describe("renderPaymentFailedRecurringMessage", () => {
+  it("asks whether they still want to move forward, exactly one question mark, no em dash", () => {
+    const text = renderPaymentFailedRecurringMessage("Jamie");
+    expect(text).toMatch(/still interested/i);
+    expect(text).toContain("refill");
+    expect((text.match(/\?/g) ?? []).length).toBe(1);
+    expect(text).not.toMatch(/—|--/);
+  });
+
+  it("interpolates the first name, falling back to 'there' when blank", () => {
+    expect(renderPaymentFailedRecurringMessage("Jamie")).toContain("Jamie");
+    expect(renderPaymentFailedRecurringMessage("  ")).toContain("there");
   });
 });

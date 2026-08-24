@@ -16,7 +16,7 @@ const { runSarahTurn } = await import("./sarah-conversation.service.js");
 function baseBody(overrides: Partial<SarahPreviewRequestBody> = {}): SarahPreviewRequestBody {
   return {
     messages: [{ direction: "inbound", body: "Has my order shipped yet?" }],
-    orderState: { prescriptionWritten: false, orderShipped: false, trackingNumber: null },
+    orderState: { prescriptionWritten: false, orderShipped: false, trackingNumber: null, paymentFailed: false },
     reviewRequested: false,
     lastQuestion: null,
     pendingTopic: null,

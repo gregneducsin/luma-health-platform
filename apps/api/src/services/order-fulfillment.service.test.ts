@@ -23,7 +23,7 @@ vi.mock("../lib/email-provider.js", async () => {
   return { ...actual, getEmailProvider: (persona: "lucy" | "sarah") => ({ provider: { sendEmail: sendEmailMock }, fromName: `${persona} at Luma Health` }) };
 });
 
-const { sendOrderReceivedOpener, handlePrescriptionWritten, handleOrderShipped, sweepReviewRequestTriggers } = await import(
+const { sendOrderReceivedOpener, handlePrescriptionWritten, handleOrderShipped, handlePaymentFailed, sweepReviewRequestTriggers } = await import(
   "./order-fulfillment.service.js"
 );
 const { getOrCreateSupportConversation, listSupportMessages } = await import("./support-conversations.service.js");
@@ -175,6 +175,76 @@ describe("handleOrderShipped", () => {
 
     const conversation = await getOrCreateSupportConversation(personId);
     expect(conversation.trackingNumber).toBe("TRACK2");
+  });
+});
+
+describe("handlePaymentFailed", () => {
+  it("first order: flags the conversation, sends the 'reply and we'll help' text and email, no 'still interested' question", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_payment_failed_first" });
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<payment-failed-first@example.com>" });
+
+    const personId = await seedCustomer();
+    await handlePaymentFailed(personId, true);
+
+    const conversation = await getOrCreateSupportConversation(personId);
+    expect(conversation.paymentFailed).toBe(true);
+    expect(conversation.paymentFailedAt).not.toBeNull();
+    expect(conversation.needsAttention).toBe(true);
+    expect(conversation.needsAttentionReason).toMatch(/payment/i);
+
+    const messages = await listSupportMessages(conversation.id);
+    expect(messages.length).toBe(1);
+    expect(messages[0].body).toContain("Reply here");
+    expect(messages[0].body).not.toMatch(/still interested/i);
+
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("recurring: asks whether they still want the refill instead of the first-order copy", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_payment_failed_recurring" });
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<payment-failed-recurring@example.com>" });
+
+    const personId = await seedCustomer();
+    await handlePaymentFailed(personId, false);
+
+    const conversation = await getOrCreateSupportConversation(personId);
+    const messages = await listSupportMessages(conversation.id);
+    expect(messages[0].body).toMatch(/still interested/i);
+    expect(messages[0].body).toContain("refill");
+  });
+
+  it("still flags the conversation and sends the email when there's no phone on file, but sends no text", async () => {
+    sendMessageMock.mockClear();
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<payment-failed-no-phone@example.com>" });
+
+    const personId = await seedCustomer({ phone: null });
+    await handlePaymentFailed(personId, true);
+
+    expect(sendMessageMock).not.toHaveBeenCalled();
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    const conversation = await getOrCreateSupportConversation(personId);
+    expect(conversation.paymentFailed).toBe(true);
+    expect(conversation.needsAttention).toBe(true);
+  });
+
+  it("respects SMS do-not-disturb: no text sent, but still flags the conversation and sends the email", async () => {
+    sendMessageMock.mockClear();
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<payment-failed-dnd@example.com>" });
+
+    const personId = await seedCustomer();
+    await setCustomerSmsDnd(personId, true);
+    await handlePaymentFailed(personId, true);
+
+    expect(sendMessageMock).not.toHaveBeenCalled();
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    const conversation = await getOrCreateSupportConversation(personId);
+    expect(conversation.paymentFailed).toBe(true);
   });
 });
 

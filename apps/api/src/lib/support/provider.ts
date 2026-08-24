@@ -83,6 +83,7 @@ function buildSystemPrompt(body: SarahPreviewRequestBody, knowledgeCatalog: read
     `  prescriptionWritten: ${o.prescriptionWritten ? "yes" : "no"}`,
     `  orderShipped: ${o.orderShipped ? "yes" : "no"}`,
     `  trackingNumber: ${o.trackingNumber ?? "none yet"}`,
+    `  paymentFailed: ${o.paymentFailed ? "yes" : "no"}`,
   ].join("\n");
 
   const lastQ = body.lastQuestion ? `Last question asked to patient: "${body.lastQuestion}"` : "No question has been asked yet.";
@@ -130,6 +131,11 @@ YOUR SCOPE — general customer service only, absolutely no medical information 
    following up, don't guess what was said, don't promise an outcome, and don't try to resolve the underlying
    request yourself. Point them back to that same patient portal chat as the fastest way to get a direct
    answer (${APPROVED_PORTAL_URL}), and set requiresStaff:true so our team also checks on it.
+ - If paymentFailed is yes, they've already been sent a message explaining their payment didn't go through —
+   if they bring up their order status or reply about it, acknowledge honestly that there was a payment issue
+   (don't say "processing normally" or anything implying it's moving forward), never guess or state a specific
+   reason the payment failed, never attempt to collect card/payment details yourself, and set requiresStaff:true
+   so a person can actually help them complete it.
  - If a patient mentions still feeling hungry, use the appetite_hunger_management topic below — but don't just
    give the tip and move on. Make nextQuestion a warm, specific check-in on one concrete lifestyle factor (how
    their water intake's been, whether they're getting enough protein at meals, or their activity lately), the
