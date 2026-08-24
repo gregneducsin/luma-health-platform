@@ -1,4 +1,4 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db, conversationsTable, conversationMessagesTable, customersTable, type Conversation, type ConversationMessage } from "@luma/db";
 import type { BotPreviewRequestBody } from "../lib/messaging/types.js";
 import type { ObjectionKey } from "../lib/messaging/objection-handling.js";
@@ -49,18 +49,33 @@ export async function getOrCreateConversation(personId: string, leadSource: "aba
   return row;
 }
 
-/** See support-conversations.service.ts's updateSupportConversationState for why the pre-update read only happens on this one patch shape. */
+/** See support-conversations.service.ts's updateSupportConversationState for why the "already flagged" check only happens on this one patch shape. */
 export async function updateConversationState(conversationId: string, patch: ConversationStatePatch): Promise<void> {
   if (patch.needsAttention === true) {
-    const [before] = await db
-      .select({ needsAttention: conversationsTable.needsAttention, firstName: customersTable.firstName, lastName: customersTable.lastName })
-      .from(conversationsTable)
-      .innerJoin(customersTable, eq(customersTable.id, conversationsTable.personId))
-      .where(eq(conversationsTable.id, conversationId));
-    await db.update(conversationsTable).set(patch).where(eq(conversationsTable.id, conversationId));
-    if (before && !before.needsAttention) {
-      void notifySlack(`Needs attention (text) — ${before.firstName} ${before.lastName}: ${patch.needsAttentionReason ?? "no reason given"}`);
+    // A single UPDATE ... WHERE needsAttention = false ... RETURNING, not a
+    // separate read-then-write: two webhook-driven calls landing close
+    // together for the same conversation would otherwise both read
+    // needsAttention: false before either write lands, and both fire the
+    // Slack alert. The row lock this UPDATE takes serializes concurrent
+    // callers, so only the one that actually flips false -> true gets a row
+    // back and alerts.
+    const [flipped] = await db
+      .update(conversationsTable)
+      .set(patch)
+      .where(and(eq(conversationsTable.id, conversationId), eq(conversationsTable.needsAttention, false)))
+      .returning({ personId: conversationsTable.personId });
+    if (flipped) {
+      const [customer] = await db
+        .select({ firstName: customersTable.firstName, lastName: customersTable.lastName })
+        .from(customersTable)
+        .where(eq(customersTable.id, flipped.personId));
+      if (customer) {
+        void notifySlack(`Needs attention (text) — ${customer.firstName} ${customer.lastName}: ${patch.needsAttentionReason ?? "no reason given"}`);
+      }
+      return;
     }
+    // Already flagged (or the conversation doesn't exist) — still apply the rest of the patch, just don't re-alert.
+    await db.update(conversationsTable).set(patch).where(eq(conversationsTable.id, conversationId));
     return;
   }
   await db.update(conversationsTable).set(patch).where(eq(conversationsTable.id, conversationId));

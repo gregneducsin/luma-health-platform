@@ -1,4 +1,4 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db, supportConversationsTable, supportConversationMessagesTable, customersTable, type SupportConversation, type SupportConversationMessage } from "@luma/db";
 import type { SarahPreviewRequestBody } from "../lib/support/types.js";
 import { getSmsProvider } from "../lib/sms-provider.js";
@@ -41,20 +41,34 @@ export async function getOrCreateSupportConversation(personId: string): Promise<
 }
 
 export async function updateSupportConversationState(conversationId: string, patch: SupportConversationStatePatch): Promise<void> {
-  // Only worth the extra read when this patch is actually raising the flag —
-  // every other patch (order state, review sentiment, etc.) skips it. Reads
-  // the pre-update value so a conversation that's already flagged doesn't
-  // re-alert on every subsequent message while it's still open.
+  // Only worth the extra work when this patch is actually raising the flag —
+  // every other patch (order state, review sentiment, etc.) skips it.
   if (patch.needsAttention === true) {
-    const [before] = await db
-      .select({ needsAttention: supportConversationsTable.needsAttention, firstName: customersTable.firstName, lastName: customersTable.lastName })
-      .from(supportConversationsTable)
-      .innerJoin(customersTable, eq(customersTable.id, supportConversationsTable.personId))
-      .where(eq(supportConversationsTable.id, conversationId));
-    await db.update(supportConversationsTable).set(patch).where(eq(supportConversationsTable.id, conversationId));
-    if (before && !before.needsAttention) {
-      void notifySlack(`Needs attention (text) — ${before.firstName} ${before.lastName}: ${patch.needsAttentionReason ?? "no reason given"}`);
+    // A single UPDATE ... WHERE needsAttention = false ... RETURNING, not a
+    // separate read-then-write: two webhook-driven calls landing close
+    // together for the same conversation (e.g. two failed-payment events)
+    // would otherwise both read needsAttention: false before either write
+    // lands, and both fire the Slack alert. The row lock this UPDATE takes
+    // serializes concurrent callers, so only the one that actually flips
+    // false -> true gets a row back and alerts — a conversation that's
+    // already flagged doesn't re-alert on every subsequent message while
+    // it's still open.
+    const [flipped] = await db
+      .update(supportConversationsTable)
+      .set(patch)
+      .where(and(eq(supportConversationsTable.id, conversationId), eq(supportConversationsTable.needsAttention, false)))
+      .returning({ personId: supportConversationsTable.personId });
+    if (flipped) {
+      const [customer] = await db
+        .select({ firstName: customersTable.firstName, lastName: customersTable.lastName })
+        .from(customersTable)
+        .where(eq(customersTable.id, flipped.personId));
+      if (customer) {
+        void notifySlack(`Needs attention (text) — ${customer.firstName} ${customer.lastName}: ${patch.needsAttentionReason ?? "no reason given"}`);
+      }
+      return;
     }
+    await db.update(supportConversationsTable).set(patch).where(eq(supportConversationsTable.id, conversationId));
     return;
   }
   await db.update(supportConversationsTable).set(patch).where(eq(supportConversationsTable.id, conversationId));

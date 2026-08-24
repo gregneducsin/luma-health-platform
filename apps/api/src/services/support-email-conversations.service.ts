@@ -1,4 +1,4 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import {
   db,
   supportEmailConversationsTable,
@@ -45,18 +45,28 @@ export async function getOrCreateSupportEmailConversation(personId: string): Pro
   return row;
 }
 
-/** See support-conversations.service.ts's updateSupportConversationState for why the pre-update read only happens on this one patch shape. */
+/** See support-conversations.service.ts's updateSupportConversationState for why the "already flagged" check only happens on this one patch shape. */
 export async function updateSupportEmailConversationState(conversationId: string, patch: SupportEmailConversationStatePatch): Promise<void> {
   if (patch.needsAttention === true) {
-    const [before] = await db
-      .select({ needsAttention: supportEmailConversationsTable.needsAttention, firstName: customersTable.firstName, lastName: customersTable.lastName })
-      .from(supportEmailConversationsTable)
-      .innerJoin(customersTable, eq(customersTable.id, supportEmailConversationsTable.personId))
-      .where(eq(supportEmailConversationsTable.id, conversationId));
-    await db.update(supportEmailConversationsTable).set(patch).where(eq(supportEmailConversationsTable.id, conversationId));
-    if (before && !before.needsAttention) {
-      void notifySlack(`Needs attention (email) — ${before.firstName} ${before.lastName}: ${patch.needsAttentionReason ?? "no reason given"}`);
+    // Atomic UPDATE ... WHERE needsAttention = false ... RETURNING — see
+    // support-conversations.service.ts's updateSupportConversationState for
+    // why this can't be a separate read-then-write.
+    const [flipped] = await db
+      .update(supportEmailConversationsTable)
+      .set(patch)
+      .where(and(eq(supportEmailConversationsTable.id, conversationId), eq(supportEmailConversationsTable.needsAttention, false)))
+      .returning({ personId: supportEmailConversationsTable.personId });
+    if (flipped) {
+      const [customer] = await db
+        .select({ firstName: customersTable.firstName, lastName: customersTable.lastName })
+        .from(customersTable)
+        .where(eq(customersTable.id, flipped.personId));
+      if (customer) {
+        void notifySlack(`Needs attention (email) — ${customer.firstName} ${customer.lastName}: ${patch.needsAttentionReason ?? "no reason given"}`);
+      }
+      return;
     }
+    await db.update(supportEmailConversationsTable).set(patch).where(eq(supportEmailConversationsTable.id, conversationId));
     return;
   }
   await db.update(supportEmailConversationsTable).set(patch).where(eq(supportEmailConversationsTable.id, conversationId));
