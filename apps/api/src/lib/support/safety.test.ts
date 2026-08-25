@@ -120,6 +120,15 @@ describe("supportPostCheck", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("strips an em dash from reply, replacing it with a comma — a code-level backstop for the prompt's own no-dash rule", () => {
+    const result = check(reply({ reply: "Good news — your order has been received." }));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.reply).toBe("Good news, your order has been received.");
+      expect(result.result.reply).not.toMatch(/[—–]/);
+    }
+  });
+
   it("rejects an unapproved URL", () => {
     const result = check(reply({ reply: "Check here: https://example.com/random" }));
     expect(result).toEqual({ ok: false, code: "UNAPPROVED_URL" });

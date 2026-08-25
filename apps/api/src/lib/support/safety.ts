@@ -22,6 +22,7 @@
 import { z } from "zod";
 import type { SarahInteractiveResult } from "./types.js";
 import { APPROVED_REVIEW_URLS, APPROVED_PORTAL_URL, APPROVED_REVIEW_WRITE_URL } from "../messaging/knowledge-catalog.js";
+import { stripEmDashes } from "../text-sanitize.js";
 
 // ── Zod schema for structured provider output ─────────────────────────────────
 
@@ -351,5 +352,11 @@ export function supportPostCheck(
   const effectiveRaw: SarahInteractiveResult =
     raw.requiresStaff && raw.action !== "staff_review" ? { ...raw, action: "staff_review", reply: null, nextQuestion: null } : raw;
 
-  return { ok: true, result: effectiveRaw };
+  const sanitizedRaw: SarahInteractiveResult = {
+    ...effectiveRaw,
+    reply: stripEmDashes(effectiveRaw.reply),
+    nextQuestion: stripEmDashes(effectiveRaw.nextQuestion),
+  };
+
+  return { ok: true, result: sanitizedRaw };
 }

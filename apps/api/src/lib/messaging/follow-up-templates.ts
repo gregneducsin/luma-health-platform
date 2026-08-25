@@ -118,8 +118,8 @@ export function renderMetaLeadOpener(firstName: string): string {
 export function renderCurrentlyTakingCheckin(firstName: string): string {
   const name = firstName.trim() || "there";
   return pickVariant([
-    `Hi ${name}, quick question — are you currently taking semaglutide or tirzepatide?`,
-    `Hi ${name}, quick one for you — are you currently on semaglutide or tirzepatide?`,
+    `Hi ${name}, quick question, are you currently taking semaglutide or tirzepatide?`,
+    `Hi ${name}, quick one for you, are you currently on semaglutide or tirzepatide?`,
   ]);
 }
 

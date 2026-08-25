@@ -208,6 +208,25 @@ describe("interactivePostCheck: question mark must stay out of reply", () => {
   });
 });
 
+describe("interactivePostCheck: em dash sanitization", () => {
+  it("strips an em dash from reply, replacing it with a comma — a code-level backstop for the prompt's own no-dash rule", () => {
+    const result = check(reply({ reply: "That's a great question — tirzepatide is a popular option." }));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.reply).toBe("That's a great question, tirzepatide is a popular option.");
+      expect(result.result.reply).not.toMatch(/[—–]/);
+    }
+  });
+
+  it("strips an en dash from nextQuestion too", () => {
+    const result = check(reply({ nextQuestion: "Would you like semaglutide – or tirzepatide?" }));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.result.nextQuestion).not.toMatch(/[—–]/);
+    }
+  });
+});
+
 describe("interactivePostCheck: URLs", () => {
   it("allows the fixed review-site URLs", () => {
     for (const url of APPROVED_REVIEW_URLS) {

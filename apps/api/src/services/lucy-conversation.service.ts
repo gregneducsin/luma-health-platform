@@ -61,7 +61,7 @@ const PRE_CHECK_RESULTS: Record<string, { action: "pause" | "staff_review"; repl
   EMERGENCY_CONTENT: {
     action: "staff_review",
     reply:
-      "If this is a medical emergency, please call 911 or go to your nearest emergency room right away. This text line isn't monitored for emergencies — our team has been notified and will follow up with you.",
+      "If this is a medical emergency, please call 911 or go to your nearest emergency room right away. This text line isn't monitored for emergencies. Our team has been notified and will follow up with you.",
   },
   // reply: null here is a placeholder — the real reply for these two codes
   // is picked at send time from INDIVIDUALIZED_MEDICAL_REPLIES, see below.

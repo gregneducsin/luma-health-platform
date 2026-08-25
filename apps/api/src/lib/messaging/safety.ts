@@ -22,6 +22,7 @@ import { z } from "zod";
 import type { ClaudeInteractiveResult } from "./types.js";
 import { APPROVED_REVIEW_URLS, APPROVED_PRICING_TOPIC_KEYS, PRODUCT_PRICING_TOPIC_KEYS } from "./knowledge-catalog.js";
 import { OBJECTION_KEYS } from "./objection-handling.js";
+import { stripEmDashes } from "../text-sanitize.js";
 
 // ── Zod schema for structured provider output ─────────────────────────────────
 
@@ -983,5 +984,11 @@ export function interactivePostCheck(
     validatedSlotUpdates[key] = value;
   }
 
-  return { ok: true, result: effectiveRaw, validatedSlotUpdates };
+  const sanitizedRaw: ClaudeInteractiveResult = {
+    ...effectiveRaw,
+    reply: stripEmDashes(effectiveRaw.reply),
+    nextQuestion: stripEmDashes(effectiveRaw.nextQuestion),
+  };
+
+  return { ok: true, result: sanitizedRaw, validatedSlotUpdates };
 }
