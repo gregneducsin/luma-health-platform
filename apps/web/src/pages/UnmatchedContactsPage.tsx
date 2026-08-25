@@ -103,7 +103,16 @@ function ThreadMessages({ channel, threadId }: { channel: "email" | "sms"; threa
   );
 }
 
-function ThreadRow({ thread }: { thread: CombinedThread }) {
+function ThreadRow({
+  thread,
+  selected,
+  onToggleSelect,
+}: {
+  thread: CombinedThread;
+  /** Only threads awaiting review are selectable for bulk-dismiss — null hides the checkbox entirely for replied/dismissed rows. */
+  selected: boolean;
+  onToggleSelect: (() => void) | null;
+}) {
   const [expanded, setExpanded] = useState(false);
   const [draft, setDraft] = useState(thread.suggestedReply ?? "");
 
@@ -125,20 +134,33 @@ function ThreadRow({ thread }: { thread: CombinedThread }) {
 
   return (
     <Card className="p-0">
-      <button onClick={() => setExpanded((e) => !e)} className="block w-full px-4 py-3 text-left hover:bg-gray-50">
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-2 text-sm font-medium text-gray-900">
-            <Badge color={thread.channel === "email" ? "blue" : "green"}>{thread.channel === "email" ? "Email" : "Text"}</Badge>
-            {thread.contactLabel}
-            {thread.aiIntent && <Badge color={INTENT_COLOR[thread.aiIntent] ?? "gray"}>{INTENT_LABEL[thread.aiIntent] ?? thread.aiIntent}</Badge>}
-            {thread.linkedCustomerId && <Badge color="green">Lead created</Badge>}
-            {thread.status !== "needs_review" && <Badge color={thread.status === "replied" ? "green" : "gray"}>{thread.status}</Badge>}
-          </span>
-          <span className="text-xs text-gray-400">{formatDateTime(thread.lastMessageAt ?? thread.createdAt)}</span>
-        </div>
-        {thread.aiSummary && <p className="mt-1 truncate text-xs text-gray-400">{thread.aiSummary}</p>}
-        <p className="mt-1 truncate text-xs text-gray-500">{thread.lastMessagePreview ?? "No messages yet"}</p>
-      </button>
+      <div className="flex items-center">
+        {onToggleSelect && (
+          <label className="flex items-center pl-3" onClick={(e) => e.stopPropagation()}>
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={onToggleSelect}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              aria-label={`Select ${thread.contactLabel}`}
+            />
+          </label>
+        )}
+        <button onClick={() => setExpanded((e) => !e)} className="block min-w-0 flex-1 px-4 py-3 text-left hover:bg-gray-50">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-2 text-sm font-medium text-gray-900">
+              <Badge color={thread.channel === "email" ? "blue" : "green"}>{thread.channel === "email" ? "Email" : "Text"}</Badge>
+              {thread.contactLabel}
+              {thread.aiIntent && <Badge color={INTENT_COLOR[thread.aiIntent] ?? "gray"}>{INTENT_LABEL[thread.aiIntent] ?? thread.aiIntent}</Badge>}
+              {thread.linkedCustomerId && <Badge color="green">Lead created</Badge>}
+              {thread.status !== "needs_review" && <Badge color={thread.status === "replied" ? "green" : "gray"}>{thread.status}</Badge>}
+            </span>
+            <span className="text-xs text-gray-400">{formatDateTime(thread.lastMessageAt ?? thread.createdAt)}</span>
+          </div>
+          {thread.aiSummary && <p className="mt-1 truncate text-xs text-gray-400">{thread.aiSummary}</p>}
+          <p className="mt-1 truncate text-xs text-gray-500">{thread.lastMessagePreview ?? "No messages yet"}</p>
+        </button>
+      </div>
       {expanded && (
         <div className="space-y-3 border-t border-gray-100">
           <div className="px-4 pt-3">
@@ -212,6 +234,15 @@ export function UnmatchedContactsPage() {
   const { data: smsData, isLoading: smsLoading } = useUnmatchedSmsList();
   const isLoading = emailLoading || smsLoading;
   const [channel, setChannel] = useState<"all" | "email" | "sms">("all");
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [isBulkDismissing, setIsBulkDismissing] = useState(false);
+  const dismissEmailBulk = useDismissUnmatchedEmail();
+  const dismissSmsBulk = useDismissUnmatchedSms();
+
+  function changeChannel(next: "all" | "email" | "sms") {
+    setChannel(next);
+    setSelectedKeys(new Set());
+  }
 
   const all: CombinedThread[] = [...(emailData?.items.map(fromEmail) ?? []), ...(smsData?.items.map(fromSms) ?? [])].sort(
     (a, b) => new Date(b.lastMessageAt ?? b.createdAt).getTime() - new Date(a.lastMessageAt ?? a.createdAt).getTime(),
@@ -222,6 +253,34 @@ export function UnmatchedContactsPage() {
   const allNeedsReviewCount = all.filter((i) => i.status === "needs_review").length;
   const emailNeedsReviewCount = all.filter((i) => i.channel === "email" && i.status === "needs_review").length;
   const smsNeedsReviewCount = all.filter((i) => i.channel === "sms" && i.status === "needs_review").length;
+
+  const needsReviewKeys = needsReview.map((t) => `${t.channel}-${t.id}`);
+  const allSelected = needsReviewKeys.length > 0 && needsReviewKeys.every((k) => selectedKeys.has(k));
+
+  function toggleSelectAll() {
+    setSelectedKeys(allSelected ? new Set() : new Set(needsReviewKeys));
+  }
+
+  function toggleSelectOne(key: string) {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  async function handleBulkDismiss() {
+    const targets = needsReview.filter((t) => selectedKeys.has(`${t.channel}-${t.id}`));
+    if (targets.length === 0 || isBulkDismissing) return;
+    setIsBulkDismissing(true);
+    try {
+      await Promise.allSettled(targets.map((t) => (t.channel === "email" ? dismissEmailBulk.mutateAsync(t.id) : dismissSmsBulk.mutateAsync(t.id))));
+    } finally {
+      setIsBulkDismissing(false);
+      setSelectedKeys(new Set());
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -240,7 +299,7 @@ export function UnmatchedContactsPage() {
         ).map((opt) => (
           <button
             key={opt.value}
-            onClick={() => setChannel(opt.value)}
+            onClick={() => changeChannel(opt.value)}
             className={
               "flex items-center gap-1.5 rounded px-3 py-1 font-medium " +
               (channel === opt.value ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-50")
@@ -269,10 +328,33 @@ export function UnmatchedContactsPage() {
         </Card>
       )}
 
+      {needsReview.length > 0 && (
+        <div className="flex items-center gap-3 rounded-md border border-gray-200 bg-white px-3 py-2">
+          <label className="flex items-center gap-2 text-xs font-medium text-gray-600">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleSelectAll}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            Select all
+          </label>
+          {selectedKeys.size > 0 && (
+            <>
+              <span className="text-xs text-gray-400">{selectedKeys.size} selected</span>
+              <Button variant="secondary" onClick={handleBulkDismiss} disabled={isBulkDismissing}>
+                {isBulkDismissing ? "Dismissing…" : `Dismiss ${selectedKeys.size}`}
+              </Button>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="space-y-2">
-        {needsReview.map((thread) => (
-          <ThreadRow key={`${thread.channel}-${thread.id}`} thread={thread} />
-        ))}
+        {needsReview.map((thread) => {
+          const key = `${thread.channel}-${thread.id}`;
+          return <ThreadRow key={key} thread={thread} selected={selectedKeys.has(key)} onToggleSelect={() => toggleSelectOne(key)} />;
+        })}
       </div>
 
       {resolved.length > 0 && (
@@ -280,7 +362,7 @@ export function UnmatchedContactsPage() {
           <summary className="cursor-pointer text-xs font-medium text-gray-400">{resolved.length} replied or dismissed</summary>
           <div className="mt-2 space-y-2">
             {resolved.map((thread) => (
-              <ThreadRow key={`${thread.channel}-${thread.id}`} thread={thread} />
+              <ThreadRow key={`${thread.channel}-${thread.id}`} thread={thread} selected={false} onToggleSelect={null} />
             ))}
           </div>
         </details>
