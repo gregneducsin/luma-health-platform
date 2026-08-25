@@ -56,8 +56,14 @@ describe("parseExtraMailboxes", () => {
     ]);
   });
 
-  it("throws on an entry missing the user:password separator", () => {
-    expect(() => parseExtraMailboxes("hello@mylumahealth.com")).toThrow(/missing the ":"/);
+  it("accepts a space in place of the colon between user and app password — the real-world typo this was written for", () => {
+    expect(parseExtraMailboxes("hello@mylumahealth.com ffax ibpx xqzz hwaa")).toEqual([
+      { host: "imap.gmail.com", user: "hello@mylumahealth.com", pass: "ffaxibpxxqzzhwaa" },
+    ]);
+  });
+
+  it("throws on an entry with no separator between user and password at all", () => {
+    expect(() => parseExtraMailboxes("hello@mylumahealth.com")).toThrow(/missing the separator/);
   });
 
   it("throws on an entry with an empty user or password", () => {

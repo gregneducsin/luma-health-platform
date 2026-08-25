@@ -89,9 +89,13 @@ interface ImapMailbox {
  * hello@ inbox or a staff member's own address that customers sometimes
  * reply to directly. Each entry needs its own 2-Step-Verification app
  * password, same requirement as the primary mailbox. Format:
- * "user1@domain:apppassword1,user2@domain:apppassword2" — colon and comma
- * are both safe delimiters since Google app passwords are 16 lowercase
- * letters with no punctuation.
+ * "user1@domain:apppassword1,user2@domain:apppassword2" — the separator
+ * between user and password can be a ":" or plain whitespace (an email
+ * address never contains either, so the first one found is unambiguous —
+ * this tolerates someone pasting "user password" instead of "user:password"),
+ * and comma separates entries. Whitespace inside the password itself
+ * (Google shows app passwords as four space-separated groups) is fine and
+ * gets stripped either way.
  */
 export function parseExtraMailboxes(raw: string | undefined): ImapMailbox[] {
   if (!raw?.trim()) return [];
@@ -100,12 +104,12 @@ export function parseExtraMailboxes(raw: string | undefined): ImapMailbox[] {
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0)
     .map((entry) => {
-      const colonIndex = entry.indexOf(":");
-      if (colonIndex === -1) {
-        throw new Error(`EMAIL_INBOUND_EXTRA_MAILBOXES entry is missing the ":" separating user from app password: "${entry}"`);
+      const sepMatch = entry.match(/[:\s]/);
+      if (!sepMatch || sepMatch.index === undefined) {
+        throw new Error(`EMAIL_INBOUND_EXTRA_MAILBOXES entry is missing the separator between user and app password: "${entry}"`);
       }
-      const user = entry.slice(0, colonIndex).trim();
-      const pass = entry.slice(colonIndex + 1).trim().replace(/\s+/g, "");
+      const user = entry.slice(0, sepMatch.index).trim();
+      const pass = entry.slice(sepMatch.index + 1).trim().replace(/\s+/g, "");
       if (!user || !pass) {
         throw new Error(`EMAIL_INBOUND_EXTRA_MAILBOXES entry has an empty user or app password: "${entry}"`);
       }
