@@ -149,6 +149,34 @@ const EMERGENCY_WORDS_LOWER = ["emergency", "crisis", "suicide", "self-harm", "s
  */
 const EMERGENCY_911_RE = /(?<!\d)911(?!\d)/;
 
+/**
+ * A lead describing an active side effect on a medication they're currently
+ * taking (nausea, vomiting, diarrhea, stomach upset) — checked before
+ * MEDICAL_WORDS_LOWER, same reasoning as SUITABILITY_PHRASES_LOWER, so this
+ * gets its own SIDE_EFFECT_REPORT code and dedicated reply (real options —
+ * an anti-nausea medication or adjusting the dose — for the doctor to
+ * discuss) instead of either the generic MEDICAL_CONTENT deflection or,
+ * worse, Claude reaching the "don't discuss symptoms" boundary in its own
+ * system prompt and silently discarding its reply with nothing sent back
+ * (a real production case: a lead described GI symptoms and got total
+ * silence for 28 minutes until a staff member manually replied).
+ */
+const SIDE_EFFECT_PHRASES_LOWER = [
+  "nausea",
+  "nauseous",
+  "throw up",
+  "throwing up",
+  "vomit",
+  "diarrhea",
+  "stomach hurt",
+  "stomach ache",
+  "stomach pain",
+  "upset stomach",
+  "makes me sick",
+  "feel sick",
+  "feeling sick",
+] as const;
+
 const MEDICAL_WORDS_LOWER = [
   "symptom",
   "diagnosis",
@@ -343,7 +371,7 @@ export type InteractivePreCheckResult = { readonly blocked: false } | { readonly
  * Check the last inbound message for content that must never reach the
  * provider. Returns the block code or { blocked: false }.
  *
- * Priority order: opt_out > STOP_WORD > emergency > suitability > shipping timing > process questions > medical > legal.
+ * Priority order: opt_out > STOP_WORD > emergency > suitability > side effect report > shipping timing > process questions > medical > legal.
  *
  * Opt-out (code "OPT_OUT") takes the highest priority and is terminal —
  * no objection handling, no rebuttal, no provider call.
@@ -387,6 +415,12 @@ export function interactivePreCheck(lastInbound: string, ourLastQuestion: string
   // than MEDICAL_CONTENT (the word "medication" is in MEDICAL_WORDS_LOWER).
   if (SUITABILITY_PHRASES_LOWER.some((w) => lower.includes(w))) {
     return { blocked: true, code: "SUITABILITY_QUESTION" };
+  }
+  // Active side-effect reports get their own code — see SIDE_EFFECT_PHRASES_LOWER's
+  // docstring — checked before the generic medical-words check for the same
+  // reason as suitability above.
+  if (SIDE_EFFECT_PHRASES_LOWER.some((w) => lower.includes(w))) {
+    return { blocked: true, code: "SIDE_EFFECT_REPORT" };
   }
   // Shipping timing is also checked before medical, same reasoning: "how
   // long will it take to get my medication?" must not be blocked just

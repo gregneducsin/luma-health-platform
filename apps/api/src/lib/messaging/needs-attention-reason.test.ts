@@ -20,6 +20,10 @@ describe("describeNeedsAttentionReason", () => {
     expect(describeNeedsAttentionReason({ kind: "staff_flagged", preCheckCode: "EMERGENCY_CONTENT" })).toMatch(/medical emergency/i);
   });
 
+  it("maps SIDE_EFFECT_REPORT to its specific explanation", () => {
+    expect(describeNeedsAttentionReason({ kind: "staff_flagged", preCheckCode: "SIDE_EFFECT_REPORT" })).toMatch(/side effects/i);
+  });
+
   it("falls back to a generic explanation for an unmapped staff-flagged code", () => {
     expect(describeNeedsAttentionReason({ kind: "staff_flagged", preCheckCode: "SOME_NEW_CODE" })).toBe("Flagged for a person to review (SOME_NEW_CODE).");
   });

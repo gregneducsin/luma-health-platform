@@ -156,6 +156,24 @@ describe("runLucyTurn", () => {
     }
   });
 
+  it("pre-check-blocks an active side-effect report as SIDE_EFFECT_REPORT, with a reply naming real options for the doctor to review", async () => {
+    callClaudeInteractiveMock.mockClear();
+    const personId = await seedCustomer();
+    const result = await runLucyTurn(
+      personId,
+      baseBody({ messages: [{ direction: "inbound", body: "It makes my stomach hurt and sometimes I throw up in the morning. And I have diarrhea sometimes." }] }),
+    );
+
+    expect(callClaudeInteractiveMock).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.action).toBe("staff_review");
+      expect(result.preCheckCode).toBe("SIDE_EFFECT_REPORT");
+      expect(result.reply).toMatch(/doctor/i);
+      expect(result.reply).toMatch(/zofran|dose/i);
+    }
+  });
+
   it("does not set preCheckCode on a model-generated turn", async () => {
     callClaudeInteractiveMock.mockClear();
     callClaudeInteractiveMock.mockResolvedValueOnce(modelResult());

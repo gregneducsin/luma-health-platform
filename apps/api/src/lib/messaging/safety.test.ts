@@ -78,6 +78,11 @@ describe("interactivePreCheck", () => {
     expect(interactivePreCheck("what's the diagnosis?")).toEqual({ blocked: true, code: "MEDICAL_CONTENT" });
   });
 
+  it("blocks an active side-effect report as SIDE_EFFECT_REPORT, not the generic MEDICAL_CONTENT", () => {
+    expect(interactivePreCheck("It makes my stomach hurt and I throw up in the morning.")).toEqual({ blocked: true, code: "SIDE_EFFECT_REPORT" });
+    expect(interactivePreCheck("I have really bad nausea and diarrhea since starting this.")).toEqual({ blocked: true, code: "SIDE_EFFECT_REPORT" });
+  });
+
   it("does not block plain dosing questions — titration's approved text is the real dosing protocol, and the post-check requires citing it", () => {
     expect(interactivePreCheck("What's the dosage?")).toEqual({ blocked: false });
     expect(interactivePreCheck("How does dosing work?")).toEqual({ blocked: false });

@@ -51,6 +51,26 @@ const INDIVIDUALIZED_MEDICAL_REPLIES = [
   "That one's for the doctor to review. Complete the questionnaire and they'll take a look at your info and confirm what's approved for you.",
 ] as const;
 
+/**
+ * A lead describing an active side effect (nausea, vomiting, diarrhea) on a
+ * medication they're currently taking — see SIDE_EFFECT_PHRASES_LOWER's
+ * docstring in safety.ts for why this is its own code instead of falling
+ * into MEDICAL_CONTENT's generic deflection or, worse, Claude reaching its
+ * own "don't discuss symptoms" boundary and going silent.
+ *
+ * Deliberately names real options (an anti-nausea medication, or adjusting
+ * the dose) instead of just deflecting — the lead is asking because they're
+ * uncomfortable right now, and "that's up to the doctor" alone doesn't tell
+ * them anything is actually fixable. Still frames both as things the doctor
+ * reviews/discusses, never as Lucy telling them what to do — nothing here
+ * is an instruction to take an OTC medication or change a dose on their own.
+ */
+const SIDE_EFFECT_REPORT_REPLIES = [
+  "Nausea and diarrhea are pretty common when starting semaglutide or tirzepatide, and they often ease up after a few weeks. If it doesn't get better, your doctor can go over options like an anti-nausea medication (such as Zofran) or adjusting your dose once you're set up with us.",
+  "That's a common early side effect and it usually settles down over the first few weeks. If it sticks around, your doctor can talk through options like an anti-nausea medication (like Zofran) or lowering your dose to help.",
+  "Those symptoms are pretty common when starting out and often ease up after a bit. If they don't, your doctor can discuss options like an anti-nausea medication (Zofran is a common one) or adjusting your dose.",
+] as const;
+
 function pickVariant(variants: readonly string[]): string {
   return variants[Math.floor(Math.random() * variants.length)];
 }
@@ -63,10 +83,12 @@ const PRE_CHECK_RESULTS: Record<string, { action: "pause" | "staff_review"; repl
     reply:
       "If this is a medical emergency, please call 911 or go to your nearest emergency room right away. This text line isn't monitored for emergencies. Our team has been notified and will follow up with you.",
   },
-  // reply: null here is a placeholder — the real reply for these two codes
-  // is picked at send time from INDIVIDUALIZED_MEDICAL_REPLIES, see below.
+  // reply: null here is a placeholder — the real reply for these three codes
+  // is picked at send time from INDIVIDUALIZED_MEDICAL_REPLIES /
+  // SIDE_EFFECT_REPORT_REPLIES, see below.
   SUITABILITY_QUESTION: { action: "staff_review", reply: null },
   MEDICAL_CONTENT: { action: "staff_review", reply: null },
+  SIDE_EFFECT_REPORT: { action: "staff_review", reply: null },
   LEGAL_CONTENT: { action: "staff_review", reply: null },
 };
 
@@ -102,7 +124,12 @@ export async function runLucyTurn(personId: string, body: BotPreviewRequestBody)
     const pre = interactivePreCheck(lastInbound.body, body.lastQuestion);
     if (pre.blocked) {
       const deterministic = PRE_CHECK_RESULTS[pre.code] ?? { action: "staff_review" as const, reply: null };
-      const reply = pre.code === "SUITABILITY_QUESTION" || pre.code === "MEDICAL_CONTENT" ? pickVariant(INDIVIDUALIZED_MEDICAL_REPLIES) : deterministic.reply;
+      const reply =
+        pre.code === "SIDE_EFFECT_REPORT"
+          ? pickVariant(SIDE_EFFECT_REPORT_REPLIES)
+          : pre.code === "SUITABILITY_QUESTION" || pre.code === "MEDICAL_CONTENT"
+            ? pickVariant(INDIVIDUALIZED_MEDICAL_REPLIES)
+            : deterministic.reply;
       return {
         ok: true,
         action: deterministic.action,

@@ -47,6 +47,7 @@ const STAFF_FLAGGED_REASONS: Record<string, string> = {
   EMERGENCY_CONTENT: "The customer's message may describe a medical emergency — flagged immediately rather than answered automatically.",
   SUITABILITY_QUESTION: "The customer asked something needing individual medical/suitability judgment (e.g. \"is this safe for me\") — not something to answer generically.",
   MEDICAL_CONTENT: "The customer asked a clinical/medical question outside what's safe to answer automatically.",
+  SIDE_EFFECT_REPORT: "The customer described side effects on their current medication (nausea, vomiting, or diarrhea) — Lucy gave them general options to discuss with the doctor, but a person should follow up to make sure they're doing okay.",
   PRESCRIPTION_QUESTION: "The customer asked something about their specific prescription needing individual judgment — not something to answer generically.",
   LEGAL_CONTENT: "The customer mentioned something legal (e.g. a threat to sue) — needs a person to handle directly.",
 };
