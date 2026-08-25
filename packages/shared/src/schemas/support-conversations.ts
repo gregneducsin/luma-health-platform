@@ -22,6 +22,8 @@ export const supportConversationMessageSchema = z.object({
   sentiment: z.enum(["positive", "neutral", "negative"]).nullable(),
   /** Who wrote an outbound message — "ai" (Sarah, or an automated trigger) vs "staff" (typed into the reply box). Null on inbound messages. */
   sentBy: z.enum(["ai", "staff"]).nullable(),
+  /** Which staff member sent it, when sentBy is "staff". Null otherwise. */
+  sentByStaffEmail: z.string().nullable(),
   createdAt: z.string(),
 });
 export type SupportConversationMessageDto = z.infer<typeof supportConversationMessageSchema>;

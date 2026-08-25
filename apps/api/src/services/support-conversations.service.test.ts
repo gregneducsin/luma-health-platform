@@ -159,7 +159,7 @@ describe("sendStaffReply", () => {
     const conversation = await getOrCreateSupportConversation(personId);
     await updateSupportConversationState(conversation.id, { needsAttention: true });
 
-    const result = await sendStaffReply(conversation.id, "The label has your exact dosing instructions.");
+    const result = await sendStaffReply(conversation.id, "The label has your exact dosing instructions.", "staff@example.com");
 
     expect(result).toEqual({ sent: true });
     expect(sendMessageMock).toHaveBeenCalledWith("+15557770010", "The label has your exact dosing instructions.");
@@ -169,6 +169,8 @@ describe("sendStaffReply", () => {
       direction: "outbound",
       body: "The label has your exact dosing instructions.",
       providerMessageId: "msg_staff_support_1",
+      sentBy: "staff",
+      sentByStaffEmail: "staff@example.com",
     });
 
     const updated = await getSupportConversationDetail(conversation.id);
@@ -177,7 +179,7 @@ describe("sendStaffReply", () => {
 
   it("returns not_found for an unknown conversation id, without touching the provider", async () => {
     sendMessageMock.mockClear();
-    const result = await sendStaffReply("00000000-0000-0000-0000-000000000000", "hi");
+    const result = await sendStaffReply("00000000-0000-0000-0000-000000000000", "hi", "staff@example.com");
     expect(result).toEqual({ sent: false, reason: "not_found" });
     expect(sendMessageMock).not.toHaveBeenCalled();
   });
@@ -187,7 +189,7 @@ describe("sendStaffReply", () => {
     const personId = await seedCustomer({ phone: null });
     const conversation = await getOrCreateSupportConversation(personId);
 
-    const result = await sendStaffReply(conversation.id, "hi");
+    const result = await sendStaffReply(conversation.id, "hi", "staff@example.com");
 
     expect(result).toEqual({ sent: false, reason: "no_phone" });
     expect(sendMessageMock).not.toHaveBeenCalled();
@@ -203,7 +205,7 @@ describe("sendStaffReply", () => {
     const conversation = await getOrCreateSupportConversation(personId);
     await updateSupportConversationState(conversation.id, { needsAttention: true });
 
-    const result = await sendStaffReply(conversation.id, "trying to reply");
+    const result = await sendStaffReply(conversation.id, "trying to reply", "staff@example.com");
 
     expect(result).toEqual({ sent: false, reason: "send_failed" });
     const messages = await listSupportMessages(conversation.id);

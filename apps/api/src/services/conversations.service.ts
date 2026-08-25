@@ -101,7 +101,7 @@ export type StaffReplyResult = { readonly sent: true } | { readonly sent: false;
  * failure doesn't erase the fact that this is what staff actually tried to
  * say; the caller still gets sent: false so the UI can show the failure.
  */
-export async function sendStaffReply(conversationId: string, body: string): Promise<StaffReplyResult> {
+export async function sendStaffReply(conversationId: string, body: string, staffEmail: string): Promise<StaffReplyResult> {
   const detail = await getConversationDetail(conversationId);
   if (!detail) return { sent: false, reason: "not_found" };
   if (!detail.customer.phone) return { sent: false, reason: "no_phone" };
@@ -116,7 +116,7 @@ export async function sendStaffReply(conversationId: string, body: string): Prom
     logger.warn({ conversationId, reason: err instanceof Error ? err.message : String(err) }, "staff reply send failed");
   }
 
-  await appendMessage(conversationId, "outbound", body, { providerMessageId, sentBy: "staff" });
+  await appendMessage(conversationId, "outbound", body, { providerMessageId, sentBy: "staff", sentByStaffEmail: staffEmail });
   if (sendFailed) return { sent: false, reason: "send_failed" };
 
   await clearNeedsAttention(conversationId);
@@ -131,6 +131,7 @@ export async function appendMessage(
     sentiment?: "positive" | "neutral" | "negative" | null;
     providerMessageId?: string | null;
     sentBy?: "ai" | "staff" | null;
+    sentByStaffEmail?: string | null;
   } = {},
 ): Promise<ConversationMessage> {
   const [row] = await db
@@ -142,6 +143,7 @@ export async function appendMessage(
       sentiment: opts.sentiment ?? null,
       providerMessageId: opts.providerMessageId ?? null,
       sentBy: opts.sentBy ?? (direction === "outbound" ? "ai" : null),
+      sentByStaffEmail: opts.sentByStaffEmail ?? null,
     })
     .returning();
   return row;

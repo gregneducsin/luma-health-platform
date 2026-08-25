@@ -149,7 +149,7 @@ export type EmailStaffReplyResult = { readonly sent: true } | { readonly sent: f
  * support-conversations.service.ts's sendStaffReply (SMS), same reasoning
  * as lucy-email-dispatch.service.ts's sendEmailStaffReply.
  */
-export async function sendEmailStaffReply(conversationId: string, body: string): Promise<EmailStaffReplyResult> {
+export async function sendEmailStaffReply(conversationId: string, body: string, staffEmail: string): Promise<EmailStaffReplyResult> {
   const detail = await getSupportEmailConversationDetail(conversationId);
   if (!detail) return { sent: false, reason: "not_found" };
 
@@ -180,6 +180,7 @@ export async function sendEmailStaffReply(conversationId: string, body: string):
     messageId,
     inReplyTo: lastMessage?.messageId ?? null,
     sentBy: "staff",
+    sentByStaffEmail: staffEmail,
   });
   if (sendFailed) return { sent: false, reason: "send_failed" };
 

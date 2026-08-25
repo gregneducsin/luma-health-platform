@@ -82,6 +82,7 @@ export async function appendSupportEmailMessage(
     messageId?: string | null;
     inReplyTo?: string | null;
     sentBy?: "ai" | "staff" | null;
+    sentByStaffEmail?: string | null;
   } = {},
 ): Promise<SupportEmailConversationMessage> {
   const [row] = await db
@@ -95,6 +96,7 @@ export async function appendSupportEmailMessage(
       messageId: opts.messageId ?? null,
       inReplyTo: opts.inReplyTo ?? null,
       sentBy: opts.sentBy ?? (direction === "outbound" ? "ai" : null),
+      sentByStaffEmail: opts.sentByStaffEmail ?? null,
     })
     .returning();
   return row;

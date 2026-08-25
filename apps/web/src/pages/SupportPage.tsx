@@ -40,10 +40,15 @@ function SentimentBadge({ sentiment }: { sentiment: "positive" | "neutral" | "ne
   return <Badge color={SENTIMENT_COLOR[sentiment]}>{sentiment}</Badge>;
 }
 
-/** Marks who actually wrote an outbound message — the bot vs a staff member typing into the reply box — so the timeline reads as one continuous conversation but staff can still tell AI from human at a glance. */
-function SenderBadge({ sentBy, botName }: { sentBy: "ai" | "staff" | null | undefined; botName: string }) {
+/** Marks who actually wrote an outbound message — the bot vs a staff member typing into the reply box — so the timeline reads as one continuous conversation but staff can still tell AI from human, and which human, at a glance. */
+function SenderBadge({ sentBy, staffEmail, botName }: { sentBy: "ai" | "staff" | null | undefined; staffEmail: string | null | undefined; botName: string }) {
   if (!sentBy) return null;
-  return <span className="text-[11px] font-medium text-gray-400">{sentBy === "ai" ? botName : "Staff"}</span>;
+  const label = sentBy === "ai" ? botName : (staffEmail?.split("@")[0] ?? "Staff");
+  return (
+    <span className="text-[11px] font-medium text-gray-400" title={sentBy === "staff" && staffEmail ? staffEmail : undefined}>
+      {label}
+    </span>
+  );
 }
 
 function relativeTime(iso: string | null): string {
@@ -273,7 +278,7 @@ function SupportConversationDetailPanel({ conversationId, channel }: { conversat
                 {m.body}
               </span>
               <div className="flex items-center gap-2 px-1">
-                {m.direction === "outbound" && <SenderBadge sentBy={m.sentBy} botName="Sarah" />}
+                {m.direction === "outbound" && <SenderBadge sentBy={m.sentBy} staffEmail={m.sentByStaffEmail} botName="Sarah" />}
                 <span className="text-[11px] text-gray-400">{formatTime(m.createdAt)}</span>
                 <SentimentBadge sentiment={m.sentiment} />
               </div>

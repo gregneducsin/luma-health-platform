@@ -252,13 +252,19 @@ describe("sendStaffReply", () => {
     const conversation = await getOrCreateConversation(personId);
     await updateConversationState(conversation.id, { needsAttention: true });
 
-    const result = await sendStaffReply(conversation.id, "Following up on your question.");
+    const result = await sendStaffReply(conversation.id, "Following up on your question.", "staff@example.com");
 
     expect(result).toEqual({ sent: true });
     expect(sendMessageMock).toHaveBeenCalledWith("+15558880010", "Following up on your question.");
 
     const messages = await listMessages(conversation.id);
-    expect(messages[0]).toMatchObject({ direction: "outbound", body: "Following up on your question.", providerMessageId: "msg_staff_1" });
+    expect(messages[0]).toMatchObject({
+      direction: "outbound",
+      body: "Following up on your question.",
+      providerMessageId: "msg_staff_1",
+      sentBy: "staff",
+      sentByStaffEmail: "staff@example.com",
+    });
 
     const updated = await getConversationDetail(conversation.id);
     expect(updated?.conversation.needsAttention).toBe(false);
@@ -266,7 +272,7 @@ describe("sendStaffReply", () => {
 
   it("returns not_found for an unknown conversation id, without touching the provider", async () => {
     sendMessageMock.mockClear();
-    const result = await sendStaffReply("00000000-0000-0000-0000-000000000000", "hi");
+    const result = await sendStaffReply("00000000-0000-0000-0000-000000000000", "hi", "staff@example.com");
     expect(result).toEqual({ sent: false, reason: "not_found" });
     expect(sendMessageMock).not.toHaveBeenCalled();
   });
@@ -276,7 +282,7 @@ describe("sendStaffReply", () => {
     const personId = await seedCustomer({ phone: null });
     const conversation = await getOrCreateConversation(personId);
 
-    const result = await sendStaffReply(conversation.id, "hi");
+    const result = await sendStaffReply(conversation.id, "hi", "staff@example.com");
 
     expect(result).toEqual({ sent: false, reason: "no_phone" });
     expect(sendMessageMock).not.toHaveBeenCalled();
@@ -292,7 +298,7 @@ describe("sendStaffReply", () => {
     const conversation = await getOrCreateConversation(personId);
     await updateConversationState(conversation.id, { needsAttention: true });
 
-    const result = await sendStaffReply(conversation.id, "trying to reply");
+    const result = await sendStaffReply(conversation.id, "trying to reply", "staff@example.com");
 
     expect(result).toEqual({ sent: false, reason: "send_failed" });
     const messages = await listMessages(conversation.id);

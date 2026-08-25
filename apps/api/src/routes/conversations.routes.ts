@@ -84,8 +84,8 @@ export function createConversationsRouter(): RouterType {
       }
       const result =
         channelFromQuery(req) === "email"
-          ? await sendEmailStaffReply(req.params.id as string, parsed.data.body)
-          : await conversationsService.sendStaffReply(req.params.id as string, parsed.data.body);
+          ? await sendEmailStaffReply(req.params.id as string, parsed.data.body, req.user!.email)
+          : await conversationsService.sendStaffReply(req.params.id as string, parsed.data.body, req.user!.email);
       if (!result.sent && result.reason === "not_found") {
         res.status(404).json({ error: "Conversation not found." });
         return;

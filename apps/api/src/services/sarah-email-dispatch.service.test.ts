@@ -167,7 +167,7 @@ describe("sendEmailStaffReply", () => {
     await updateSupportEmailConversationState(conversation.id, { needsAttention: true });
 
     const [customerRow] = await db.select({ email: customersTable.email }).from(customersTable).where(eq(customersTable.id, personId));
-    const result = await sendEmailStaffReply(conversation.id, "It shipped this morning.");
+    const result = await sendEmailStaffReply(conversation.id, "It shipped this morning.", "staff@example.com");
     randomSpy.mockRestore();
 
     expect(result).toEqual({ sent: true });
@@ -188,7 +188,7 @@ describe("sendEmailStaffReply", () => {
   });
 
   it("returns not_found for an unknown conversation id", async () => {
-    const result = await sendEmailStaffReply("00000000-0000-0000-0000-000000000000", "hi");
+    const result = await sendEmailStaffReply("00000000-0000-0000-0000-000000000000", "hi", "staff@example.com");
     expect(result).toEqual({ sent: false, reason: "not_found" });
   });
 
@@ -200,7 +200,7 @@ describe("sendEmailStaffReply", () => {
     const conversation = await getOrCreateSupportEmailConversation(personId);
     await updateSupportEmailConversationState(conversation.id, { needsAttention: true });
 
-    const result = await sendEmailStaffReply(conversation.id, "Following up.");
+    const result = await sendEmailStaffReply(conversation.id, "Following up.", "staff@example.com");
 
     expect(result).toEqual({ sent: false, reason: "send_failed" });
     const messages = await listSupportEmailMessages(conversation.id);
