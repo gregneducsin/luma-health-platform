@@ -11,6 +11,8 @@
  * No database imports. No outbound messaging SDK imports.
  */
 
+import { AI_DIDNT_UNDERSTAND_REASON } from "@luma/shared";
+
 export type NeedsAttentionSource =
   | { readonly kind: "exception" }
   | { readonly kind: "rejected"; readonly code: string }
@@ -58,6 +60,6 @@ export function describeNeedsAttentionReason(source: NeedsAttentionSource): stri
     case "staff_flagged":
       return source.preCheckCode
         ? (STAFF_FLAGGED_REASONS[source.preCheckCode] ?? `Flagged for a person to review (${source.preCheckCode}).`)
-        : "Flagged for a person's judgment — the customer's message didn't clearly fit any of the approved scripts (e.g. they may have asked to speak with a person).";
+        : AI_DIDNT_UNDERSTAND_REASON;
   }
 }

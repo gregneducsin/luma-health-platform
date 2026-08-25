@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { NeedsAttentionItem, NeedsAttentionChannel, NeedsAttentionPersona } from "@luma/shared";
+import { AI_DIDNT_UNDERSTAND_REASON, type NeedsAttentionItem, type NeedsAttentionChannel, type NeedsAttentionPersona } from "@luma/shared";
 import { useNeedsAttentionList, useNeedsAttentionMessages, useClearNeedsAttentionItem } from "../hooks/useNeedsAttention";
 import { Badge, Card, Button } from "../components/ui";
 import { formatDate, formatDateTime } from "../lib/formatTime";
@@ -84,6 +84,10 @@ function NeedsAttentionRow({ item }: { item: NeedsAttentionItem }) {
 
 export function NeedsAttentionPage() {
   const { data, isLoading } = useNeedsAttentionList();
+  const [onlyAiDidntUnderstand, setOnlyAiDidntUnderstand] = useState(false);
+
+  const aiDidntUnderstandCount = data?.items.filter((i) => i.reason === AI_DIDNT_UNDERSTAND_REASON).length ?? 0;
+  const visibleItems = onlyAiDidntUnderstand ? (data?.items.filter((i) => i.reason === AI_DIDNT_UNDERSTAND_REASON) ?? []) : (data?.items ?? []);
 
   return (
     <div className="space-y-4">
@@ -97,14 +101,31 @@ export function NeedsAttentionPage() {
         actually reply.
       </p>
 
+      {aiDidntUnderstandCount > 0 && (
+        <button
+          onClick={() => setOnlyAiDidntUnderstand((v) => !v)}
+          className={
+            "text-sm font-medium underline decoration-dotted underline-offset-2 " +
+            (onlyAiDidntUnderstand ? "text-red-700" : "text-red-600 hover:text-red-700")
+          }
+        >
+          {onlyAiDidntUnderstand ? `← Showing only what the AI didn't understand (${aiDidntUnderstandCount})` : `${aiDidntUnderstandCount} the AI didn't understand →`}
+        </button>
+      )}
+
       {isLoading && <p className="text-sm text-gray-400">Loading…</p>}
       {data && data.items.length === 0 && (
         <Card>
           <p className="text-sm text-gray-500">Nothing needs attention right now.</p>
         </Card>
       )}
+      {data && data.items.length > 0 && visibleItems.length === 0 && (
+        <Card>
+          <p className="text-sm text-gray-500">Nothing in this filter right now.</p>
+        </Card>
+      )}
       <div className="space-y-2">
-        {data?.items.map((item) => (
+        {visibleItems.map((item) => (
           <NeedsAttentionRow key={`${item.channel}-${item.persona}-${item.conversationId}`} item={item} />
         ))}
       </div>
