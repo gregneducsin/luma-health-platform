@@ -117,12 +117,19 @@ export function parseExtraMailboxes(raw: string | undefined): ImapMailbox[] {
     });
 }
 
-function imapConfigs(): ImapMailbox[] {
+export function imapConfigs(): ImapMailbox[] {
   const user = process.env.GOOGLE_WORKSPACE_SMTP_USER;
-  const pass = process.env.GOOGLE_WORKSPACE_SMTP_APP_PASSWORD;
-  if (!user || !pass) {
+  const rawPass = process.env.GOOGLE_WORKSPACE_SMTP_APP_PASSWORD;
+  if (!user || !rawPass) {
     throw new Error("GOOGLE_WORKSPACE_SMTP_USER/GOOGLE_WORKSPACE_SMTP_APP_PASSWORD is not set — required for IMAP polling too (same mailbox, same app password).");
   }
+  // Google shows an app password as 4 space-separated groups — stripped the
+  // same way parseExtraMailboxes already tolerates it below, so pasting it
+  // exactly as displayed doesn't silently fail login (confirmed to happen:
+  // a space-containing value here is sent verbatim as the IMAP password and
+  // gets rejected, while the identical raw value parsed by
+  // parseExtraMailboxes already had this whitespace stripped).
+  const pass = rawPass.replace(/\s+/g, "");
   return [{ host: "imap.gmail.com", user, pass }, ...parseExtraMailboxes(process.env.EMAIL_INBOUND_EXTRA_MAILBOXES)];
 }
 

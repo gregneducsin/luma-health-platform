@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { stripQuotedReply, parseExtraMailboxes } from "./email-inbound.service.js";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { stripQuotedReply, parseExtraMailboxes, imapConfigs } from "./email-inbound.service.js";
 
 describe("stripQuotedReply", () => {
   it("returns the whole body when there's no quoted history", () => {
@@ -69,5 +69,47 @@ describe("parseExtraMailboxes", () => {
   it("throws on an entry with an empty user or password", () => {
     expect(() => parseExtraMailboxes(":abcdefghijklmnop")).toThrow(/empty user or app password/);
     expect(() => parseExtraMailboxes("hello@mylumahealth.com:")).toThrow(/empty user or app password/);
+  });
+});
+
+describe("imapConfigs", () => {
+  const ORIGINAL_ENV = { ...process.env };
+
+  beforeEach(() => {
+    delete process.env.GOOGLE_WORKSPACE_SMTP_USER;
+    delete process.env.GOOGLE_WORKSPACE_SMTP_APP_PASSWORD;
+    delete process.env.EMAIL_INBOUND_EXTRA_MAILBOXES;
+  });
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  it("throws when the primary mailbox's user/app password isn't set", () => {
+    expect(() => imapConfigs()).toThrow(/GOOGLE_WORKSPACE_SMTP_USER\/GOOGLE_WORKSPACE_SMTP_APP_PASSWORD/);
+  });
+
+  /**
+   * Google shows an app password as 4 space-separated groups
+   * ("ulzq ezgh vjvu lqfg") — pasted exactly as displayed, this used to be
+   * sent verbatim (with spaces) as the IMAP password and silently fail
+   * login, while the identical raw value going through
+   * EMAIL_INBOUND_EXTRA_MAILBOXES's parser already had the whitespace
+   * stripped. This locks in that the primary mailbox path strips it too.
+   */
+  it("strips whitespace from the primary mailbox's app password, same as parseExtraMailboxes already does", () => {
+    process.env.GOOGLE_WORKSPACE_SMTP_USER = "help@tryark.com";
+    process.env.GOOGLE_WORKSPACE_SMTP_APP_PASSWORD = "ulzq ezgh vjvu lqfg";
+    expect(imapConfigs()).toEqual([{ host: "imap.gmail.com", user: "help@tryark.com", pass: "ulzqezghvjvulqfg" }]);
+  });
+
+  it("includes any EMAIL_INBOUND_EXTRA_MAILBOXES entries alongside the primary mailbox", () => {
+    process.env.GOOGLE_WORKSPACE_SMTP_USER = "help@tryark.com";
+    process.env.GOOGLE_WORKSPACE_SMTP_APP_PASSWORD = "ulzqezghvjvulqfg";
+    process.env.EMAIL_INBOUND_EXTRA_MAILBOXES = "support@tryark.com:thnbsiajgbnvmjhg";
+    expect(imapConfigs()).toEqual([
+      { host: "imap.gmail.com", user: "help@tryark.com", pass: "ulzqezghvjvulqfg" },
+      { host: "imap.gmail.com", user: "support@tryark.com", pass: "thnbsiajgbnvmjhg" },
+    ]);
   });
 });

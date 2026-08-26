@@ -266,10 +266,15 @@ export function getEmailProvider(persona: EmailPersona): { provider: EmailProvid
 
   if (providerName === "google_workspace") {
     const user = process.env.GOOGLE_WORKSPACE_SMTP_USER;
-    const appPassword = process.env.GOOGLE_WORKSPACE_SMTP_APP_PASSWORD;
-    if (!user || !appPassword) {
+    const rawAppPassword = process.env.GOOGLE_WORKSPACE_SMTP_APP_PASSWORD;
+    if (!user || !rawAppPassword) {
       throw new Error("EMAIL_PROVIDER is 'google_workspace' but GOOGLE_WORKSPACE_SMTP_USER/GOOGLE_WORKSPACE_SMTP_APP_PASSWORD is not set.");
     }
+    // Google shows an app password as 4 space-separated groups — stripped
+    // here the same way email-inbound.service.ts's imapConfigs strips it
+    // for the identical env var, so pasting it exactly as displayed doesn't
+    // silently fail auth against the SMTP relay either.
+    const appPassword = rawAppPassword.replace(/\s+/g, "");
     const fromEmail = process.env.GOOGLE_WORKSPACE_FROM_EMAIL ?? user;
     const port = process.env.GOOGLE_WORKSPACE_SMTP_PORT ? Number(process.env.GOOGLE_WORKSPACE_SMTP_PORT) : 587;
     return { provider: withFailureAlert(new GoogleWorkspaceEmailProvider(user, appPassword, fromEmail, port)), fromName: personaFromName(persona) };
