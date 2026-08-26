@@ -63,13 +63,13 @@ async function hasEmailConversation(personId: string): Promise<boolean> {
  * dispatchInboundMessage, matched by email instead of phone. See that
  * function's docstring for the full reasoning — identical here.
  */
-async function dispatchInboundEmail(personId: string, subject: string, bodyText: string, messageId: string | null): Promise<void> {
+async function dispatchInboundEmail(personId: string, subject: string, bodyText: string, messageId: string | null, receivingAddress: string): Promise<void> {
   if (await hasSupportEmailConversation(personId)) {
-    await processInboundSupportEmail(personId, subject, bodyText, messageId);
+    await processInboundSupportEmail(personId, subject, bodyText, messageId, receivingAddress);
     return;
   }
   if (await hasEmailConversation(personId)) {
-    await processInboundEmail(personId, subject, bodyText, messageId);
+    await processInboundEmail(personId, subject, bodyText, messageId, undefined, receivingAddress);
     return;
   }
   logger.warn({ personId }, "inbound email from a person with no Lucy or Sarah email conversation — no auto-reply sent");
@@ -232,10 +232,11 @@ async function sweepMailbox({ host, user, pass }: ImapMailbox): Promise<EmailInb
               subject: parsed.subject ?? "(no subject)",
               body: bodyText,
               messageId: parsed.messageId ?? null,
+              receivingAddress: user,
             });
             await markWebhookEventProcessed(recorded.id);
           } else {
-            await dispatchInboundEmail(personId, parsed.subject ?? "(no subject)", bodyText, parsed.messageId ?? null);
+            await dispatchInboundEmail(personId, parsed.subject ?? "(no subject)", bodyText, parsed.messageId ?? null, user);
             await markWebhookEventProcessed(recorded.id, personId);
           }
           processedCount++;

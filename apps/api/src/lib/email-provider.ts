@@ -35,6 +35,16 @@ export interface EmailSendOptions {
    * tanks a new sending identity's reputation.
    */
   readonly unsubscribeUrl?: string;
+  /**
+   * Sends from this exact address instead of the provider's configured
+   * default — used to reply from whichever real mailbox (e.g. help@ vs
+   * support@) a customer originally wrote to, once the authenticated
+   * mailbox's Gmail "Send mail as" settings include it as a verified
+   * alias (Gmail silently falls back to the authenticated account's own
+   * address otherwise, rather than erroring — see EMAIL_INBOUND_EXTRA_MAILBOXES
+   * in .env.example).
+   */
+  readonly fromEmailOverride?: string;
 }
 
 export interface EmailProvider {
@@ -93,8 +103,9 @@ class GoogleWorkspaceEmailProvider implements EmailProvider {
   }
 
   async sendEmail(to: string, subject: string, html: string, opts: EmailSendOptions = {}): Promise<EmailSendResult> {
+    const fromEmail = opts.fromEmailOverride ?? this.fromEmail;
     const info = await this.transporter.sendMail({
-      from: opts.fromName ? { name: opts.fromName, address: this.fromEmail } : this.fromEmail,
+      from: opts.fromName ? { name: opts.fromName, address: fromEmail } : fromEmail,
       to,
       subject,
       html,
@@ -153,10 +164,11 @@ class GmailApiEmailProvider implements EmailProvider {
     // means every caller (reply threading, the send-record idempotency
     // handle) gets the same kind of value the SMTP path's nodemailer
     // transport handed back, with no extra round-trip to look it up.
-    const domain = this.fromEmail.split("@")[1] ?? "mylumahealth.com";
+    const fromEmail = opts.fromEmailOverride ?? this.fromEmail;
+    const domain = fromEmail.split("@")[1] ?? "mylumahealth.com";
     const messageId = `<${randomUUID()}@${domain}>`;
     const wrapMessageId = (id: string) => (id.startsWith("<") ? id : `<${id}>`);
-    const from = opts.fromName ? `"${encodeHeaderValue(opts.fromName)}" <${this.fromEmail}>` : this.fromEmail;
+    const from = opts.fromName ? `"${encodeHeaderValue(opts.fromName)}" <${fromEmail}>` : fromEmail;
     const boundary = `luma-${randomUUID()}`;
 
     const headers = [
