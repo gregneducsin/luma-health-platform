@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { stripQuotedReply, parseExtraMailboxes, imapConfigs } from "./email-inbound.service.js";
+import { stripQuotedReply, parseExtraMailboxes, imapConfigs, isIgnoredSender } from "./email-inbound.service.js";
 
 describe("stripQuotedReply", () => {
   it("returns the whole body when there's no quoted history", () => {
@@ -111,5 +111,27 @@ describe("imapConfigs", () => {
       { host: "imap.gmail.com", user: "help@tryark.com", pass: "ulzqezghvjvulqfg" },
       { host: "imap.gmail.com", user: "support@tryark.com", pass: "thnbsiajgbnvmjhg" },
     ]);
+  });
+});
+
+describe("isIgnoredSender", () => {
+  it("returns false when EMAIL_INBOUND_IGNORED_SENDERS is unset or blank", () => {
+    expect(isIgnoredSender("help@example-platform.ai", undefined)).toBe(false);
+    expect(isIgnoredSender("help@example-platform.ai", "  ")).toBe(false);
+  });
+
+  it("matches an exact address in the comma-separated list, case-insensitively", () => {
+    const list = "help@example-platform.ai,support@example-platform.ai";
+    expect(isIgnoredSender("help@example-platform.ai", list)).toBe(true);
+    expect(isIgnoredSender("HELP@Example-Platform.AI", list)).toBe(true);
+    expect(isIgnoredSender("support@example-platform.ai", list)).toBe(true);
+  });
+
+  it("does not match an address that isn't in the list", () => {
+    expect(isIgnoredSender("real.customer@gmail.com", "help@example-platform.ai")).toBe(false);
+  });
+
+  it("does not do a domain/wildcard match — only exact addresses", () => {
+    expect(isIgnoredSender("someone-else@example-platform.ai", "help@example-platform.ai")).toBe(false);
   });
 });
