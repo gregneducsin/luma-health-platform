@@ -35,6 +35,7 @@ const EXPECTED_TABLES = [
   "conversations",
   "conversation_messages",
   "abandoned_cart_triggers",
+  "consumer_affairs_triggers",
   "support_conversations",
   "support_conversation_messages",
   "review_request_triggers",

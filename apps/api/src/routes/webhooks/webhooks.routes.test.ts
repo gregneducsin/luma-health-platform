@@ -238,6 +238,63 @@ describe("Webhooks", () => {
       expect(res.status).toBe(200);
       expect(sendMessageMock).not.toHaveBeenCalled();
     });
+
+    it("fires the meta-lead opener instantly for leadType 'Caterpillar', same as Meta Form Fill", async () => {
+      sendMessageMock.mockClear();
+      sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_caterpillar_webhook" });
+
+      const payload = {
+        eventId: "ghl-evt-caterpillar-1",
+        contactId: "ghl-contact-caterpillar-1",
+        firstName: "Cat",
+        lastName: "Lead",
+        email: "caterpillar-lead-webhook@example.com",
+        phone: "+15557770001",
+        leadType: "Caterpillar",
+        occurredAt: new Date().toISOString(),
+      };
+      const res = await request(app).post("/api/webhooks/ghl-lead").set("x-webhook-secret", GHL_SECRET).send(payload);
+      expect(res.status).toBe(200);
+
+      expect(sendMessageMock).toHaveBeenCalledWith("+15557770001", expect.stringContaining("what state you're"));
+
+      const { db, customersTable, metaLeadEmailTriggersTable } = await import("@luma/db");
+      const { eq } = await import("drizzle-orm");
+      const [customer] = await db.select().from(customersTable).where(eq(customersTable.email, "caterpillar-lead-webhook@example.com"));
+      expect(customer!.leadType).toBe("Caterpillar");
+      const emailTriggers = await db.select().from(metaLeadEmailTriggersTable).where(eq(metaLeadEmailTriggersTable.personId, customer!.id));
+      expect(emailTriggers.map((t) => t.step).sort()).toEqual(["educational", "opener", "plan_comparison", "urgency"]);
+    });
+
+    it("arms a delayed Consumer Affairs opener (does not fire instantly) for leadType 'Consumer Affairs'", async () => {
+      sendMessageMock.mockClear();
+
+      const payload = {
+        eventId: "ghl-evt-consumer-affairs-1",
+        contactId: "ghl-contact-consumer-affairs-1",
+        firstName: "Robin",
+        lastName: "Lead",
+        email: "consumer-affairs-lead-webhook@example.com",
+        phone: "+15557770002",
+        leadType: "Consumer Affairs",
+        occurredAt: new Date().toISOString(),
+      };
+      const res = await request(app).post("/api/webhooks/ghl-lead").set("x-webhook-secret", GHL_SECRET).send(payload);
+      expect(res.status).toBe(200);
+
+      // Delayed, not instant — nothing sent on this same request.
+      expect(sendMessageMock).not.toHaveBeenCalled();
+
+      const { db, customersTable, consumerAffairsTriggersTable } = await import("@luma/db");
+      const { eq } = await import("drizzle-orm");
+      const [customer] = await db.select().from(customersTable).where(eq(customersTable.email, "consumer-affairs-lead-webhook@example.com"));
+      expect(customer!.leadType).toBe("Consumer Affairs");
+      const [trigger] = await db.select().from(consumerAffairsTriggersTable).where(eq(consumerAffairsTriggersTable.personId, customer!.id));
+      expect(trigger.status).toBe("pending");
+      const dueInMs = new Date(trigger.dueAt).getTime() - Date.now();
+      expect(dueInMs).toBeGreaterThan(10 * 60 * 1000 - 10_000);
+      expect(dueInMs).toBeLessThan(10 * 60 * 1000 + 10_000);
+    });
   });
 
   describe("Bask order", () => {

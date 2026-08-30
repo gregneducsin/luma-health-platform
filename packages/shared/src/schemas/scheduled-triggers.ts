@@ -4,6 +4,7 @@ export const upcomingTriggerSchema = z.object({
   kind: z.enum([
     "follow_up",
     "abandoned_cart_sms",
+    "consumer_affairs_sms",
     "lead_checkin_sms",
     "objection_reengagement_sms",
     "abandoned_cart_email",

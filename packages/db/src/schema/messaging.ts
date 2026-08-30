@@ -261,6 +261,45 @@ export const leadCheckinTriggersTable = pgTable(
 );
 
 /**
+ * A one-time, 10-minutes-later opener for a lead sourced from the Consumer
+ * Affairs review site, armed the moment their GHL webhook lands (see
+ * isConsumerAffairsLead in webhooks.service.ts) — same delay as
+ * abandonedCartTriggersTable's opener, but keyed to personId only (one row
+ * per person, like leadCheckinTriggersTable) since there's no Bask
+ * questionnaire event to hang off of; this is cold inbound from a review
+ * site, not an abandoned in-app questionnaire. See consumer-affairs.service.ts.
+ */
+export const consumerAffairsTriggersTable = pgTable(
+  "consumer_affairs_triggers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => customersTable.id, { onDelete: "cascade" }),
+    dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
+    // "processing" is a transient claim state — see the identical comment on
+    // followUpJobsTable.status.
+    status: text("status", { enum: ["pending", "processing", "sent", "cancelled", "failed"] }).notNull().default("pending"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    providerMessageId: text("provider_message_id"),
+    cancelledReason: text("cancelled_reason"),
+    failureReason: text("failure_reason"),
+    // A failed send gets a few retries rather than being lost permanently —
+    // same reasoning and mechanism as leadCheckinTriggersTable.attemptCount.
+    attemptCount: integer("attempt_count").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex("consumer_affairs_triggers_person_id_key").on(t.personId),
+    index("consumer_affairs_triggers_status_due_at_idx").on(t.status, t.dueAt),
+  ],
+);
+
+/**
  * A one-time, 2-weeks-out re-engagement text, armed the moment a lead's
  * "not ready yet" hesitation (the think_about_it objection) reaches
  * STAND_DOWN — see objection-reengagement.service.ts and the standDown
@@ -363,6 +402,7 @@ export type Conversation = typeof conversationsTable.$inferSelect;
 export type ConversationMessage = typeof conversationMessagesTable.$inferSelect;
 export type AbandonedCartTrigger = typeof abandonedCartTriggersTable.$inferSelect;
 export type LeadCheckinTrigger = typeof leadCheckinTriggersTable.$inferSelect;
+export type ConsumerAffairsTrigger = typeof consumerAffairsTriggersTable.$inferSelect;
 export type ObjectionReengagementTrigger = typeof objectionReengagementTriggersTable.$inferSelect;
 export type UnmatchedSmsThread = typeof unmatchedSmsThreadsTable.$inferSelect;
 export type UnmatchedSmsMessage = typeof unmatchedSmsMessagesTable.$inferSelect;

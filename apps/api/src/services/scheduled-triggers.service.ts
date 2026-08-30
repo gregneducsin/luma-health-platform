@@ -3,6 +3,7 @@ import {
   db,
   followUpJobsTable,
   abandonedCartTriggersTable,
+  consumerAffairsTriggersTable,
   leadCheckinTriggersTable,
   objectionReengagementTriggersTable,
   abandonedCartEmailTriggersTable,
@@ -25,6 +26,7 @@ export interface UpcomingTrigger {
   readonly kind:
     | "follow_up"
     | "abandoned_cart_sms"
+    | "consumer_affairs_sms"
     | "lead_checkin_sms"
     | "objection_reengagement_sms"
     | "abandoned_cart_email"
@@ -67,6 +69,17 @@ async function nextAbandonedCartSms(personId: string): Promise<UpcomingTrigger |
     .limit(1);
   if (!row) return undefined;
   return { kind: "abandoned_cart_sms", label: "Abandoned-cart opener text", dueAt: row.dueAt, status: row.status as "pending" | "processing" };
+}
+
+async function nextConsumerAffairsSms(personId: string): Promise<UpcomingTrigger | undefined> {
+  const [row] = await db
+    .select({ dueAt: consumerAffairsTriggersTable.dueAt, status: consumerAffairsTriggersTable.status })
+    .from(consumerAffairsTriggersTable)
+    .where(and(eq(consumerAffairsTriggersTable.personId, personId), inArray(consumerAffairsTriggersTable.status, PENDING_STATUSES)))
+    .orderBy(asc(consumerAffairsTriggersTable.dueAt))
+    .limit(1);
+  if (!row) return undefined;
+  return { kind: "consumer_affairs_sms", label: "Consumer Affairs opener text", dueAt: row.dueAt, status: row.status as "pending" | "processing" };
 }
 
 async function nextLeadCheckinSms(personId: string): Promise<UpcomingTrigger | undefined> {
@@ -136,6 +149,7 @@ async function nextReviewRequestSms(personId: string): Promise<UpcomingTrigger |
 const TRIGGER_TABLE_BY_KIND = {
   follow_up: followUpJobsTable,
   abandoned_cart_sms: abandonedCartTriggersTable,
+  consumer_affairs_sms: consumerAffairsTriggersTable,
   lead_checkin_sms: leadCheckinTriggersTable,
   objection_reengagement_sms: objectionReengagementTriggersTable,
   abandoned_cart_email: abandonedCartEmailTriggersTable,
@@ -167,6 +181,7 @@ export async function getUpcomingTrigger(personId: string): Promise<UpcomingTrig
   const candidates = await Promise.all([
     nextFollowUpJob(personId),
     nextAbandonedCartSms(personId),
+    nextConsumerAffairsSms(personId),
     nextLeadCheckinSms(personId),
     nextObjectionReengagementSms(personId),
     nextAbandonedCartEmail(personId),

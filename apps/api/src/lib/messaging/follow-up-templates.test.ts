@@ -3,6 +3,8 @@ import {
   renderFollowUpMessage,
   renderAbandonedCartOpener,
   renderMetaLeadOpener,
+  renderConsumerAffairsOpener,
+  renderConsumerAffairsFollowUp,
   renderCurrentlyTakingCheckin,
   renderReengagementCheckin,
   type FollowUpMessageStep,
@@ -86,6 +88,38 @@ describe("renderMetaLeadOpener", () => {
   });
 });
 
+describe("renderConsumerAffairsOpener", () => {
+  it("has no question mark and no em dash", () => {
+    const text = renderConsumerAffairsOpener("Jamie");
+    expect(text).not.toContain("?");
+    expect(text).not.toMatch(/—|--/);
+  });
+
+  it("names Consumer Affairs and asks about state, no link", () => {
+    const text = renderConsumerAffairsOpener("Jamie");
+    expect(text).toContain("Consumer Affairs");
+    expect(text.toLowerCase()).toContain("state");
+    expect(text).not.toMatch(/https?:\/\//);
+  });
+
+  it("introduces Lucy by name", () => {
+    expect(renderConsumerAffairsOpener("Jamie")).toContain("this is Lucy with Luma Health");
+  });
+
+  it("interpolates the first name, falling back to 'there' when blank", () => {
+    expect(renderConsumerAffairsOpener("Jamie")).toContain("Jamie");
+    expect(renderConsumerAffairsOpener("  ")).toContain("there");
+  });
+});
+
+describe("renderConsumerAffairsFollowUp", () => {
+  it("names Consumer Affairs but does not re-introduce Lucy", () => {
+    const text = renderConsumerAffairsFollowUp("Jamie");
+    expect(text).toContain("Consumer Affairs");
+    expect(text).not.toContain("this is Lucy with Luma Health");
+  });
+});
+
 describe("wording variation — no template sends the identical byte-for-byte sentence every time", () => {
   it("provider_check_in varies", () => {
     expect(distinctOutputs(() => renderFollowUpMessage("provider_check_in", "Jamie")).size).toBeGreaterThan(1);
@@ -101,6 +135,10 @@ describe("wording variation — no template sends the identical byte-for-byte se
 
   it("renderMetaLeadOpener varies", () => {
     expect(distinctOutputs(() => renderMetaLeadOpener("Jamie")).size).toBeGreaterThan(1);
+  });
+
+  it("renderConsumerAffairsOpener varies", () => {
+    expect(distinctOutputs(() => renderConsumerAffairsOpener("Jamie")).size).toBeGreaterThan(1);
   });
 
   it("renderCurrentlyTakingCheckin varies", () => {

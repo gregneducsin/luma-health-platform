@@ -22,6 +22,7 @@ import { scheduleAbandonedCartOpener } from "./abandoned-cart.service.js";
 import { scheduleAbandonedCartEmailSequence } from "./abandoned-cart-email.service.js";
 import { sendMetaLeadOpener } from "./meta-lead.service.js";
 import { scheduleMetaLeadEmailSequence } from "./meta-lead-email.service.js";
+import { scheduleConsumerAffairsOpener } from "./consumer-affairs.service.js";
 import {
   sendOrderReceivedOpener,
   sendRefillOrderReceivedNotice,
@@ -182,6 +183,26 @@ const occurredDate = (iso: string) => iso.slice(0, 10);
 const META_FORM_FILL_LEAD_TYPE = "meta form fill";
 const isMetaFormFillLead = (leadType?: string): boolean => (leadType ?? "").trim().toLowerCase() === META_FORM_FILL_LEAD_TYPE;
 
+/**
+ * Caterpillar is a lead-gen vendor treated identically to Meta form-fill —
+ * same instant, no-delay opener and email sequence, reusing the exact same
+ * functions rather than a separate implementation, since the opener content
+ * itself is source-agnostic (asks for state, never names Meta by name
+ * either — see renderMetaLeadOpener's docstring).
+ */
+const CATERPILLAR_LEAD_TYPE = "caterpillar";
+const isCaterpillarLead = (leadType?: string): boolean => (leadType ?? "").trim().toLowerCase() === CATERPILLAR_LEAD_TYPE;
+
+/**
+ * Consumer Affairs (a review site) gets the same 10-minute-delayed opener
+ * treatment as the abandoned-cart flow, not the instant Meta/Caterpillar
+ * treatment — see scheduleConsumerAffairsOpener and
+ * renderConsumerAffairsOpener for why (this is cold inbound from a review
+ * site, not urgent cart-abandonment or form-fill signal).
+ */
+const CONSUMER_AFFAIRS_LEAD_TYPE = "consumer affairs";
+const isConsumerAffairsLead = (leadType?: string): boolean => (leadType ?? "").trim().toLowerCase() === CONSUMER_AFFAIRS_LEAD_TYPE;
+
 export async function handleGhlLeadWebhook(payload: GhlLeadWebhookRequest): Promise<{ duplicate: boolean }> {
   const recorded = await recordWebhookEventIfNew("ghl_lead", payload.eventId, payload);
   if (!recorded) return { duplicate: true };
@@ -199,12 +220,14 @@ export async function handleGhlLeadWebhook(payload: GhlLeadWebhookRequest): Prom
       leadType: payload.leadType,
     });
 
-    // Meta form-fill leads are cold outreach — respond as fast as possible,
-    // so the opener fires synchronously on this same request, not off a
-    // scheduled sweep like the abandoned-cart trigger.
-    if (isMetaFormFillLead(payload.leadType)) {
+    // Meta form-fill and Caterpillar leads are cold outreach — respond as
+    // fast as possible, so the opener fires synchronously on this same
+    // request, not off a scheduled sweep like the abandoned-cart trigger.
+    if (isMetaFormFillLead(payload.leadType) || isCaterpillarLead(payload.leadType)) {
       await sendMetaLeadOpener(customerId);
       await scheduleMetaLeadEmailSequence(customerId);
+    } else if (isConsumerAffairsLead(payload.leadType)) {
+      await scheduleConsumerAffairsOpener(customerId);
     }
 
     await markWebhookEventProcessed(recorded.id, customerId);

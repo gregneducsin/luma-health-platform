@@ -105,6 +105,39 @@ export function renderMetaLeadOpener(firstName: string): string {
 }
 
 /**
+ * The very first outbound message to a lead sourced from Consumer Affairs
+ * (a review site) — fires 10 minutes after their GHL webhook lands, same
+ * delay as the abandoned-cart opener, not instantly like the Meta opener
+ * (this is cold inbound from a review site, not urgent cart-abandonment
+ * signal). Names the source directly since a lead who found the business
+ * through a review site benefits from knowing why they're being texted,
+ * unlike a Meta form-fill lead who just submitted a form seconds ago and
+ * already knows why. Same "ask for state, doubles as the reason to text"
+ * structure as renderMetaLeadOpener otherwise.
+ */
+export function renderConsumerAffairsOpener(firstName: string): string {
+  const name = firstName.trim() || "there";
+  return pickVariant([
+    `Hey ${name}, this is Lucy with Luma Health. Saw you found us through Consumer Affairs, and I wanted to check what state you're in so I can share the promotions available for you right now.`,
+    `Hey ${name}, this is Lucy with Luma Health. Noticed you found us on Consumer Affairs, so I wanted to check what state you're located in to see what promotions we have running for you right now.`,
+  ]);
+}
+
+/**
+ * Same Consumer Affairs opener, for a lead who already has an active
+ * conversation with Lucy by the time this fires (e.g. they also came in as
+ * a Meta lead, or already texted in directly). Drops the self-introduction
+ * — same reasoning as renderAbandonedCartFollowUp.
+ */
+export function renderConsumerAffairsFollowUp(firstName: string): string {
+  const name = firstName.trim() || "there";
+  return pickVariant([
+    `Hey ${name}, saw you found us through Consumer Affairs, and I wanted to check what state you're in so I can share the promotions available for you right now.`,
+    `Hey ${name}, noticed you found us on Consumer Affairs, so I wanted to check what state you're located in to see what promotions we have running for you right now.`,
+  ]);
+}
+
+/**
  * The 6-day check-in — fired once per lead, 6 days after the very first
  * outbound message Lucy ever sent them (see lead-checkin.service.ts), 24/7,
  * no monitored-hours window. Fixed template, not AI-drafted, same reasoning

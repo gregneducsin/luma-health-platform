@@ -3,6 +3,7 @@ import { logger } from "./lib/logger.js";
 import { createApp } from "./app.js";
 import { sweepFollowUpJobs } from "./services/follow-up-jobs.service.js";
 import { sweepAbandonedCartTriggers } from "./services/abandoned-cart.service.js";
+import { sweepConsumerAffairsTriggers } from "./services/consumer-affairs.service.js";
 import { sweepAbandonedCartEmailTriggers } from "./services/abandoned-cart-email.service.js";
 import { sweepMetaLeadEmailTriggers } from "./services/meta-lead-email.service.js";
 import { sweepReviewRequestTriggers } from "./services/order-fulfillment.service.js";
@@ -44,6 +45,15 @@ setInterval(() => {
     void notifySlack(`Abandoned-cart opener sweep failed: ${err instanceof Error ? err.message : String(err)}`);
   });
 }, ABANDONED_CART_SWEEP_INTERVAL_MS);
+
+// Same 10-minute opener delay and tick rate as the abandoned-cart sweep above.
+const CONSUMER_AFFAIRS_SWEEP_INTERVAL_MS = 2 * 60 * 1000;
+setInterval(() => {
+  sweepConsumerAffairsTriggers().catch((err) => {
+    logger.error({ err }, "Consumer Affairs opener sweep failed");
+    void notifySlack(`Consumer Affairs opener sweep failed: ${err instanceof Error ? err.message : String(err)}`);
+  });
+}, CONSUMER_AFFAIRS_SWEEP_INTERVAL_MS);
 
 // Same tight tick as the SMS abandoned-cart sweep above — the email
 // sequence's finest-grained step (the opener) has the identical 10-minute
