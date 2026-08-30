@@ -22,6 +22,7 @@ import { scheduleAbandonedCartOpener } from "./abandoned-cart.service.js";
 import { scheduleAbandonedCartEmailSequence } from "./abandoned-cart-email.service.js";
 import { sendMetaLeadOpener } from "./meta-lead.service.js";
 import { scheduleMetaLeadEmailSequence } from "./meta-lead-email.service.js";
+import { sendCaterpillarOpener } from "./caterpillar-lead.service.js";
 import { scheduleConsumerAffairsOpener } from "./consumer-affairs.service.js";
 import {
   sendOrderReceivedOpener,
@@ -223,8 +224,14 @@ export async function handleGhlLeadWebhook(payload: GhlLeadWebhookRequest): Prom
     // Meta form-fill and Caterpillar leads are cold outreach — respond as
     // fast as possible, so the opener fires synchronously on this same
     // request, not off a scheduled sweep like the abandoned-cart trigger.
-    if (isMetaFormFillLead(payload.leadType) || isCaterpillarLead(payload.leadType)) {
+    // Same instant treatment, different opener copy per source (see
+    // renderCaterpillarOpener's docstring) — both share the same 4-step
+    // email nurture sequence.
+    if (isMetaFormFillLead(payload.leadType)) {
       await sendMetaLeadOpener(customerId);
+      await scheduleMetaLeadEmailSequence(customerId);
+    } else if (isCaterpillarLead(payload.leadType)) {
+      await sendCaterpillarOpener(customerId);
       await scheduleMetaLeadEmailSequence(customerId);
     } else if (isConsumerAffairsLead(payload.leadType)) {
       await scheduleConsumerAffairsOpener(customerId);

@@ -239,7 +239,7 @@ describe("Webhooks", () => {
       expect(sendMessageMock).not.toHaveBeenCalled();
     });
 
-    it("fires the meta-lead opener instantly for leadType 'Caterpillar', same as Meta Form Fill", async () => {
+    it("fires the Caterpillar opener instantly, with its own promotion/product-pitch copy", async () => {
       sendMessageMock.mockClear();
       sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_caterpillar_webhook" });
 
@@ -256,7 +256,11 @@ describe("Webhooks", () => {
       const res = await request(app).post("/api/webhooks/ghl-lead").set("x-webhook-secret", GHL_SECRET).send(payload);
       expect(res.status).toBe(200);
 
-      expect(sendMessageMock).toHaveBeenCalledWith("+15557770001", expect.stringContaining("what state you're"));
+      // Wording is randomized (see renderCaterpillarOpener's variants) —
+      // "promotion" and asking for semaglutide/tirzepatide are common to
+      // both. Distinct from Meta's opener, which asks for state instead.
+      expect(sendMessageMock).toHaveBeenCalledWith("+15557770001", expect.stringContaining("promotion"));
+      expect(sendMessageMock).toHaveBeenCalledWith("+15557770001", expect.stringContaining("semaglutide or tirzepatide"));
 
       const { db, customersTable, metaLeadEmailTriggersTable } = await import("@luma/db");
       const { eq } = await import("drizzle-orm");

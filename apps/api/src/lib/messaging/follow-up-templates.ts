@@ -105,6 +105,22 @@ export function renderMetaLeadOpener(firstName: string): string {
 }
 
 /**
+ * The very first outbound message to a Caterpillar lead — fires instantly
+ * on receipt of the webhook, same trust level as renderMetaLeadOpener, but
+ * its own copy: leads with the promotion pitch up front and asks directly
+ * which product they're interested in, rather than asking for state first.
+ * Ends in exactly one question mark (unlike renderMetaLeadOpener, which is
+ * phrased as a statement) — see this file's tests for the structural rule.
+ */
+export function renderCaterpillarOpener(firstName: string): string {
+  const name = firstName.trim() || "there";
+  return pickVariant([
+    `Hey ${name}, this is Lucy with Luma Health. We're offering some great promotions for your state right now. Which weight loss medication were you more interested in, semaglutide or tirzepatide?`,
+    `Hey ${name}, this is Lucy with Luma Health. We have some great promotions running in your state right now. Which weight loss medication interests you more, semaglutide or tirzepatide?`,
+  ]);
+}
+
+/**
  * The very first outbound message to a lead sourced from Consumer Affairs
  * (a review site) — fires 10 minutes after their GHL webhook lands, same
  * delay as the abandoned-cart opener, not instantly like the Meta opener

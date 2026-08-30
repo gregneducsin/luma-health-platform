@@ -3,6 +3,7 @@ import {
   renderFollowUpMessage,
   renderAbandonedCartOpener,
   renderMetaLeadOpener,
+  renderCaterpillarOpener,
   renderConsumerAffairsOpener,
   renderConsumerAffairsFollowUp,
   renderCurrentlyTakingCheckin,
@@ -88,6 +89,31 @@ describe("renderMetaLeadOpener", () => {
   });
 });
 
+describe("renderCaterpillarOpener", () => {
+  it("has exactly one trailing question mark, no em dash", () => {
+    const text = renderCaterpillarOpener("Jamie");
+    expect((text.match(/\?/g) ?? []).length).toBe(1);
+    expect(text.trim().endsWith("?")).toBe(true);
+    expect(text).not.toMatch(/—|--/);
+  });
+
+  it("mentions promotions and asks which weight loss medication, not state", () => {
+    const text = renderCaterpillarOpener("Jamie");
+    expect(text.toLowerCase()).toContain("promotion");
+    expect(text.toLowerCase()).toContain("semaglutide");
+    expect(text.toLowerCase()).toContain("tirzepatide");
+  });
+
+  it("introduces Lucy by name", () => {
+    expect(renderCaterpillarOpener("Jamie")).toContain("this is Lucy with Luma Health");
+  });
+
+  it("interpolates the first name, falling back to 'there' when blank", () => {
+    expect(renderCaterpillarOpener("Jamie")).toContain("Jamie");
+    expect(renderCaterpillarOpener("  ")).toContain("there");
+  });
+});
+
 describe("renderConsumerAffairsOpener", () => {
   it("has no question mark and no em dash", () => {
     const text = renderConsumerAffairsOpener("Jamie");
@@ -135,6 +161,10 @@ describe("wording variation — no template sends the identical byte-for-byte se
 
   it("renderMetaLeadOpener varies", () => {
     expect(distinctOutputs(() => renderMetaLeadOpener("Jamie")).size).toBeGreaterThan(1);
+  });
+
+  it("renderCaterpillarOpener varies", () => {
+    expect(distinctOutputs(() => renderCaterpillarOpener("Jamie")).size).toBeGreaterThan(1);
   });
 
   it("renderConsumerAffairsOpener varies", () => {
