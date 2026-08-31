@@ -18,7 +18,7 @@ const NAV_ITEMS: readonly { href: string; label: string; roles: readonly AuthUse
   { href: "/questionnaires", label: "Questionnaires", roles: ["admin"] },
   { href: "/conversations", label: "Conversations", roles: ["admin", "customer_service"] },
   { href: "/reporting", label: "Reporting", roles: ["admin"] },
-  { href: "/marketing-cpa", label: "Marketing CPA", roles: ["admin"] },
+  { href: "/admin", label: "Admin", roles: ["admin", "manager"] },
   { href: "/payroll/employees", label: "Payroll", roles: ["admin", "manager"] },
   { href: "/users", label: "Users", roles: ["admin"] },
 ];
