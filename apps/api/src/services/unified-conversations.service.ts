@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
   customersTable,
@@ -7,6 +7,7 @@ import {
   emailConversationsTable,
   supportConversationsTable,
   supportEmailConversationsTable,
+  intakeLinkTokensTable,
   type Conversation,
   type EmailConversation,
   type SupportConversation,
@@ -53,6 +54,7 @@ function mergeSummaryRows(target: Map<string, UnifiedConversationSummary>, rows:
       lastSentiment: isNewer ? r.lastSentiment : (existing?.lastSentiment ?? null),
       needsAttention: Boolean(existing?.needsAttention) || r.needsAttention,
       leadSource: thread === "sales" ? (r.leadSource ?? existing?.leadSource ?? null) : (existing?.leadSource ?? null),
+      leadType: existing?.leadType ?? null,
       hasSalesThread: Boolean(existing?.hasSalesThread) || thread === "sales",
       hasSupportThread: Boolean(existing?.hasSupportThread) || thread === "support",
     });
@@ -73,6 +75,20 @@ export async function listUnifiedConversationSummaries(): Promise<UnifiedConvers
   mergeSummaryRows(merged, salesEmail, "sales");
   mergeSummaryRows(merged, supportSms, "support");
   mergeSummaryRows(merged, supportEmail, "support");
+
+  // None of the four underlying summary functions select leadType (it's a
+  // customer-level field, not conversation-level) — fetched here in one
+  // extra query so the badge logic can tell a Caterpillar lead apart from a
+  // real Meta lead even though both share the same "meta_form" leadSource
+  // pipeline (see the leadType field's docstring in the shared schema).
+  const personIds = Array.from(merged.keys());
+  if (personIds.length > 0) {
+    const leadTypeRows = await db.select({ id: customersTable.id, leadType: customersTable.leadType }).from(customersTable).where(inArray(customersTable.id, personIds));
+    for (const row of leadTypeRows) {
+      const existing = merged.get(row.id);
+      if (existing) merged.set(row.id, { ...existing, leadType: row.leadType });
+    }
+  }
 
   return Array.from(merged.values()).sort((a, b) => {
     if (!a.lastMessageAt && !b.lastMessageAt) return 0;
@@ -111,7 +127,7 @@ export async function getSalesResponseStats(): Promise<SalesResponseStats> {
   return { totalContacted, totalResponded, responseRate: totalContacted > 0 ? totalResponded / totalContacted : 0 };
 }
 
-function mergeSalesThreadInfo(sms: Conversation | null, email: EmailConversation | null): SalesThreadInfo | null {
+function mergeSalesThreadInfo(sms: Conversation | null, email: EmailConversation | null, intakeLinkClicked: boolean): SalesThreadInfo | null {
   if (!sms && !email) return null;
   const reasons = [sms?.needsAttention ? sms.needsAttentionReason : null, email?.needsAttention ? email.needsAttentionReason : null].filter(
     (r): r is string => Boolean(r),
@@ -124,7 +140,19 @@ function mergeSalesThreadInfo(sms: Conversation | null, email: EmailConversation
     objectionStage: Math.max(sms?.objectionStage ?? 0, email?.objectionStage ?? 0),
     promoOffered: Boolean(sms?.promoOffered || email?.promoOffered),
     linkProvided: Boolean(sms?.linkProvided || email?.linkProvided),
+    intakeLinkClicked,
   };
+}
+
+/** Whether the most recently minted intake link (see createIntakeLink in intake-links.service.ts) for this person has been clicked. */
+async function hasClickedMostRecentIntakeLink(personId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ clickedAt: intakeLinkTokensTable.clickedAt })
+    .from(intakeLinkTokensTable)
+    .where(eq(intakeLinkTokensTable.personId, personId))
+    .orderBy(desc(intakeLinkTokensTable.createdAt))
+    .limit(1);
+  return row?.clickedAt != null;
 }
 
 function mergeSupportThreadInfo(sms: SupportConversation | null, email: SupportEmailConversation | null): SupportThreadInfo | null {
@@ -164,14 +192,21 @@ async function findSupportEmailRow(personId: string): Promise<SupportEmailConver
 }
 
 export async function getUnifiedConversationDetail(personId: string): Promise<{
-  customer: { id: string; firstName: string; lastName: string; phone: string | null; email: string | null; hasQualifyingPurchase: boolean };
+  customer: { id: string; firstName: string; lastName: string; phone: string | null; email: string | null; leadType: string | null; hasQualifyingPurchase: boolean };
   sales: SalesThreadInfo | null;
   support: SupportThreadInfo | null;
   messages: UnifiedMessage[];
   availableReplyTargets: { persona: ConversationPersona; channel: "sms" | "email" }[];
 } | null> {
   const [customer] = await db
-    .select({ id: customersTable.id, firstName: customersTable.firstName, lastName: customersTable.lastName, phone: customersTable.phone, email: customersTable.email })
+    .select({
+      id: customersTable.id,
+      firstName: customersTable.firstName,
+      lastName: customersTable.lastName,
+      phone: customersTable.phone,
+      email: customersTable.email,
+      leadType: customersTable.leadType,
+    })
     .from(customersTable)
     .where(eq(customersTable.id, personId));
   if (!customer) return null;
@@ -185,11 +220,15 @@ export async function getUnifiedConversationDetail(personId: string): Promise<{
 
   if (!salesSmsRow && !salesEmailRow && !supportSmsRow && !supportEmailRow) return null;
 
-  const [purchased] = await db
-    .select({ id: purchasesTable.id })
-    .from(purchasesTable)
-    .where(and(eq(purchasesTable.customerId, personId), eq(purchasesTable.status, "completed")))
-    .limit(1);
+  const [purchased, intakeLinkClicked] = await Promise.all([
+    db
+      .select({ id: purchasesTable.id })
+      .from(purchasesTable)
+      .where(and(eq(purchasesTable.customerId, personId), eq(purchasesTable.status, "completed")))
+      .limit(1)
+      .then((rows) => rows[0]),
+    hasClickedMostRecentIntakeLink(personId),
+  ]);
 
   const [salesSmsMessages, salesEmailMessages, supportSmsMessages, supportEmailMessages] = await Promise.all([
     salesSmsRow ? conversationsService.listMessages(salesSmsRow.id, 200) : Promise.resolve([]),
@@ -263,8 +302,16 @@ export async function getUnifiedConversationDetail(personId: string): Promise<{
   ];
 
   return {
-    customer: { id: customer.id, firstName: customer.firstName, lastName: customer.lastName, phone: customer.phone, email: customer.email, hasQualifyingPurchase: Boolean(purchased) },
-    sales: mergeSalesThreadInfo(salesSmsRow, salesEmailRow),
+    customer: {
+      id: customer.id,
+      firstName: customer.firstName,
+      lastName: customer.lastName,
+      phone: customer.phone,
+      email: customer.email,
+      leadType: customer.leadType,
+      hasQualifyingPurchase: Boolean(purchased),
+    },
+    sales: mergeSalesThreadInfo(salesSmsRow, salesEmailRow, intakeLinkClicked),
     support: mergeSupportThreadInfo(supportSmsRow, supportEmailRow),
     messages,
     availableReplyTargets,

@@ -40,6 +40,15 @@ export const unifiedConversationSummarySchema = z.object({
   /** true if ANY of the person's up-to-four threads currently needs attention. */
   needsAttention: z.boolean(),
   leadSource: z.enum(["abandoned_cart", "meta_form"]).nullable(),
+  /**
+   * The customer's own leadType (e.g. "Meta Form Fill", "Caterpillar") —
+   * distinct from leadSource above, which only distinguishes the
+   * *messaging pipeline* a conversation runs on and deliberately collapses
+   * Caterpillar leads into the same "meta_form" pipeline as real Meta leads
+   * (same instant-opener treatment). leadType is what the badge should
+   * actually be driven by, so a Caterpillar lead never reads as "Meta".
+   */
+  leadType: z.string().nullable(),
   hasSalesThread: z.boolean(),
   hasSupportThread: z.boolean(),
 });
@@ -61,6 +70,8 @@ export const salesThreadInfoSchema = z.object({
   objectionStage: z.number(),
   promoOffered: z.boolean(),
   linkProvided: z.boolean(),
+  /** True once the customer's most recently sent intake link (see linkProvided above) has actually been clicked. */
+  intakeLinkClicked: z.boolean(),
 });
 export type SalesThreadInfo = z.infer<typeof salesThreadInfoSchema>;
 
@@ -82,6 +93,7 @@ export const unifiedConversationDetailSchema = z.object({
     lastName: z.string(),
     phone: z.string().nullable(),
     email: z.string().nullable(),
+    leadType: z.string().nullable(),
     hasQualifyingPurchase: z.boolean(),
   }),
   /** null when this person has no sales thread on either channel. */

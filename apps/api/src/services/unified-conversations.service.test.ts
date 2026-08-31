@@ -1,10 +1,12 @@
 import { describe, expect, it, vi, beforeAll } from "vitest";
 import { eq } from "drizzle-orm";
 import { db, customersTable, purchasesTable, conversationsTable, supportConversationsTable } from "@luma/db";
+import { createIntakeLink, handleIntakeLinkClick } from "./intake-links.service.js";
 
 beforeAll(() => {
   process.env.EMAIL_UNSUBSCRIBE_SECRET = "test-secret";
   process.env.INTAKE_LINK_BASE_URL = "http://localhost:3000";
+  process.env.BASK_QUESTIONNAIRE_URL = "https://bask.example.com/questionnaire";
 });
 
 const sendMessageMock = vi.fn();
@@ -31,10 +33,17 @@ const {
   getSalesResponseStats,
 } = await import("./unified-conversations.service.js");
 
-async function seedCustomer(): Promise<string> {
+async function seedCustomer(opts: { leadType?: string } = {}): Promise<string> {
   const [row] = await db
     .insert(customersTable)
-    .values({ firstName: "Unified", lastName: "Test", email: `unified-${crypto.randomUUID()}@example.com`, leadReceivedDate: "2026-08-15", phone: "+15558880002" })
+    .values({
+      firstName: "Unified",
+      lastName: "Test",
+      email: `unified-${crypto.randomUUID()}@example.com`,
+      leadReceivedDate: "2026-08-15",
+      phone: "+15558880002",
+      leadType: opts.leadType,
+    })
     .returning({ id: customersTable.id });
   return row.id;
 }
@@ -86,6 +95,16 @@ describe("listUnifiedConversationSummaries", () => {
     const items = await listUnifiedConversationSummaries();
     const match = items.find((i) => i.personId === personId);
     expect(match?.lastMessagePreview).toBe("newer support message");
+  });
+
+  it("surfaces the customer's own leadType even though a Caterpillar lead's conversation shares the meta_form pipeline", async () => {
+    const personId = await seedCustomer({ leadType: "Caterpillar" });
+    const sales = await getOrCreateConversation(personId, "meta_form");
+    await appendMessage(sales.id, "outbound", "hi");
+
+    const items = await listUnifiedConversationSummaries();
+    const match = items.find((i) => i.personId === personId);
+    expect(match).toMatchObject({ leadSource: "meta_form", leadType: "Caterpillar" });
   });
 });
 
@@ -146,6 +165,48 @@ describe("getUnifiedConversationDetail", () => {
 
     const detail = await getUnifiedConversationDetail(personId);
     expect(detail?.availableReplyTargets).toEqual([{ persona: "sales", channel: "sms" }]);
+  });
+
+  it("surfaces the customer's leadType on the customer object", async () => {
+    const personId = await seedCustomer({ leadType: "Caterpillar" });
+    const sales = await getOrCreateConversation(personId, "meta_form");
+    await appendMessage(sales.id, "outbound", "hi");
+
+    const detail = await getUnifiedConversationDetail(personId);
+    expect(detail?.customer.leadType).toBe("Caterpillar");
+  });
+});
+
+describe("getUnifiedConversationDetail — intakeLinkClicked", () => {
+  it("is false when no intake link has ever been minted for this person", async () => {
+    const personId = await seedCustomer();
+    const sales = await getOrCreateConversation(personId);
+    await appendMessage(sales.id, "outbound", "hi");
+
+    const detail = await getUnifiedConversationDetail(personId);
+    expect(detail?.sales?.intakeLinkClicked).toBe(false);
+  });
+
+  it("is false when the most recent intake link was sent but not yet clicked", async () => {
+    const personId = await seedCustomer();
+    const sales = await getOrCreateConversation(personId);
+    await appendMessage(sales.id, "outbound", "hi");
+    await createIntakeLink(personId);
+
+    const detail = await getUnifiedConversationDetail(personId);
+    expect(detail?.sales?.intakeLinkClicked).toBe(false);
+  });
+
+  it("is true once the most recent intake link has been clicked", async () => {
+    const personId = await seedCustomer();
+    const sales = await getOrCreateConversation(personId);
+    await appendMessage(sales.id, "outbound", "hi");
+    const { url } = await createIntakeLink(personId);
+    const rawToken = url.split("/go/")[1];
+    await handleIntakeLinkClick(rawToken);
+
+    const detail = await getUnifiedConversationDetail(personId);
+    expect(detail?.sales?.intakeLinkClicked).toBe(true);
   });
 });
 

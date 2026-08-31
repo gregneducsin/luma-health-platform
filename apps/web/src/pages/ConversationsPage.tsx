@@ -54,6 +54,19 @@ function relativeTime(iso: string | null): string {
   return formatDate(iso);
 }
 
+/**
+ * Caterpillar (a lead-gen vendor) shares the same "meta_form" leadSource
+ * pipeline as real Meta leads — same instant-opener treatment, see
+ * webhooks.service.ts's isCaterpillarLead — but that's a messaging-behavior
+ * detail, not something a Caterpillar lead should read as "Meta" for. The
+ * customer's own leadType (unaffected by that pipeline sharing) is what
+ * actually distinguishes them; matches the same case-insensitive check
+ * webhooks.service.ts uses.
+ */
+function isCaterpillarLead(leadType: string | null | undefined): boolean {
+  return (leadType ?? "").trim().toLowerCase() === "caterpillar";
+}
+
 type LeadSourceFilter = "all" | "abandoned_cart" | "meta_form";
 
 const LEAD_SOURCE_FILTER_LABELS: Record<LeadSourceFilter, string> = {
@@ -159,7 +172,11 @@ function ConversationList({ selectedPersonId, onSelect }: { selectedPersonId: st
             </div>
             <div className="mt-1 flex items-center gap-2">
               <p className="flex-1 truncate text-xs text-gray-500">{c.lastMessagePreview ?? "No messages yet"}</p>
-              {c.leadSource === "meta_form" && <Badge color="purple">Meta lead</Badge>}
+              {isCaterpillarLead(c.leadType) ? (
+                <Badge color="yellow">Caterpillar lead</Badge>
+              ) : (
+                c.leadSource === "meta_form" && <Badge color="purple">Meta lead</Badge>
+              )}
               <SentimentBadge sentiment={c.lastSentiment} />
             </div>
             <div className="mt-1 flex gap-1">
@@ -298,10 +315,15 @@ function ConversationDetailPanel({ personId, firstName, lastName }: { personId: 
             <UpcomingTriggerBanner personId={customer.id} />
           </div>
           <div className="flex flex-wrap items-start justify-end gap-1">
-            {sales?.leadSource === "meta_form" && <Badge color="purple">Meta lead</Badge>}
+            {isCaterpillarLead(customer.leadType) ? (
+              <Badge color="yellow">Caterpillar lead</Badge>
+            ) : (
+              sales?.leadSource === "meta_form" && <Badge color="purple">Meta lead</Badge>
+            )}
             {sales?.selectedProduct && <Badge color="blue">{sales.selectedProduct}</Badge>}
             {sales?.promoOffered && <Badge color="green">$20 promo offered</Badge>}
             {sales?.linkProvided && <Badge color="gray">link sent</Badge>}
+            {sales?.linkProvided && (sales.intakeLinkClicked ? <Badge color="green">link clicked</Badge> : <Badge color="gray">link not clicked</Badge>)}
             {sales && sales.objectionStage > 0 && <Badge color="yellow">objection stage {sales.objectionStage}</Badge>}
             {support?.prescriptionWritten && <Badge color="blue">prescription written</Badge>}
             {support?.orderShipped && <Badge color="green">shipped{support.trackingNumber ? `: ${support.trackingNumber}` : ""}</Badge>}
