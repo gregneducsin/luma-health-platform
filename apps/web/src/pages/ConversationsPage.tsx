@@ -260,14 +260,31 @@ function StaffReplyBox({ personId, targets, defaultTarget }: { personId: string;
   );
 }
 
+type ChannelFilter = "all" | UnifiedConversationChannel;
+
+const CHANNEL_FILTER_LABELS: Record<ChannelFilter, string> = { all: "All", sms: "SMS", email: "Email" };
+
 function ConversationDetailPanel({ personId, firstName, lastName }: { personId: string; firstName: string; lastName: string }) {
   const { data, isLoading } = useUnifiedConversationDetail(personId);
   const clearAttention = useClearAllNeedsAttention();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [channelFilter, setChannelFilter] = useState<ChannelFilter>("all");
+
+  const channelsPresent = useMemo(() => new Set((data?.messages ?? []).map((m) => m.channel)), [data?.messages]);
+  const visibleMessages = useMemo(
+    () => (channelFilter === "all" ? (data?.messages ?? []) : (data?.messages ?? []).filter((m) => m.channel === channelFilter)),
+    [data?.messages, channelFilter],
+  );
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [data?.messages.length]);
+  }, [visibleMessages.length]);
+
+  // Reset back to "All" when switching contacts, so a filter picked for one
+  // lead doesn't silently hide the other channel's messages for the next.
+  useEffect(() => {
+    setChannelFilter("all");
+  }, [personId]);
 
   const header = (
     <div className="border-b border-gray-200 px-4 py-3">
@@ -347,14 +364,30 @@ function ConversationDetailPanel({ personId, firstName, lastName }: { personId: 
         <CollapsibleCustomerNotes customerId={personId} />
       </div>
 
+      {channelsPresent.size > 1 && (
+        <div className="flex gap-1 border-b border-gray-200 px-4 py-2">
+          {(Object.keys(CHANNEL_FILTER_LABELS) as ChannelFilter[]).map((key) => (
+            <button
+              key={key}
+              onClick={() => setChannelFilter(key)}
+              className={"rounded px-2 py-1 text-xs font-medium " + (channelFilter === key ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600")}
+            >
+              {CHANNEL_FILTER_LABELS[key]}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
-        {messages.length === 0 && <p className="text-sm text-gray-400">No messages yet.</p>}
-        {messages.map((m: UnifiedMessage, i) => {
+        {visibleMessages.length === 0 && (
+          <p className="text-sm text-gray-400">{messages.length === 0 ? "No messages yet." : "No messages on this channel."}</p>
+        )}
+        {visibleMessages.map((m: UnifiedMessage, i) => {
           // A bare time ("6:16 PM") with no date reads identically whether
           // the next message came 20 minutes or 6 days later — this divider
           // makes the actual gap between sends visible without staff having
           // to hover/click each timestamp to check.
-          const showDateDivider = i === 0 || formatDate(m.createdAt) !== formatDate(messages[i - 1].createdAt);
+          const showDateDivider = i === 0 || formatDate(m.createdAt) !== formatDate(visibleMessages[i - 1].createdAt);
           return (
             <div key={`${m.persona}-${m.channel}-${m.id}`}>
               {showDateDivider && (
