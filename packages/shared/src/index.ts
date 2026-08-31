@@ -5,6 +5,7 @@ export * from "./schemas/auth.js";
 export * from "./schemas/customers.js";
 export * from "./schemas/purchases.js";
 export * from "./schemas/webhooks.js";
+export * from "./schemas/webhook-events.js";
 export * from "./schemas/payroll.js";
 export * from "./schemas/questionnaires.js";
 export * from "./schemas/ai-assistant.js";
