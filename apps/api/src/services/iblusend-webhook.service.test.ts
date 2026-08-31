@@ -117,6 +117,25 @@ describe("handleIbluSendWebhook", () => {
     expect(processInboundMessageMock).toHaveBeenCalledWith(personId, "hi");
   });
 
+  it("routes to the purchased customer's Sarah conversation, not a stale unsold lead sharing the same phone", async () => {
+    processInboundMessageMock.mockClear();
+    processInboundSupportMessageMock.mockClear();
+
+    const phone = uniquePhone();
+    // The stale lead: signed up first, never purchased, only ever talked to Lucy.
+    const staleLeadId = await seedCustomer(phone);
+    await db.insert(conversationsTable).values({ personId: staleLeadId });
+    // The real customer: same phone, purchased later, has a Sarah support conversation.
+    const purchasedCustomerId = await seedCustomer(phone);
+    await db.insert(supportConversationsTable).values({ personId: purchasedCustomerId });
+
+    const result = await handleIbluSendWebhook(envelope({ data: { phone_number: phone, content: "thank you" } }));
+
+    expect(result).toEqual({ duplicate: false });
+    expect(processInboundSupportMessageMock).toHaveBeenCalledWith(purchasedCustomerId, "thank you");
+    expect(processInboundMessageMock).not.toHaveBeenCalled();
+  });
+
   it("routes an unrecognized phone number to the unmatched-SMS pipeline instead of either bot", async () => {
     processInboundMessageMock.mockClear();
     processInboundSupportMessageMock.mockClear();
