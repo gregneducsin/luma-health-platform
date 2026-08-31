@@ -27,7 +27,7 @@ function NeedsAttentionCard({ enabled }: { enabled: boolean }) {
   const count = data?.items.length ?? 0;
 
   return (
-    <Link href="/needs-attention">
+    <Link href="/inbox/needs-attention">
       <Card className={"cursor-pointer transition-colors hover:bg-gray-50 " + (count > 0 ? "border-red-200" : "")}>
         <div className="flex items-center justify-between">
           <p className="text-xs font-medium uppercase text-gray-400">Needs Attention</p>
@@ -159,7 +159,7 @@ export function DashboardPage() {
   const range = preset === "custom" ? (customFrom && customTo ? { from: customFrom, to: customTo } : undefined) : presetToRange(preset);
 
   const { data: currentUser } = useCurrentUser();
-  // Matches the real /needs-attention route guard (App.tsx, Layout.tsx) —
+  // Matches the real /inbox/needs-attention route guard (App.tsx, Layout.tsx) —
   // admin + customer_service, not manager, whose scope is payroll/Leads/Orders.
   const canSeeNeedsAttention = currentUser?.user?.role === "admin" || currentUser?.user?.role === "customer_service";
   // Matches /api/app/reporting/funnel's own role gate, and /payroll/*'s route
