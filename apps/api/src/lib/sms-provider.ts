@@ -13,17 +13,22 @@ export interface SmsSendResult {
 }
 
 /**
- * Extracts a short, human-readable reason from an iBluSend error response,
- * e.g. "Daily new-contact outreach limit reached — The assigned line has
- * reached its cold-contact limit..." from a JSON body like
- * { error, error_code, detail, ... } — instead of the raw HTTP status and
- * full response body. Falls back to the raw text when the body isn't the
- * shape we expect (or isn't JSON at all), so this never hides a genuinely
- * unfamiliar error.
+ * Extracts a short, human-readable reason from an iBluSend error response —
+ * from a JSON body like { error, error_code, detail, ... } — instead of the
+ * raw HTTP status and full response body. A rate/cap-limit error_code (e.g.
+ * "device_daily_cap_exceeded") collapses to a fixed short label rather than
+ * the full sentence, since this is an expected, self-resolving condition,
+ * not something that needs the full detail text every time it fires. Any
+ * other error keeps its full error/detail text so a genuinely unfamiliar
+ * failure still has enough to investigate. Falls back to the raw text when
+ * the body isn't the shape we expect (or isn't JSON at all).
  */
 function describeIbluSendError(rawBody: string): string {
   try {
-    const parsed = JSON.parse(rawBody) as { error?: string; detail?: string };
+    const parsed = JSON.parse(rawBody) as { error?: string; error_code?: string; detail?: string };
+    if (parsed.error_code && /limit|cap/i.test(parsed.error_code)) {
+      return "daily send limit reached";
+    }
     if (parsed.error) {
       return parsed.detail ? `${parsed.error} — ${parsed.detail}` : parsed.error;
     }

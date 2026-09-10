@@ -116,7 +116,7 @@ describe("getSmsProvider", () => {
       expect(notifySlackMock.mock.calls[0][0]).toMatch(/SMS send failed/);
     });
 
-    it("includes the parsed error/detail (e.g. a daily rate-limit reason) in the Slack alert, not just the phone number", async () => {
+    it("collapses a rate/cap-limit error to a short 'daily send limit reached' label instead of the full detail text", async () => {
       notifySlackMock.mockClear();
       process.env.SMS_PROVIDER = "iblusend";
       process.env.IBLUSEND_API_KEY = "iblu_test_abc123";
@@ -129,13 +129,21 @@ describe("getSmsProvider", () => {
       });
       vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 429, text: async () => body }));
 
-      await expect(getSmsProvider().sendMessage("+14787769678", "Hello there")).rejects.toThrow(
-        /Daily new-contact outreach limit reached — The assigned line has reached its cold-contact limit/,
-      );
+      await expect(getSmsProvider().sendMessage("+14787769678", "Hello there")).rejects.toThrow(/daily send limit reached/);
       expect(notifySlackMock).toHaveBeenCalledTimes(1);
-      expect(notifySlackMock.mock.calls[0][0]).toBe(
-        "SMS send failed — +14787769678 — iBluSend send failed: 429 Daily new-contact outreach limit reached — The assigned line has reached its cold-contact limit. Its sender identity will be preserved. Replied conversations can continue.",
-      );
+      expect(notifySlackMock.mock.calls[0][0]).toBe("SMS send failed — +14787769678 — iBluSend send failed: 429 daily send limit reached");
+    });
+
+    it("keeps the full error/detail text for a non-limit error", async () => {
+      notifySlackMock.mockClear();
+      process.env.SMS_PROVIDER = "iblusend";
+      process.env.IBLUSEND_API_KEY = "iblu_test_abc123";
+
+      const body = JSON.stringify({ error: "Invalid phone number", error_code: "invalid_recipient", detail: "Number is not a valid mobile line." });
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 400, text: async () => body }));
+
+      await expect(getSmsProvider().sendMessage("+15551234567", "Hello there")).rejects.toThrow(/Invalid phone number — Number is not a valid mobile line\./);
+      expect(notifySlackMock.mock.calls[0][0]).toBe("SMS send failed — +15551234567 — iBluSend send failed: 400 Invalid phone number — Number is not a valid mobile line.");
     });
 
     it("falls back to the raw response body when it isn't the expected JSON error shape", async () => {
