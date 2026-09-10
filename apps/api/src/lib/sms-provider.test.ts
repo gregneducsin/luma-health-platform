@@ -115,5 +115,36 @@ describe("getSmsProvider", () => {
       expect(notifySlackMock).toHaveBeenCalledTimes(1);
       expect(notifySlackMock.mock.calls[0][0]).toMatch(/SMS send failed/);
     });
+
+    it("includes the parsed error/detail (e.g. a daily rate-limit reason) in the Slack alert, not just the phone number", async () => {
+      notifySlackMock.mockClear();
+      process.env.SMS_PROVIDER = "iblusend";
+      process.env.IBLUSEND_API_KEY = "iblu_test_abc123";
+
+      const body = JSON.stringify({
+        error: "Daily new-contact outreach limit reached",
+        error_code: "device_daily_cap_exceeded",
+        limit: 50,
+        detail: "The assigned line has reached its cold-contact limit. Its sender identity will be preserved. Replied conversations can continue.",
+      });
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 429, text: async () => body }));
+
+      await expect(getSmsProvider().sendMessage("+14787769678", "Hello there")).rejects.toThrow(
+        /Daily new-contact outreach limit reached — The assigned line has reached its cold-contact limit/,
+      );
+      expect(notifySlackMock).toHaveBeenCalledTimes(1);
+      expect(notifySlackMock.mock.calls[0][0]).toBe(
+        "SMS send failed — +14787769678 — iBluSend send failed: 429 Daily new-contact outreach limit reached — The assigned line has reached its cold-contact limit. Its sender identity will be preserved. Replied conversations can continue.",
+      );
+    });
+
+    it("falls back to the raw response body when it isn't the expected JSON error shape", async () => {
+      process.env.SMS_PROVIDER = "iblusend";
+      process.env.IBLUSEND_API_KEY = "iblu_test_abc123";
+
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 500, text: async () => "Internal Server Error" }));
+
+      await expect(getSmsProvider().sendMessage("+15551234567", "Hello there")).rejects.toThrow(/500 Internal Server Error/);
+    });
   });
 });

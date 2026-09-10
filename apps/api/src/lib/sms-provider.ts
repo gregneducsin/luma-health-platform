@@ -12,6 +12,27 @@ export interface SmsSendResult {
   readonly providerMessageId: string;
 }
 
+/**
+ * Extracts a short, human-readable reason from an iBluSend error response,
+ * e.g. "Daily new-contact outreach limit reached — The assigned line has
+ * reached its cold-contact limit..." from a JSON body like
+ * { error, error_code, detail, ... } — instead of the raw HTTP status and
+ * full response body. Falls back to the raw text when the body isn't the
+ * shape we expect (or isn't JSON at all), so this never hides a genuinely
+ * unfamiliar error.
+ */
+function describeIbluSendError(rawBody: string): string {
+  try {
+    const parsed = JSON.parse(rawBody) as { error?: string; detail?: string };
+    if (parsed.error) {
+      return parsed.detail ? `${parsed.error} — ${parsed.detail}` : parsed.error;
+    }
+  } catch {
+    // Not JSON (or not the expected shape) — fall through to the raw body.
+  }
+  return rawBody;
+}
+
 export interface SmsProvider {
   sendMessage(to: string, body: string): Promise<SmsSendResult>;
 }
@@ -59,7 +80,7 @@ class IbluSendProvider implements SmsProvider {
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(`iBluSend send failed: ${res.status} ${text}`);
+      throw new Error(`iBluSend send failed: ${res.status} ${describeIbluSendError(text)}`);
     }
 
     const json = (await res.json()) as { message_id?: string };
@@ -82,12 +103,15 @@ function withFailureAlert(provider: SmsProvider): SmsProvider {
       try {
         return await provider.sendMessage(to, body);
       } catch (err) {
-        // Short and identifier-only, not the raw provider error — the full
-        // reason is already in the structured logger.warn at the call site;
-        // Slack is a ping to go look, not a dump of the error itself (a
-        // verbose provider error was also what tripped Slack's own
-        // block-text length limit before notifySlack started truncating).
-        void notifySmsSlack(`SMS send failed — ${to}`);
+        // Includes the actual reason (e.g. "Daily new-contact outreach limit
+        // reached") rather than just the phone number — a plain "SMS send
+        // failed" ping with no detail meant every occurrence needed a trip
+        // into Deploy Logs to find out it was an expected rate limit, not a
+        // real problem. notifySlack already truncates long messages, so a
+        // verbose provider error can't blow past Slack's block-text limit
+        // the way it used to before that truncation existed.
+        const reason = err instanceof Error ? err.message : String(err);
+        void notifySmsSlack(`SMS send failed — ${to} — ${reason}`);
         throw err;
       }
     },
