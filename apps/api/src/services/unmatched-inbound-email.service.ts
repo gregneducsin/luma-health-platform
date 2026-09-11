@@ -2,63 +2,21 @@ import Anthropic from "@anthropic-ai/sdk";
 import { eq, sql } from "drizzle-orm";
 import {
   db,
-  customersTable,
   unmatchedEmailThreadsTable,
   unmatchedEmailMessagesTable,
   type UnmatchedEmailThread,
   type UnmatchedEmailMessage,
 } from "@luma/db";
 import { getEmailProvider } from "../lib/email-provider.js";
-import { processInboundEmail } from "./lucy-email-dispatch.service.js";
-import { getOrCreateEmailConversation, appendEmailMessage } from "./email-conversations.service.js";
-import { normalizePhone } from "../lib/phone.js";
 import { logger } from "../lib/logger.js";
 import { notifySlack } from "../lib/slack.js";
+import { parseUnmatchedEmailClassification, type UnmatchedEmailClassification } from "../lib/unmatched-sender-safety.js";
 
 /**
- * What used to happen to an inbound email from an address matching no
- * customer record: logged and silently dropped, invisible to staff. This
- * records it instead, grouped into one thread per sender (a second email
- * from the same address joins the existing thread, not a disconnected
- * duplicate), with a Claude-drafted classification and reply attached.
- *
- * Auto-sent by default: the fixed first-message ack, and every
- * classification-drafted reply after it, go out immediately with no human
- * in the loop — the safety rail is Claude's own needsHumanReview flag (set
- * when it's genuinely unsure, or for an individualized medical/suitability
- * question) plus two hard overrides this file applies regardless of what
- * Claude reports: a plausible match to an existing customer, or a sender
- * claiming to already have an account. suggestedMatchCustomerId (a guess
- * that this sender might be a DIFFERENT, already-existing customer) is
- * never applied automatically either way: matching health-context
- * correspondence to the wrong customer by an unverified fuzzy match is
- * exactly the kind of mistake this system should never make unattended, so
- * a human confirms it explicitly before anything acts on it.
- *
- * The one thing this pipeline does automatically that creates data — a new
- * lead — is a deliberately different risk category: it only ever adds a
- * new, clearly-sourced customer row (never touches or links to an existing
- * person's record), and only once we actually know the sender's name AND a
- * phone number, and Claude is confident this is a genuine prospective
- * customer. The phone requirement mirrors the SMS pipeline's requirement
- * for a name AND an email before it creates anything: an email inquiry
- * always comes with a working email address (that's how the sender is
- * reaching us), but never a phone, so collectedPhone on the thread plays
- * the same role collectedEmail plays for unmatched SMS senders — gathered
- * mid-conversation, not guessed. That's the same trust level every other
- * unattended lead-capture path in this app already operates at (the
- * GHL/Meta webhooks create customers with no human review either) — it's
- * the "guess which existing person this is" action that stays human-gated,
- * not "add a new row for someone new."
- *
- * The moment a lead is created, the triggering message itself is handed
- * off to Lucy's real, guardrailed pipeline (lucy-email-dispatch.service.ts's
- * processInboundEmail) as a Meta-lead-style conversation, instead of
- * sitting in this queue with a generic draft — being confident enough to
- * create the lead means being confident enough to let the same pipeline
- * every other lead gets handle it live. Every message from that sender
- * after this one skips this file entirely, since findCustomerIdByEmail now
- * matches them on the normal inbound-email path (email-inbound.service.ts).
+ * Records inbound email from an unrecognized address and attaches a
+ * best-effort classification and suggested reply for staff review. Classifier
+ * output is advisory only and cannot send, create or link a customer, mutate
+ * identity, seed a conversation, dismiss a thread, or invoke Lucy.
  */
 
 const MODEL = "claude-haiku-4-5-20251001";
@@ -106,20 +64,9 @@ async function findMatchCandidates(fromName: string | null, transcriptText: stri
   return rows;
 }
 
-interface Classification {
-  readonly intent: "new_lead_interest" | "existing_customer_support" | "spam_or_irrelevant" | "other";
-  readonly summary: string;
-  readonly suggestedReply: string | null;
-  readonly senderName: string | null;
-  readonly senderPhone: string | null;
-  readonly matchCandidateIndex: number | null;
-  readonly matchConfidence: "high" | "medium" | "low" | null;
-  readonly needsHumanReview: boolean;
-}
-
 const CLASSIFY_TOOL: Anthropic.Tool = {
   name: "classify_unmatched_email",
-  description: "Classify an inbound email thread from an unrecognized sender and draft a safe, generic reply — auto-sent unless it needs a human to look at it first.",
+  description: "Classify an inbound email thread from an unrecognized sender and draft a safe, generic reply for staff review.",
   input_schema: {
     type: "object",
     properties: {
@@ -146,7 +93,7 @@ const CLASSIFY_TOOL: Anthropic.Tool = {
       needsHumanReview: {
         type: "boolean",
         description:
-          "True when you genuinely can't confidently draft a safe reply yourself — real confusion about what they want, or anything needing individualized medical/clinical judgment (e.g. 'is this safe for my condition') — false for the ordinary cases you're equipped to handle (asking for a name, a plain informational question you can answer within the rules above). When true, suggestedReply is still your best-effort draft, but it's held for a person to review instead of sent automatically.",
+          "True when you genuinely can't confidently draft a safe reply yourself — real confusion about what they want, or anything needing individualized medical/clinical judgment (e.g. 'is this safe for my condition') — false for the ordinary cases you're equipped to handle (asking for a name, a plain informational question you can answer within the rules above). When true, suggestedReply is still your best-effort draft, flagged for additional staff review.",
       },
     },
     required: ["intent", "summary", "suggestedReply", "senderName", "senderPhone", "matchCandidateIndex", "matchConfidence", "needsHumanReview"],
@@ -170,7 +117,7 @@ function systemPrompt(candidates: readonly MatchCandidate[], knownName: string |
 
   return `You triage inbound email at Luma Health, a healthcare company, for a sender whose email address doesn't match any customer record in the CRM. You're seeing the full thread so far with this sender, not just one message.
 
-Classify the message and draft a reply. Unless you set needsHumanReview:true, this reply is sent automatically — no one reviews it first. Take that seriously: stay inside the rules below, and set needsHumanReview:true the moment you're genuinely unsure rather than guessing.
+Classify the message and draft a reply for staff review. The reply is never sent automatically. Set needsHumanReview:true when the draft needs additional clinical, safety, identity, or policy review.
 
 We currently know the sender's name as: ${knownName ?? "unknown"}.
 We currently know the sender's phone number as: ${knownPhone ?? "unknown"}.
@@ -204,7 +151,7 @@ async function classifyAndDraft(
   knownPhone: string | null,
   messages: readonly UnmatchedEmailMessage[],
   candidates: readonly MatchCandidate[],
-): Promise<Classification> {
+): Promise<UnmatchedEmailClassification> {
   const client = getClient();
   const transcript = buildTranscript(messages);
   const knownName = fromName;
@@ -225,7 +172,11 @@ async function classifyAndDraft(
   if (!toolBlock) {
     throw new Error("Claude did not return a classify_unmatched_email tool call.");
   }
-  return toolBlock.input as Classification;
+  const classification = parseUnmatchedEmailClassification(toolBlock.input, candidates.length);
+  if (!classification) {
+    throw new Error("Claude returned an invalid classify_unmatched_email tool payload.");
+  }
+  return classification;
 }
 
 async function getOrCreateThread(fromAddress: string, fromName: string | null, receivingAddress?: string): Promise<UnmatchedEmailThread> {
@@ -255,130 +206,12 @@ async function getOrCreateThread(fromAddress: string, fromName: string | null, r
   return row;
 }
 
-/** first token as firstName, remainder (if any) as lastName — customers.lastName is NOT NULL, so a single-word name gets an empty-string lastName rather than failing. */
-function splitName(fullName: string): { firstName: string; lastName: string } {
-  const parts = fullName.trim().split(/\s+/);
-  return { firstName: parts[0] ?? fullName, lastName: parts.slice(1).join(" ") };
-}
-
-/** A real-looking phone number: at least 10 digits once punctuation/spacing is stripped — same bar normalizePhone itself resolves cleanly, not a stricter format check. */
-function looksLikePhone(value: string): boolean {
-  return value.replace(/\D/g, "").length >= 10;
-}
-
-/**
- * The only place this pipeline creates data unattended: a brand-new
- * customer row, never a link to an existing one. Only fires once we have a
- * real name AND a real-looking phone number, Claude is confident this is a
- * genuine prospective customer (not spam/irrelevant, not someone claiming
- * to already be a customer — that case goes to matchCandidateIndex instead,
- * human-gated), and this thread hasn't already been linked to a customer.
- */
-async function maybeCreateLead(
-  thread: UnmatchedEmailThread,
-  classification: Classification,
-  matchedExisting: boolean,
-): Promise<{ customerId: string; justCreated: boolean } | null> {
-  if (thread.linkedCustomerId) return { customerId: thread.linkedCustomerId, justCreated: false };
-  if (matchedExisting) return null;
-  if (classification.intent !== "new_lead_interest") return null;
-
-  const name = thread.fromName ?? classification.senderName;
-  const phone = thread.collectedPhone ?? classification.senderPhone;
-  if (!name || !phone || !looksLikePhone(phone)) return null;
-
-  const { firstName, lastName } = splitName(name);
-  const [created] = await db
-    .insert(customersTable)
-    .values({
-      firstName,
-      lastName,
-      email: thread.fromAddress,
-      phone: normalizePhone(phone),
-      leadReceivedDate: new Date().toISOString().slice(0, 10),
-      leadType: "Email Inquiry",
-    })
-    .returning({ id: customersTable.id });
-
-  logger.info({ threadId: thread.id, customerId: created.id }, "created a new lead from an unmatched inbound email");
-  return { customerId: created.id, justCreated: true };
-}
-
 export async function listUnmatchedEmailMessages(threadId: string): Promise<UnmatchedEmailMessage[]> {
   return db.select().from(unmatchedEmailMessagesTable).where(eq(unmatchedEmailMessagesTable.threadId, threadId)).orderBy(unmatchedEmailMessagesTable.createdAt);
 }
 
-const ACK_ASKING_NAME_VARIANTS = [
-  "Thanks for reaching out to Luma Health — could you share your name so we can help you further? A member of our team will follow up shortly.",
-  "Thanks for getting in touch with Luma Health — could you let us know your name so we can help you out? Our team will follow up shortly.",
-] as const;
-
-/** Actually greets the sender by name — a flat "our team will follow up" with no personalization reads as a form-letter brush-off even when we already know exactly who's writing in. */
-function ackKnownNameVariants(firstName: string): readonly string[] {
-  return [
-    `Hey ${firstName}, we received your email and we'll reach out here shortly.`,
-    `Hi ${firstName} — got your message, and someone from our team will follow up with you shortly.`,
-  ];
-}
-
-function pickVariant(variants: readonly string[]): string {
-  return variants[Math.floor(Math.random() * variants.length)];
-}
-
-async function sendEmailAndLog(
-  threadId: string,
-  fromAddress: string,
-  subject: string,
-  body: string,
-  inReplyTo: string | null,
-  fromEmailOverride: string | null,
-): Promise<boolean> {
-  const replySubject = /^re:/i.test(subject.trim()) ? subject : `Re: ${subject}`;
-
-  let messageId: string | null = null;
-  try {
-    const { provider } = getEmailProvider("lucy");
-    const html = wrapReplyHtml(body);
-    const result = await provider.sendEmail(fromAddress, replySubject, html, {
-      fromName: "Luma Health Team",
-      inReplyTo: inReplyTo ?? undefined,
-      references: inReplyTo ?? undefined,
-      fromEmailOverride: fromEmailOverride ?? undefined,
-    });
-    messageId = result.messageId;
-  } catch (err) {
-    logger.warn({ threadId, reason: err instanceof Error ? err.message : String(err) }, "unmatched-email send failed");
-    return false;
-  }
-
-  await db.insert(unmatchedEmailMessagesTable).values({ threadId, direction: "outbound", subject: replySubject, body, messageId });
-  return true;
-}
-
 /**
- * The fixed, content-free acknowledgment asking for a name — the one thing
- * this pipeline sends before Claude has even seen the thread, since it's
- * always the right first move regardless of what the message turns out to
- * say. Deliberately a hardcoded template, picked at random from a small set
- * of equivalent variants (see pickVariant) so every unmatched sender across
- * the whole inbox doesn't get the exact same byte-for-byte sentence. Only
- * ever fires on a thread's first message. Every message after that goes
- * through classifyAndDraft's own reply instead (auto-sent unless flagged
- * needsHumanReview — see recordAndClassifyUnmatchedEmail).
- */
-async function sendAutoAcknowledgment(
-  threadId: string,
-  fromAddress: string,
-  subject: string,
-  knownName: string | null,
-  inReplyTo: string | null,
-  fromEmailOverride: string | null,
-): Promise<void> {
-  const body = knownName ? pickVariant(ackKnownNameVariants(splitName(knownName).firstName)) : pickVariant(ACK_ASKING_NAME_VARIANTS);
-  await sendEmailAndLog(threadId, fromAddress, subject, body, inReplyTo, fromEmailOverride);
-}
-
-/**
+ * Records the inbound message/**
  * Records the inbound message (joining the sender's existing thread if one
  * exists) and attaches a best-effort classification/draft, re-run against
  * the FULL thread history each time — a Claude failure (timeout,
@@ -401,8 +234,7 @@ export async function recordAndClassifyUnmatchedEmail(input: {
   }
 
   const priorMessages = await listUnmatchedEmailMessages(thread.id);
-  const isFirstMessage = priorMessages.length === 0;
-  if (isFirstMessage) {
+  if (priorMessages.length === 0) {
     void notifySlack(`New unmatched email — ${input.fromAddress}`);
   }
 
@@ -423,7 +255,7 @@ export async function recordAndClassifyUnmatchedEmail(input: {
     return [];
   });
 
-  let classification: Classification | null = null;
+  let classification: UnmatchedEmailClassification | null = null;
   try {
     classification = await classifyAndDraft(input.fromAddress, knownName, thread.collectedPhone, messages, candidates);
   } catch (err) {
@@ -433,83 +265,16 @@ export async function recordAndClassifyUnmatchedEmail(input: {
   const matchCandidate =
     classification?.matchCandidateIndex !== null && classification?.matchCandidateIndex !== undefined ? candidates[classification.matchCandidateIndex] : undefined;
 
-  // Force human review for cases where auto-replying risks being actively
-  // wrong, not just "Claude wasn't sure": a plausible match to an existing
-  // customer (never auto-linked — see maybeCreateLead) or someone claiming
-  // to already be a customer both need a person to confirm identity before
-  // anything goes out, regardless of Claude's own confidence.
-  const needsHumanReview = Boolean(classification?.needsHumanReview || matchCandidate || classification?.intent === "existing_customer_support");
-
-  const leadResult = classification ? await maybeCreateLead(thread, classification, Boolean(matchCandidate)) : null;
-
-  let autoSent = false;
-  if (leadResult?.justCreated) {
-    // Confident enough to create the lead means confident enough to hand
-    // THIS message straight to Lucy's real, guardrailed pipeline — not the
-    // generic staff queue. Same trust level Lucy already operates at
-    // unattended for every other lead; sending the generic acknowledgment
-    // on top would just be a redundant second email. Treated as a Meta
-    // lead-gen contact (state/currentlyTaking/product first, then
-    // proactive pricing), not an abandoned-cart lead — this person never
-    // started a Bask questionnaire, they're cold inbound outreach, exactly
-    // like a Meta lead.
-    try {
-      // Seed the new Lucy conversation with everything said in this thread
-      // before this final triggering message — without it, Lucy starts
-      // from nothing but a bare final message with no context for what
-      // this person already asked about or said, which can leave her with
-      // nothing coherent to react to (confirmed against a real case of
-      // this producing total silence on the equivalent SMS path).
-      const emailConversation = await getOrCreateEmailConversation(leadResult.customerId, "meta_form", thread.receivingAddress ?? undefined);
-      for (const m of messages.slice(0, -1)) {
-        await appendEmailMessage(emailConversation.id, m.direction, m.subject, m.body);
-      }
-      await processInboundEmail(leadResult.customerId, input.subject, input.body, input.messageId, "meta_form", thread.receivingAddress ?? undefined);
-    } catch (err) {
-      logger.warn({ threadId: thread.id, reason: err instanceof Error ? err.message : String(err) }, "handoff to Lucy after lead creation failed");
-    }
-  } else if (isFirstMessage && classification?.intent !== "spam_or_irrelevant") {
-    // One immediate, fixed, content-free acknowledgment per thread — see
-    // sendAutoAcknowledgment's docstring. Only on the thread's first-ever
-    // message, so a repeat sender doesn't get re-acknowledged on every
-    // email; skipped above when Lucy is about to send the real thing
-    // instead. Also skipped for spam/irrelevant — replying to an automated
-    // bounce notice or a spam sender wastes a send at best, and at worst
-    // signals to a real spammer that this address is live and reads its
-    // mail. A failed classification call (classification is null) still
-    // gets the ack, same as before — no way to know it's spam without
-    // Claude, so default to acknowledging.
-    await sendAutoAcknowledgment(thread.id, input.fromAddress, input.subject, knownName, input.messageId, thread.receivingAddress);
-  } else if (classification && classification.intent !== "spam_or_irrelevant" && !needsHumanReview && classification.suggestedReply) {
-    // Everything past the first message is auto-sent by default now too —
-    // Claude's own drafted reply, sent directly, the same trust level the
-    // fixed first-message ack already operates at. The content itself
-    // stays bounded by the drafting rules in the system prompt (no prices,
-    // no clinical claims, no promises) regardless of who hits send; the
-    // needsHumanReview flag above is the actual safety valve, not a
-    // missing review step.
-    autoSent = await sendEmailAndLog(thread.id, input.fromAddress, input.subject, classification.suggestedReply, input.messageId, thread.receivingAddress);
-  }
-
   const [updated] = await db
     .update(unmatchedEmailThreadsTable)
     .set({
-      fromName: knownName ?? classification?.senderName ?? undefined,
-      collectedPhone: thread.collectedPhone ?? classification?.senderPhone ?? undefined,
+      fromName: knownName ?? undefined,
       aiIntent: classification?.intent ?? thread.aiIntent,
       aiSummary: classification?.summary ?? thread.aiSummary,
-      suggestedReply: leadResult?.justCreated || autoSent ? null : (classification?.suggestedReply ?? thread.suggestedReply),
-      suggestedMatchCustomerId: matchCandidate?.id ?? thread.suggestedMatchCustomerId,
-      suggestedMatchConfidence: matchCandidate ? (classification?.matchConfidence ?? null) : thread.suggestedMatchConfidence,
-      linkedCustomerId: leadResult?.customerId ?? thread.linkedCustomerId,
-      // Spam/irrelevant (bounce notices, marketing blasts, phishing) is
-      // auto-dismissed rather than left in needs_review — staff shouldn't
-      // have to manually clear an automated "mailbox full" notice out of
-      // their queue every time one arrives. A later genuine reply on the
-      // same thread gets its own fresh classification and resurfaces it
-      // (see the dismissed-thread-resurfacing behavior above).
-      status: leadResult?.justCreated || autoSent ? "replied" : classification?.intent === "spam_or_irrelevant" ? "dismissed" : "needs_review",
-      repliedAt: leadResult?.justCreated || autoSent ? new Date() : thread.repliedAt,
+      suggestedReply: classification ? classification.suggestedReply : thread.suggestedReply,
+      suggestedMatchCustomerId: classification ? (matchCandidate?.id ?? null) : thread.suggestedMatchCustomerId,
+      suggestedMatchConfidence: classification && matchCandidate ? classification.matchConfidence : classification ? null : thread.suggestedMatchConfidence,
+      status: "needs_review",
     })
     .where(eq(unmatchedEmailThreadsTable.id, thread.id))
     .returning();
