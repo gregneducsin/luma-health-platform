@@ -24,7 +24,7 @@ export const intakeLinkTokensTable = pgTable(
      * topic before agreement), not at click time — the click happens hours
      * later with no memory of what was discussed.
      */
-    promoApplied: text("promo_applied", { enum: ["none", "first_month_20"] }).notNull().default("none"),
+    promoApplied: text("promo_applied", { enum: ["none", "first_month_20", "consumer_affairs_20"] }).notNull().default("none"),
     /**
      * Which conversation script this lead is on, carried from mint time
      * through to whichever follow-up job eventually logs a message for this
@@ -132,6 +132,16 @@ export const conversationsTable = pgTable(
     }),
     linkProvided: boolean("link_provided").notNull().default(false),
     promoOffered: boolean("promo_offered").notNull().default(false),
+    /**
+     * True when this lead's abandoned-cart opener was triggered by
+     * questionnaire 9986 (Consumer Affairs abandoned-checkout leads) — see
+     * isConsumerAffairsAbandonedQuestionnaire in abandoned-cart.service.ts.
+     * Set once, at opener time, and carried for the life of the conversation
+     * so send_form later knows to mint the dedicated consumer_affairs_20
+     * promo link (same $20 offer, different landing URL) regardless of what
+     * promoOffered says, since the opener already sent them down this path.
+     */
+    consumerAffairsCart: boolean("consumer_affairs_cart").notNull().default(false),
     /**
      * True whenever the most recent turn required staff attention — a
      * pre-check block (STOP/emergency/suitability/medical/legal), a

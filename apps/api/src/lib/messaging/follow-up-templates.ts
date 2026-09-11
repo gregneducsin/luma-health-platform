@@ -88,6 +88,25 @@ export function renderAbandonedCartFollowUp(firstName: string): string {
 }
 
 /**
+ * Abandoned-cart opener variant for questionnaire 9986 — Consumer Affairs
+ * leads who started checkout but didn't finish. Same $20 offer as the
+ * standard opener, but calls out where they came from (they're already
+ * warm from a review site, not cold) and routes them to a dedicated
+ * Consumer-Affairs promo link — see isConsumerAffairsAbandonedQuestionnaire
+ * in abandoned-cart.service.ts and consumer_affairs_20 in
+ * intake-links.service.ts. First-send only — the "already has a
+ * conversation" path still uses the plain renderAbandonedCartFollowUp,
+ * since that's a rare edge case this variant doesn't need to cover.
+ */
+export function renderConsumerAffairsAbandonedCartOpener(firstName: string): string {
+  const name = firstName.trim() || "there";
+  return pickVariant([
+    `Hi ${name}, this is Lucy with Luma Health. Saw you found us through Consumer Affairs but didn't get a chance to finish your checkout. Complete your enrollment now and get $20 off your first month. Want me to send the link?`,
+    `Hi ${name}, this is Lucy with Luma Health. Looks like you found us on Consumer Affairs and started checkout but didn't finish. Complete your enrollment and get $20 off your first month. Want the link so you can pick back up?`,
+  ]);
+}
+
+/**
  * The very first outbound message to a lead who just submitted a Meta
  * (Facebook/Instagram) lead-gen form — fired instantly on receipt of the
  * webhook, 24/7, no monitored-hours window. Fixed template, not AI-drafted,

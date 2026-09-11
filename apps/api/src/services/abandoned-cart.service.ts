@@ -4,11 +4,21 @@ import { getOrCreateConversation, appendMessage, updateConversationState } from 
 import { scheduleLeadCheckin } from "./lead-checkin.service.js";
 import { hasClickedMostRecentIntakeLink } from "./intake-links.service.js";
 import { getSmsProvider } from "../lib/sms-provider.js";
-import { renderAbandonedCartOpener, renderAbandonedCartFollowUp } from "../lib/messaging/follow-up-templates.js";
+import { renderAbandonedCartOpener, renderAbandonedCartFollowUp, renderConsumerAffairsAbandonedCartOpener } from "../lib/messaging/follow-up-templates.js";
 import { logger } from "../lib/logger.js";
 import { isCustomerSmsDnd } from "./dnd.service.js";
 
 const OPENER_DELAY_MS = 10 * 60 * 1000;
+
+/**
+ * The Bask questionnaire ID for Consumer Affairs abandoned-checkout leads —
+ * these get a different opener (renderConsumerAffairsAbandonedCartOpener)
+ * calling out where they came from, and a dedicated promo link (see
+ * consumer_affairs_20 in intake-links.service.ts) instead of the generic
+ * abandoned-cart treatment.
+ */
+const CONSUMER_AFFAIRS_ABANDONED_QUESTIONNAIRE_ID = "9986";
+const isConsumerAffairsAbandonedQuestionnaire = (questionnaireId: string): boolean => questionnaireId.trim() === CONSUMER_AFFAIRS_ABANDONED_QUESTIONNAIRE_ID;
 
 export interface AbandonedCartSweepResult {
   readonly sentCount: number;
@@ -103,7 +113,7 @@ export async function sweepAbandonedCartTriggers(): Promise<AbandonedCartSweepRe
       continue;
     }
 
-    const sendResult = await sendOpener(trigger.personId);
+    const sendResult = await sendOpener(trigger.personId, trigger.questionnaireEventId);
 
     if (!sendResult.ok) {
       await db.update(abandonedCartTriggersTable).set({ status: "failed", failureReason: sendResult.reason }).where(eq(abandonedCartTriggersTable.id, trigger.id));
@@ -141,7 +151,7 @@ async function isStillEligible(personId: string, questionnaireEventId: string): 
 
 type SendResult = { ok: true; providerMessageId: string } | { ok: false; reason: string };
 
-async function sendOpener(personId: string): Promise<SendResult> {
+async function sendOpener(personId: string, questionnaireEventId: string): Promise<SendResult> {
   const [customer] = await db
     .select({ firstName: customersTable.firstName, phone: customersTable.phone })
     .from(customersTable)
@@ -149,6 +159,9 @@ async function sendOpener(personId: string): Promise<SendResult> {
   if (!customer) {
     return { ok: false, reason: "CUSTOMER_NOT_FOUND" };
   }
+
+  const [event] = await db.select({ questionnaireId: questionnaireEventsTable.questionnaireId }).from(questionnaireEventsTable).where(eq(questionnaireEventsTable.id, questionnaireEventId));
+  const isConsumerAffairsCart = event !== undefined && isConsumerAffairsAbandonedQuestionnaire(event.questionnaireId);
 
   // Arms the 6-day check-in the moment we're about to send this lead's very
   // first message — regardless of whether the send itself succeeds, same as
@@ -173,15 +186,23 @@ async function sendOpener(personId: string): Promise<SendResult> {
   // questionnaire nudge itself is still real signal worth sending, just
   // without repeating the introduction.
   const [existingConversation] = await db.select({ id: conversationsTable.id }).from(conversationsTable).where(eq(conversationsTable.personId, personId));
-  const text = existingConversation ? renderAbandonedCartFollowUp(customer.firstName) : renderAbandonedCartOpener(customer.firstName);
+  // Consumer Affairs framing only applies to the very first message — see
+  // renderConsumerAffairsAbandonedCartOpener's docstring for why the
+  // already-has-a-conversation path keeps the plain follow-up copy.
+  const text = existingConversation
+    ? renderAbandonedCartFollowUp(customer.firstName)
+    : isConsumerAffairsCart
+      ? renderConsumerAffairsAbandonedCartOpener(customer.firstName)
+      : renderAbandonedCartOpener(customer.firstName);
   const conversation = await getOrCreateConversation(personId);
+  const stateUpdate = !existingConversation && isConsumerAffairsCart ? { promoOffered: true, consumerAffairsCart: true } : { promoOffered: true };
 
   try {
     const result = await getSmsProvider().sendMessage(customer.phone, text);
     await appendMessage(conversation.id, "outbound", text, { providerMessageId: result.providerMessageId, deliveryStatus: "sent" });
     // The opener promises $20 off directly — the eventual send_form in the
     // reply-driven conversation must use the promo link, not the plain one.
-    await updateConversationState(conversation.id, { promoOffered: true });
+    await updateConversationState(conversation.id, stateUpdate);
     return { ok: true, providerMessageId: result.providerMessageId };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
@@ -189,7 +210,7 @@ async function sendOpener(personId: string): Promise<SendResult> {
     // Still logged for visibility even though the send failed — this is what
     // Lucy's opener would have said, once a provider exists.
     await appendMessage(conversation.id, "outbound", text, { deliveryStatus: "failed" });
-    await updateConversationState(conversation.id, { promoOffered: true });
+    await updateConversationState(conversation.id, stateUpdate);
     return { ok: false, reason };
   }
 }

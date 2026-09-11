@@ -23,6 +23,7 @@ export interface ConversationStatePatch {
   readonly objectionKey?: ObjectionKey | null;
   readonly linkProvided?: boolean;
   readonly promoOffered?: boolean;
+  readonly consumerAffairsCart?: boolean;
   readonly needsAttention?: boolean;
   readonly needsAttentionReason?: string | null;
 }
@@ -187,6 +188,7 @@ export function toBotPreviewBody(conversation: Conversation, history: readonly C
     objectionKey: conversation.objectionKey,
     linkProvided: conversation.linkProvided,
     promoOffered: conversation.promoOffered,
+    consumerAffairsCart: conversation.consumerAffairsCart,
     customerFirstName,
   };
 }

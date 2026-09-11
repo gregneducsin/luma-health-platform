@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   renderFollowUpMessage,
   renderAbandonedCartOpener,
+  renderConsumerAffairsAbandonedCartOpener,
   renderMetaLeadOpener,
   renderCaterpillarOpener,
   renderConsumerAffairsOpener,
@@ -61,6 +62,27 @@ describe("renderAbandonedCartOpener", () => {
   it("interpolates the first name, falling back to 'there' when blank", () => {
     expect(renderAbandonedCartOpener("Jamie")).toContain("Jamie");
     expect(renderAbandonedCartOpener("  ")).toContain("there");
+  });
+});
+
+describe("renderConsumerAffairsAbandonedCartOpener", () => {
+  it("has exactly one trailing question mark, no em dash", () => {
+    const text = renderConsumerAffairsAbandonedCartOpener("Jamie");
+    expect((text.match(/\?/g) ?? []).length).toBe(1);
+    expect(text.trim().endsWith("?")).toBe(true);
+    expect(text).not.toMatch(/—|--/);
+  });
+
+  it("mentions Consumer Affairs and the $20 offer, and does not include a link", () => {
+    const text = renderConsumerAffairsAbandonedCartOpener("Jamie");
+    expect(text).toContain("Consumer Affairs");
+    expect(text).toContain("$20 off");
+    expect(text).not.toMatch(/https?:\/\//);
+  });
+
+  it("interpolates the first name, falling back to 'there' when blank", () => {
+    expect(renderConsumerAffairsAbandonedCartOpener("Jamie")).toContain("Jamie");
+    expect(renderConsumerAffairsAbandonedCartOpener("  ")).toContain("there");
   });
 });
 
@@ -157,6 +179,10 @@ describe("wording variation — no template sends the identical byte-for-byte se
 
   it("renderAbandonedCartOpener varies", () => {
     expect(distinctOutputs(() => renderAbandonedCartOpener("Jamie")).size).toBeGreaterThan(1);
+  });
+
+  it("renderConsumerAffairsAbandonedCartOpener varies", () => {
+    expect(distinctOutputs(() => renderConsumerAffairsAbandonedCartOpener("Jamie")).size).toBeGreaterThan(1);
   });
 
   it("renderMetaLeadOpener varies", () => {

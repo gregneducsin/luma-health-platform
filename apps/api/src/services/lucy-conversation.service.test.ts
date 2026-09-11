@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll } from "vitest";
-import { db, customersTable } from "@luma/db";
+import { eq } from "drizzle-orm";
+import { db, customersTable, intakeLinkTokensTable } from "@luma/db";
 import type { ClaudeInteractiveResult, BotPreviewRequestBody } from "../lib/messaging/types.js";
 
 beforeAll(() => {
@@ -45,6 +46,7 @@ function baseBody(overrides: Partial<BotPreviewRequestBody> = {}): BotPreviewReq
     objectionKey: null,
     linkProvided: false,
     promoOffered: false,
+    consumerAffairsCart: false,
     customerFirstName: "Test",
     ...overrides,
   };
@@ -221,6 +223,23 @@ describe("runLucyTurn", () => {
       expect(result.reply).toContain(result.link as string);
       expect(result.reply).toContain("Affirm");
       expect(result.linkProvided).toBe(true);
+    }
+  });
+
+  it("mints the consumer_affairs_20 link on send_form when consumerAffairsCart is true, even if the model didn't flag promoOffered", async () => {
+    callClaudeInteractiveMock.mockClear();
+    callClaudeInteractiveMock.mockResolvedValueOnce(
+      modelResult({ action: "send_form", reply: "Perfect, sending you the signup link now.", nextQuestion: null, knowledgeTopicsUsed: [], promoOffered: false }),
+    );
+    const personId = await seedCustomer();
+    const result = await runLucyTurn(personId, baseBody({ consumerAffairsCart: true }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const rawToken = (result.link as string).split("/go/")[1];
+      const tokenHash = await import("../lib/crypto.js").then((m) => m.hashToken(rawToken));
+      const [row] = await db.select().from(intakeLinkTokensTable).where(eq(intakeLinkTokensTable.tokenHash, tokenHash));
+      expect(row.promoApplied).toBe("consumer_affairs_20");
     }
   });
 

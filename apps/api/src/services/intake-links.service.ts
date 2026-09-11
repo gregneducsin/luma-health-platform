@@ -8,7 +8,14 @@ const FOLLOW_UP_DELAY_MS = 2 * 60 * 60 * 1000;
 export type PromoVariant = IntakeLinkToken["promoApplied"];
 export type IntakeLeadSource = IntakeLinkToken["leadSource"];
 
+// The Consumer Affairs abandoned-cart questionnaire (9986) has its own fixed
+// landing URL, hardcoded here rather than read from an env var — it isn't
+// a promo variant staff need to reconfigure, it's a specific, permanent
+// destination tied to that one lead source.
+const CONSUMER_AFFAIRS_PROMO_URL = "https://start.mylumahealth.com/start-online-visit/consumer-affairs?promo=Get20-&promo-source=coupon";
+
 function baskQuestionnaireUrl(promo: PromoVariant): string {
+  if (promo === "consumer_affairs_20") return CONSUMER_AFFAIRS_PROMO_URL;
   const envVar = promo === "first_month_20" ? "BASK_QUESTIONNAIRE_PROMO_URL" : "BASK_QUESTIONNAIRE_URL";
   const url = process.env[envVar];
   if (!url) {

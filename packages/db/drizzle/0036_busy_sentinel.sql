@@ -1,0 +1,1 @@
+ALTER TABLE "conversations" ADD COLUMN "consumer_affairs_cart" boolean DEFAULT false NOT NULL;

@@ -189,7 +189,12 @@ export async function runLucyTurn(personId: string, body: BotPreviewRequestBody)
 
   if (result.action === "send_form") {
     try {
-      const minted = await createIntakeLink(personId, result.promoOffered ? "first_month_20" : "none", body.leadSource);
+      // consumerAffairsCart overrides promoOffered entirely — the opener
+      // already sent this lead down the Consumer-Affairs path, so send_form
+      // always lands them on that dedicated link, regardless of whether
+      // Claude's first_month_offer topic fired this turn.
+      const promo = body.consumerAffairsCart ? "consumer_affairs_20" : result.promoOffered ? "first_month_20" : "none";
+      const minted = await createIntakeLink(personId, promo, body.leadSource);
       link = minted.url;
       finalReply = result.reply ? `${result.reply} ${link}` : link;
       // Deterministic, not AI-drafted — same reasoning as the link itself

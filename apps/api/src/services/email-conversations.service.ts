@@ -170,6 +170,10 @@ export function toEmailPreviewBody(conversation: EmailConversation, history: rea
     objectionKey: conversation.objectionKey,
     linkProvided: conversation.linkProvided,
     promoOffered: conversation.promoOffered,
+    // Email conversations have no questionnaire-triggered abandoned-cart
+    // opener of their own (that's SMS-only — see abandoned-cart.service.ts),
+    // so there's no consumer_affairs_20 override for this channel.
+    consumerAffairsCart: false,
     customerFirstName,
   };
 }

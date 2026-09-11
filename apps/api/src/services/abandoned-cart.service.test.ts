@@ -26,10 +26,10 @@ async function seedCustomer(opts: { phone?: string | null } = {}): Promise<strin
   return row.id;
 }
 
-async function seedAbandonedQuestionnaire(personId: string): Promise<string> {
+async function seedAbandonedQuestionnaire(personId: string, questionnaireId = `q-${crypto.randomUUID()}`): Promise<string> {
   const [row] = await db
     .insert(questionnaireEventsTable)
-    .values({ personId, questionnaireId: `q-${crypto.randomUUID()}`, status: "abandoned", lastEventAt: new Date(), abandonedAt: new Date() })
+    .values({ personId, questionnaireId, status: "abandoned", lastEventAt: new Date(), abandonedAt: new Date() })
     .returning({ id: questionnaireEventsTable.id });
   return row.id;
 }
@@ -106,6 +106,41 @@ describe("sweepAbandonedCartTriggers", () => {
     const [checkin] = await db.select().from(leadCheckinTriggersTable).where(eq(leadCheckinTriggersTable.personId, personId));
     expect(checkin).toBeDefined();
     expect(checkin.status).toBe("pending");
+  });
+
+  it("sends the Consumer Affairs variant and flags the conversation when the trigger's questionnaire is 9986", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_consumer_affairs" });
+
+    const personId = await seedCustomer();
+    const questionnaireEventId = await seedAbandonedQuestionnaire(personId, "9986");
+    await scheduleAbandonedCartOpener(personId, questionnaireEventId);
+    await backdateTrigger(personId);
+
+    const result = await sweepAbandonedCartTriggers();
+    expect(result.sentCount).toBe(1);
+    expect(sendMessageMock).toHaveBeenCalledWith("+15559990000", expect.stringContaining("Consumer Affairs"));
+    expect(sendMessageMock).toHaveBeenCalledWith("+15559990000", expect.stringContaining("$20 off your first month"));
+
+    const conversation = await getOrCreateConversation(personId);
+    expect(conversation.promoOffered).toBe(true);
+    expect(conversation.consumerAffairsCart).toBe(true);
+  });
+
+  it("does not use the Consumer Affairs variant for an unrelated questionnaire ID", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_generic" });
+
+    const personId = await seedCustomer();
+    const questionnaireEventId = await seedAbandonedQuestionnaire(personId, "12345");
+    await scheduleAbandonedCartOpener(personId, questionnaireEventId);
+    await backdateTrigger(personId);
+
+    await sweepAbandonedCartTriggers();
+    expect(sendMessageMock).toHaveBeenCalledWith("+15559990000", expect.not.stringContaining("Consumer Affairs"));
+
+    const conversation = await getOrCreateConversation(personId);
+    expect(conversation.consumerAffairsCart).toBe(false);
   });
 
   it("skips the duplicate self-introduction when the person already has an active conversation (e.g. a Meta lead who separately abandoned the questionnaire)", async () => {

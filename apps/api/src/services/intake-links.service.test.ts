@@ -172,6 +172,16 @@ describe("intake-links.service", () => {
       expect(redirectUrl).toBe("https://bask.example.com/questionnaire?promo=Get20");
     });
 
+    it("redirects to the fixed Consumer Affairs URL when the link was minted with consumer_affairs_20 — no env var required", async () => {
+      const { createIntakeLink, handleIntakeLinkClick } = await import("./intake-links.service.js");
+      const personId = await seedCustomer();
+      const { url } = await createIntakeLink(personId, "consumer_affairs_20");
+      const rawToken = url.split("/go/")[1];
+
+      const { redirectUrl } = await handleIntakeLinkClick(rawToken);
+      expect(redirectUrl).toBe("https://start.mylumahealth.com/start-online-visit/consumer-affairs?promo=Get20-&promo-source=coupon");
+    });
+
     it("clicking a newer link cancels a still-pending follow-up job from an earlier click, so the same person isn't left on two parallel nudge chains", async () => {
       const { createIntakeLink, handleIntakeLinkClick } = await import("./intake-links.service.js");
       const personId = await seedCustomer();

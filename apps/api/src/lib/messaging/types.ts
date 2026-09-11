@@ -144,6 +144,14 @@ export interface BotPreviewRequestBody {
   /** True once the first_month_offer topic has been used at any point this session. */
   readonly promoOffered: boolean;
   /**
+   * True when this lead's abandoned-cart opener came from questionnaire
+   * 9986 (Consumer Affairs abandoned-checkout leads). Overrides promoOffered
+   * at send_form time — see runLucyTurn — so these leads land on the
+   * dedicated Consumer-Affairs promo URL instead of the standard $20 link,
+   * regardless of whether Claude's first_month_offer topic fired this turn.
+   */
+  readonly consumerAffairsCart: boolean;
+  /**
    * The patient's first name, if already known (from the customer record —
    * not something Claude has said or guessed). Null means genuinely unknown,
    * distinct from the "Unknown" placeholder a webhook-created customer row
