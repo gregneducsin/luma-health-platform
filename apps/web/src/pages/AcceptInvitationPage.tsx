@@ -19,23 +19,23 @@ export function AcceptInvitationPage() {
 
   if (!token) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+      <div className="flex min-h-screen items-center justify-center bg-luma-bg px-4">
         <Card className="w-full max-w-sm">
-          <p className="text-sm text-gray-600">This invitation link is missing its token.</p>
+          <p className="text-sm text-luma-ink-secondary">This invitation link is missing its token.</p>
         </Card>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-luma-bg px-4">
       <Card className="w-full max-w-sm">
-        <h1 className="mb-1 text-lg font-semibold text-gray-900">Set your password</h1>
-        <p className="mb-4 text-sm text-gray-500">Choose a password to activate your account.</p>
+        <h1 className="mb-1 text-lg font-semibold text-luma-ink">Set your password</h1>
+        <p className="mb-4 text-sm text-luma-ink-secondary">Choose a password to activate your account.</p>
         {acceptInvitation.isSuccess ? (
           <div className="space-y-3">
-            <p className="text-sm text-green-700">Password set. You can now log in.</p>
-            <Link href="/login" className="inline-block text-sm font-medium text-blue-600 hover:underline">
+            <p className="text-sm text-luma-success">Password set. You can now log in.</p>
+            <Link href="/login" className="inline-block text-sm font-medium text-luma-accent hover:underline">
               Go to login →
             </Link>
           </div>

@@ -25,13 +25,13 @@ export function CustomerNotesCard({ customerId }: { customerId: string }) {
 
   return (
     <Card>
-      <h2 className="text-sm font-semibold text-gray-900">Notes</h2>
-      <p className="text-xs text-gray-500">Internal staff notes — never shown to the customer.</p>
+      <h2 className="text-sm font-semibold text-luma-ink">Notes</h2>
+      <p className="text-xs text-luma-ink-secondary">Internal staff notes — never shown to the customer.</p>
 
       {canEdit && (
         <div className="mt-3">
           <textarea
-            className="w-full rounded-md border border-gray-300 p-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full rounded-md border border-luma-border p-2 text-sm focus:border-luma-accent focus:outline-none focus:ring-1 focus:ring-luma-accent"
             rows={2}
             placeholder="Add a note…"
             value={draft}
@@ -50,12 +50,12 @@ export function CustomerNotesCard({ customerId }: { customerId: string }) {
       )}
 
       <div className="mt-3 space-y-2">
-        {isLoading && <p className="text-xs text-gray-400">Loading…</p>}
-        {!isLoading && data?.notes.length === 0 && <p className="text-xs text-gray-400">No notes yet.</p>}
+        {isLoading && <p className="text-xs text-luma-ink-muted">Loading…</p>}
+        {!isLoading && data?.notes.length === 0 && <p className="text-xs text-luma-ink-muted">No notes yet.</p>}
         {data?.notes.map((note) => (
-          <div key={note.id} className="rounded-md border border-gray-100 px-3 py-2">
-            <p className="whitespace-pre-wrap text-sm text-gray-800">{note.body}</p>
-            <p className="mt-1 text-xs text-gray-400">
+          <div key={note.id} className="rounded-md border border-luma-border px-3 py-2">
+            <p className="whitespace-pre-wrap text-sm text-luma-ink">{note.body}</p>
+            <p className="mt-1 text-xs text-luma-ink-muted">
               {note.authorEmail} · {formatDateTime(note.createdAt)}
             </p>
           </div>
@@ -69,7 +69,7 @@ export function CustomerNotesCard({ customerId }: { customerId: string }) {
 export function CollapsibleCustomerNotes({ customerId }: { customerId: string }) {
   return (
     <details className="group">
-      <summary className="cursor-pointer list-none text-xs font-medium text-gray-500 hover:text-gray-700">
+      <summary className="cursor-pointer list-none text-xs font-medium text-luma-ink-secondary hover:text-luma-ink-secondary">
         <span className="inline-flex items-center gap-1">
           <span className="inline-block transition-transform group-open:rotate-90">▶</span>
           Notes

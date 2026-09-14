@@ -74,7 +74,7 @@ function combineMonthly(weeks: MarketingCpaWeek[], key: "metaFormFill" | "ecomme
 function MetricCard({ title, metrics }: { title: string; metrics: MarketingCpaMetrics }) {
   return (
     <Card>
-      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-luma-ink-secondary">{title}</p>
       <div className="mt-3 space-y-2 text-sm">
         <Row label="Ad spend" value={money(metrics.spend)} />
         <Row label="CPA" value={metrics.cpa === null ? "—" : `$${metrics.cpa.toFixed(2)}`} emphasize />
@@ -84,7 +84,7 @@ function MetricCard({ title, metrics }: { title: string; metrics: MarketingCpaMe
         <Row label="Conversion rate" value={`${metrics.conversionRate}%`} />
         <Row label="Avg days to close" value={metrics.avgDaysToClose === null ? "—" : String(metrics.avgDaysToClose)} />
       </div>
-      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 border-t border-gray-100 pt-2 text-xs text-gray-400">
+      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 border-t border-luma-border pt-2 text-xs text-luma-ink-muted">
         <span>{metrics.stillOpen} still open</span>
         <span>{metrics.recurringExclusions} recurring exclusions</span>
       </div>
@@ -95,8 +95,8 @@ function MetricCard({ title, metrics }: { title: string; metrics: MarketingCpaMe
 function Row({ label, value, emphasize }: { label: string; value: string; emphasize?: boolean }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-gray-500">{label}</span>
-      <span className={emphasize ? "text-base font-semibold text-gray-900" : "font-medium text-gray-800"}>{value}</span>
+      <span className="text-luma-ink-secondary">{label}</span>
+      <span className={emphasize ? "text-base font-semibold text-luma-ink" : "font-medium text-luma-ink"}>{value}</span>
     </div>
   );
 }
@@ -128,25 +128,25 @@ export function MarketingCpaPage() {
   const currentWeek = weeks[clampedWeekIndex];
   const currentMonth = months[clampedMonthIndex];
 
-  if (isLoading) return <p className="text-sm text-gray-500">Loading…</p>;
+  if (isLoading) return <p className="text-sm text-luma-ink-secondary">Loading…</p>;
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Marketing CPA</h1>
+        <h1 className="font-serif text-2xl font-medium text-luma-ink">Marketing CPA</h1>
         <div className="flex items-center gap-2">
-          <div className="flex rounded-md border border-gray-300 bg-white p-0.5 text-sm">
+          <div className="flex rounded-md border border-luma-border bg-luma-surface p-0.5 text-sm">
             <button
               type="button"
               onClick={() => setMode("weekly")}
-              className={`rounded px-3 py-1 ${mode === "weekly" ? "bg-blue-600 text-white" : "text-gray-600"}`}
+              className={`rounded px-3 py-1 ${mode === "weekly" ? "bg-luma-action text-luma-bg" : "text-luma-ink-secondary"}`}
             >
               Weekly
             </button>
             <button
               type="button"
               onClick={() => setMode("monthly")}
-              className={`rounded px-3 py-1 ${mode === "monthly" ? "bg-blue-600 text-white" : "text-gray-600"}`}
+              className={`rounded px-3 py-1 ${mode === "monthly" ? "bg-luma-action text-luma-bg" : "text-luma-ink-secondary"}`}
             >
               Monthly
             </button>
@@ -159,7 +159,7 @@ export function MarketingCpaPage() {
 
       {weeks.length === 0 ? (
         <Card>
-          <p className="text-sm text-gray-500">No CPA periods yet. Add one to start tracking marketing spend.</p>
+          <p className="text-sm text-luma-ink-secondary">No CPA periods yet. Add one to start tracking marketing spend.</p>
         </Card>
       ) : mode === "weekly" && currentWeek ? (
         <>
@@ -168,12 +168,12 @@ export function MarketingCpaPage() {
               type="button"
               onClick={() => setWeekIndex((i) => Math.max(i - 1, 0))}
               disabled={clampedWeekIndex === 0}
-              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+              className="rounded-md border border-luma-border bg-luma-surface px-2 py-1 text-sm text-luma-ink-secondary hover:bg-luma-bg disabled:opacity-40"
             >
               ← Prev
             </button>
             <div className="text-center">
-              <p className="text-sm font-medium text-gray-900">
+              <p className="text-sm font-medium text-luma-ink">
                 {currentWeek.weekStart} – {currentWeek.weekEnd}
               </p>
               <Button variant="secondary" className="mt-1" onClick={() => setShowManageSpend(true)}>
@@ -184,7 +184,7 @@ export function MarketingCpaPage() {
               type="button"
               onClick={() => setWeekIndex((i) => Math.min(i + 1, weeks.length - 1))}
               disabled={clampedWeekIndex === weeks.length - 1}
-              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+              className="rounded-md border border-luma-border bg-luma-surface px-2 py-1 text-sm text-luma-ink-secondary hover:bg-luma-bg disabled:opacity-40"
             >
               Next →
             </button>
@@ -205,16 +205,16 @@ export function MarketingCpaPage() {
               type="button"
               onClick={() => setMonthIndex((i) => Math.max(i - 1, 0))}
               disabled={clampedMonthIndex === 0}
-              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+              className="rounded-md border border-luma-border bg-luma-surface px-2 py-1 text-sm text-luma-ink-secondary hover:bg-luma-bg disabled:opacity-40"
             >
               ← Prev
             </button>
-            <p className="text-sm font-medium text-gray-900">{monthLabel(currentMonth[0])}</p>
+            <p className="text-sm font-medium text-luma-ink">{monthLabel(currentMonth[0])}</p>
             <button
               type="button"
               onClick={() => setMonthIndex((i) => Math.min(i + 1, months.length - 1))}
               disabled={clampedMonthIndex === months.length - 1}
-              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+              className="rounded-md border border-luma-border bg-luma-surface px-2 py-1 text-sm text-luma-ink-secondary hover:bg-luma-bg disabled:opacity-40"
             >
               Next →
             </button>
@@ -229,9 +229,9 @@ export function MarketingCpaPage() {
       ) : null}
 
       <Card className="overflow-x-auto p-0">
-        <p className="border-b border-gray-200 bg-gray-50 px-4 py-2 text-xs font-semibold uppercase text-gray-500">All periods</p>
+        <p className="border-b border-luma-border bg-luma-bg px-4 py-2 text-xs font-semibold uppercase text-luma-ink-secondary">All periods</p>
         <table className="w-full text-sm">
-          <thead className="border-b border-gray-200 text-left text-xs font-medium uppercase text-gray-500">
+          <thead className="border-b border-luma-border text-left text-xs font-medium uppercase text-luma-ink-secondary">
             <tr>
               <th className="px-4 py-2">Period</th>
               <th className="px-4 py-2 text-right">Leads</th>
@@ -243,7 +243,7 @@ export function MarketingCpaPage() {
           </thead>
           <tbody>
             {[...weeks].reverse().map((w, idx) => (
-              <tr key={w.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+              <tr key={w.id} className="border-b border-luma-border last:border-0 hover:bg-luma-bg">
                 <td className="px-4 py-2">
                   <button
                     type="button"
@@ -251,16 +251,16 @@ export function MarketingCpaPage() {
                       setMode("weekly");
                       setWeekIndex(weeks.length - 1 - idx);
                     }}
-                    className="font-medium text-blue-600 hover:underline"
+                    className="font-medium text-luma-accent hover:underline"
                   >
                     {w.weekStart} – {w.weekEnd}
                   </button>
                 </td>
-                <td className="px-4 py-2 text-right text-gray-700">{w.combined.leadsReceived}</td>
-                <td className="px-4 py-2 text-right text-gray-700">{w.combined.closedDeals}</td>
-                <td className="px-4 py-2 text-right text-gray-700">{w.metaFormFill.cpa === null ? "—" : `$${w.metaFormFill.cpa.toFixed(2)}`}</td>
-                <td className="px-4 py-2 text-right text-gray-700">{w.ecommerce.cpa === null ? "—" : `$${w.ecommerce.cpa.toFixed(2)}`}</td>
-                <td className="px-4 py-2 text-right font-medium text-gray-900">
+                <td className="px-4 py-2 text-right text-luma-ink-secondary">{w.combined.leadsReceived}</td>
+                <td className="px-4 py-2 text-right text-luma-ink-secondary">{w.combined.closedDeals}</td>
+                <td className="px-4 py-2 text-right text-luma-ink-secondary">{w.metaFormFill.cpa === null ? "—" : `$${w.metaFormFill.cpa.toFixed(2)}`}</td>
+                <td className="px-4 py-2 text-right text-luma-ink-secondary">{w.ecommerce.cpa === null ? "—" : `$${w.ecommerce.cpa.toFixed(2)}`}</td>
+                <td className="px-4 py-2 text-right font-medium text-luma-ink">
                   {w.combined.cpa === null ? "—" : `$${w.combined.cpa.toFixed(2)}`}
                 </td>
               </tr>
@@ -304,7 +304,7 @@ function AddPeriodModal({ onClose, onCreated }: { onClose: () => void; onCreated
           <Input type="date" required value={weekStart} onChange={(e) => setWeekStart(e.target.value)} />
         </Field>
         {!validFriday && <ErrorText>Period start must be a Friday.</ErrorText>}
-        {weekEndPreview && <p className="text-xs text-gray-500">Period end (Thursday): {weekEndPreview}</p>}
+        {weekEndPreview && <p className="text-xs text-luma-ink-secondary">Period end (Thursday): {weekEndPreview}</p>}
         <div className="flex items-center gap-2">
           <Button type="submit" disabled={createWeek.isPending || !weekStart || !validFriday}>
             {createWeek.isPending ? "Creating…" : "Create period"}

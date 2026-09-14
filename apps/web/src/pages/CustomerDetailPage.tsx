@@ -26,8 +26,8 @@ export function CustomerDetailPage() {
   const { data: currentUser } = useCurrentUser();
   const canEdit = currentUser?.user?.role === "admin";
 
-  if (isLoading) return <p className="text-sm text-gray-500">Loading…</p>;
-  if (!data) return <p className="text-sm text-gray-500">Customer not found.</p>;
+  if (isLoading) return <p className="text-sm text-luma-ink-secondary">Loading…</p>;
+  if (!data) return <p className="text-sm text-luma-ink-secondary">Customer not found.</p>;
 
   const { customer, purchases, questionnaireEvents } = data;
 
@@ -35,15 +35,15 @@ export function CustomerDetailPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">
+          <h1 className="font-serif text-2xl font-medium text-luma-ink">
             {customer.firstName} {customer.lastName}
           </h1>
-          <p className="text-sm text-gray-500">{customer.personNumber}</p>
+          <p className="text-sm text-luma-ink-secondary">{customer.personNumber}</p>
         </div>
         <div className="flex gap-2">
           <Link
             href={`/conversations?personId=${customer.id}`}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            className="rounded-md border border-luma-border px-3 py-1.5 text-sm text-luma-ink-secondary hover:bg-luma-bg"
           >
             View in Conversations →
           </Link>
@@ -53,20 +53,20 @@ export function CustomerDetailPage() {
       <Card>
         <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <div>
-            <dt className="text-xs text-gray-400">Email</dt>
-            <dd className="text-gray-800">{customer.email}</dd>
+            <dt className="text-xs text-luma-ink-muted">Email</dt>
+            <dd className="text-luma-ink">{customer.email}</dd>
           </div>
           <div>
-            <dt className="text-xs text-gray-400">Phone</dt>
-            <dd className="text-gray-800">{customer.phone ?? "—"}</dd>
+            <dt className="text-xs text-luma-ink-muted">Phone</dt>
+            <dd className="text-luma-ink">{customer.phone ?? "—"}</dd>
           </div>
           <div>
-            <dt className="text-xs text-gray-400">Lead type</dt>
-            <dd className="text-gray-800">{customer.leadType}</dd>
+            <dt className="text-xs text-luma-ink-muted">Lead type</dt>
+            <dd className="text-luma-ink">{customer.leadType}</dd>
           </div>
           <div>
-            <dt className="text-xs text-gray-400">Lead received</dt>
-            <dd className="text-gray-800">{customer.leadReceivedDate}</dd>
+            <dt className="text-xs text-luma-ink-muted">Lead received</dt>
+            <dd className="text-luma-ink">{customer.leadReceivedDate}</dd>
           </div>
         </dl>
       </Card>
@@ -75,15 +75,15 @@ export function CustomerDetailPage() {
 
       {questionnaireEvents.length > 0 && (
         <Card>
-          <h2 className="text-sm font-semibold text-gray-900">Questionnaire / Funnel</h2>
-          <p className="text-xs text-gray-500">Where this lead came from — every questionnaire they have an event for, most recent first.</p>
+          <h2 className="text-sm font-semibold text-luma-ink">Questionnaire / Funnel</h2>
+          <p className="text-xs text-luma-ink-secondary">Where this lead came from — every questionnaire they have an event for, most recent first.</p>
           <div className="mt-3 space-y-2">
             {questionnaireEvents.map((qe) => (
-              <div key={qe.questionnaireId} className="flex items-center justify-between rounded-md border border-gray-100 px-3 py-2">
-                <span className="text-sm text-gray-800">{qe.questionnaireId}</span>
+              <div key={qe.questionnaireId} className="flex items-center justify-between rounded-md border border-luma-border px-3 py-2">
+                <span className="text-sm text-luma-ink">{qe.questionnaireId}</span>
                 <div className="flex items-center gap-2">
                   <Badge color={QUESTIONNAIRE_BADGE_COLOR[qe.status] ?? "gray"}>{qe.status}</Badge>
-                  <span className="text-xs text-gray-400">as of {formatDate(qe.lastEventAt)}</span>
+                  <span className="text-xs text-luma-ink-muted">as of {formatDate(qe.lastEventAt)}</span>
                 </div>
               </div>
             ))}
@@ -94,7 +94,7 @@ export function CustomerDetailPage() {
       {canEdit && <IntakeLinkCard customerId={customer.id} />}
 
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-900">Purchase history</h2>
+        <h2 className="text-sm font-semibold text-luma-ink">Purchase history</h2>
         {canEdit && <Button onClick={() => setShowAddPurchase((s) => !s)}>{showAddPurchase ? "Cancel" : "Add purchase"}</Button>}
       </div>
 
@@ -102,7 +102,7 @@ export function CustomerDetailPage() {
 
       <Card className="overflow-x-auto p-0">
         <table className="w-full text-sm">
-          <thead className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase text-gray-500">
+          <thead className="border-b border-luma-border bg-luma-bg text-left text-xs font-medium uppercase text-luma-ink-secondary">
             <tr>
               <th className="px-4 py-2">Date</th>
               <th className="px-4 py-2">Order #</th>
@@ -118,7 +118,7 @@ export function CustomerDetailPage() {
             ))}
             {purchases.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-sm text-gray-400">
+                <td colSpan={6} className="px-4 py-6 text-center text-sm text-luma-ink-muted">
                   No purchases yet.
                 </td>
               </tr>
@@ -144,8 +144,8 @@ function IntakeLinkCard({ customerId }: { customerId: string }) {
     <Card>
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-gray-900">Signup link</h2>
-          <p className="text-xs text-gray-500">
+          <h2 className="text-sm font-semibold text-luma-ink">Signup link</h2>
+          <p className="text-xs text-luma-ink-secondary">
             Only send this once the lead has actually agreed to fill out the form — it starts the 2-hour follow-up timer as soon as
             they click it.
           </p>
@@ -156,15 +156,15 @@ function IntakeLinkCard({ customerId }: { customerId: string }) {
       </div>
 
       {createLink.isSuccess && (
-        <div className="mt-3 flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 p-2">
-          <input readOnly className="flex-1 bg-transparent text-sm text-gray-800 outline-none" value={createLink.data.url} />
+        <div className="mt-3 flex items-center gap-2 rounded-md border border-luma-border bg-luma-bg p-2">
+          <input readOnly className="flex-1 bg-transparent text-sm text-luma-ink outline-none" value={createLink.data.url} />
           <Button variant="secondary" onClick={() => handleCopy(createLink.data.url)}>
             {copied ? "Copied!" : "Copy"}
           </Button>
         </div>
       )}
       {createLink.isSuccess && (
-        <p className="mt-1 text-xs text-gray-400">Expires {formatDateTime(createLink.data.expiresAt)}</p>
+        <p className="mt-1 text-xs text-luma-ink-muted">Expires {formatDateTime(createLink.data.expiresAt)}</p>
       )}
 
       <ErrorText>
@@ -186,20 +186,20 @@ function PurchaseRow({
   const updatePurchase = useUpdatePurchase(customerId);
 
   return (
-    <tr className="border-b border-gray-100 last:border-0">
-      <td className="px-4 py-2 text-gray-600">{purchase.purchaseDate}</td>
-      <td className="px-4 py-2 text-gray-600">{purchase.orderNumber}</td>
-      <td className="px-4 py-2 text-gray-600">{purchase.productName}</td>
-      <td className="px-4 py-2 text-right text-gray-600">${purchase.amountPaid}</td>
+    <tr className="border-b border-luma-border last:border-0">
+      <td className="px-4 py-2 text-luma-ink-secondary">{purchase.purchaseDate}</td>
+      <td className="px-4 py-2 text-luma-ink-secondary">{purchase.orderNumber}</td>
+      <td className="px-4 py-2 text-luma-ink-secondary">{purchase.productName}</td>
+      <td className="px-4 py-2 text-right text-luma-ink-secondary">${purchase.amountPaid}</td>
       <td className="px-4 py-2">
         <Badge color={STATUS_COLORS[purchase.status] ?? "gray"}>{purchase.status}</Badge>
       </td>
       <td className="px-4 py-2">
         {!canEdit ? (
-          <span className="text-xs text-gray-600">{purchase.orderClassification ?? "—"}</span>
+          <span className="text-xs text-luma-ink-secondary">{purchase.orderClassification ?? "—"}</span>
         ) : (
         <select
-          className="rounded-md border border-gray-300 px-2 py-1 text-xs"
+          className="rounded-md border border-luma-border px-2 py-1 text-xs"
           value={purchase.orderClassification ?? ""}
           onChange={(e) =>
             updatePurchase.mutate({

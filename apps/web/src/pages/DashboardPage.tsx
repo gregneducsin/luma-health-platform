@@ -4,16 +4,14 @@ import { useEmployees, usePayrollWeeks } from "../hooks/usePayroll";
 import { useCurrentUser } from "../hooks/useAuth";
 import { useNeedsAttentionList } from "../hooks/useNeedsAttention";
 import { useFunnelSummary } from "../hooks/useReporting";
-import { Card, Badge } from "../components/ui";
+import { Card, Badge, MetricCard, PageHeader } from "../components/ui";
 import type { DateRangeQuery } from "@luma/shared";
 
-function StatCard({ label, value }: { label: string; value: string | number }) {
-  return (
-    <Card>
-      <p className="text-xs font-medium uppercase text-gray-400">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-gray-900">{value}</p>
-    </Card>
-  );
+function greeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
 }
 
 function pct(numerator: number, denominator: number): string {
@@ -28,13 +26,13 @@ function NeedsAttentionCard({ enabled }: { enabled: boolean }) {
 
   return (
     <Link href="/inbox/needs-attention">
-      <Card className={"cursor-pointer transition-colors hover:bg-gray-50 " + (count > 0 ? "border-red-200" : "")}>
+      <Card className={"cursor-pointer transition-colors hover:bg-luma-bg " + (count > 0 ? "border-luma-error/40" : "")}>
         <div className="flex items-center justify-between">
-          <p className="text-xs font-medium uppercase text-gray-400">Needs Attention</p>
+          <p className="text-xs font-medium uppercase text-luma-ink-muted">Needs Attention</p>
           {count > 0 && <Badge color="red">flagged</Badge>}
         </div>
-        <p className="mt-1 text-2xl font-semibold text-gray-900">{data === undefined ? "…" : count}</p>
-        <p className="mt-1 text-xs text-gray-400">Across SMS and email — click to review</p>
+        <p className="mt-1 font-serif text-2xl font-medium text-luma-ink">{data === undefined ? "…" : count}</p>
+        <p className="mt-1 text-xs text-luma-ink-muted">Across SMS and email — click to review</p>
       </Card>
     </Link>
   );
@@ -83,7 +81,7 @@ function DateRangePicker({
           <button
             key={p}
             onClick={() => onPresetChange(p)}
-            className={"rounded px-2 py-1 text-xs font-medium " + (preset === p ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600")}
+            className={"rounded px-2 py-1 text-xs font-medium " + (preset === p ? "bg-luma-action text-luma-bg" : "bg-luma-surface-alt text-luma-ink-secondary")}
           >
             {RANGE_PRESET_LABEL[p]}
           </button>
@@ -96,15 +94,15 @@ function DateRangePicker({
             value={customFrom}
             max={customTo || undefined}
             onChange={(e) => onCustomChange(e.target.value, customTo)}
-            className="rounded-md border border-gray-300 px-2 py-1 text-xs"
+            className="rounded-md border border-luma-border px-2 py-1 text-xs"
           />
-          <span className="text-xs text-gray-400">to</span>
+          <span className="text-xs text-luma-ink-muted">to</span>
           <input
             type="date"
             value={customTo}
             min={customFrom || undefined}
             onChange={(e) => onCustomChange(customFrom, e.target.value)}
-            className="rounded-md border border-gray-300 px-2 py-1 text-xs"
+            className="rounded-md border border-luma-border px-2 py-1 text-xs"
           />
         </div>
       )}
@@ -119,32 +117,32 @@ function FunnelSummaryCard({ range, enabled }: { range?: DateRangeQuery; enabled
   return (
     <Card>
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-900">Lead → Purchase Funnel</h2>
-        <Link href="/reporting" className="text-xs font-medium text-blue-600 hover:underline">
+        <h2 className="text-sm font-semibold text-luma-ink">Lead → Purchase Funnel</h2>
+        <Link href="/reporting" className="text-xs font-medium text-luma-accent hover:underline">
           Full report →
         </Link>
       </div>
-      {!data && <p className="mt-3 text-sm text-gray-400">Loading…</p>}
+      {!data && <p className="mt-3 text-sm text-luma-ink-muted">Loading…</p>}
       {data && (
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div>
-            <p className="text-xs font-medium uppercase text-gray-400">Leads</p>
-            <p className="mt-1 text-xl font-semibold text-gray-900">{data.totalLeads}</p>
+            <p className="text-xs font-medium uppercase text-luma-ink-muted">Leads</p>
+            <p className="mt-1 font-serif text-2xl font-medium text-luma-ink">{data.totalLeads}</p>
           </div>
           <div>
-            <p className="text-xs font-medium uppercase text-gray-400">Started</p>
-            <p className="mt-1 text-xl font-semibold text-gray-900">{data.questionnaireStarted}</p>
-            <p className="text-xs text-gray-400">{pct(data.questionnaireStarted, data.totalLeads)}</p>
+            <p className="text-xs font-medium uppercase text-luma-ink-muted">Started</p>
+            <p className="mt-1 font-serif text-2xl font-medium text-luma-ink">{data.questionnaireStarted}</p>
+            <p className="text-xs text-luma-ink-muted">{pct(data.questionnaireStarted, data.totalLeads)}</p>
           </div>
           <div>
-            <p className="text-xs font-medium uppercase text-gray-400">Submitted</p>
-            <p className="mt-1 text-xl font-semibold text-gray-900">{data.questionnaireSubmitted}</p>
-            <p className="text-xs text-gray-400">{pct(data.questionnaireSubmitted, data.questionnaireStarted)}</p>
+            <p className="text-xs font-medium uppercase text-luma-ink-muted">Submitted</p>
+            <p className="mt-1 font-serif text-2xl font-medium text-luma-ink">{data.questionnaireSubmitted}</p>
+            <p className="text-xs text-luma-ink-muted">{pct(data.questionnaireSubmitted, data.questionnaireStarted)}</p>
           </div>
           <div>
-            <p className="text-xs font-medium uppercase text-gray-400">Purchased</p>
-            <p className="mt-1 text-xl font-semibold text-gray-900">{data.purchased}</p>
-            <p className="text-xs text-gray-400">{pct(data.purchased, data.questionnaireSubmitted)}</p>
+            <p className="text-xs font-medium uppercase text-luma-ink-muted">Purchased</p>
+            <p className="mt-1 font-serif text-2xl font-medium text-luma-ink">{data.purchased}</p>
+            <p className="text-xs text-luma-ink-muted">{pct(data.purchased, data.questionnaireSubmitted)}</p>
           </div>
         </div>
       )}
@@ -174,24 +172,27 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-xl font-semibold text-gray-900">Dashboard</h1>
-        <DateRangePicker
-          preset={preset}
-          customFrom={customFrom}
-          customTo={customTo}
-          onPresetChange={setPreset}
-          onCustomChange={(from, to) => {
-            setCustomFrom(from);
-            setCustomTo(to);
-          }}
-        />
-      </div>
+      <PageHeader
+        title={greeting()}
+        subtitle="Here's what's happening at Luma."
+        actions={
+          <DateRangePicker
+            preset={preset}
+            customFrom={customFrom}
+            customTo={customTo}
+            onPresetChange={setPreset}
+            onCustomChange={(from, to) => {
+              setCustomFrom(from);
+              setCustomTo(to);
+            }}
+          />
+        }
+      />
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-        <StatCard label="Leads" value={canSeeFunnelStats ? (funnelData?.totalLeads ?? "…") : "—"} />
-        <StatCard label="Revenue" value={canSeeFunnelStats ? `$${(funnelData?.revenue ?? 0).toFixed(2)}` : "—"} />
-        <StatCard label="Active employees" value={canSeeFunnelStats ? activeEmployees : "—"} />
-        <StatCard label="Draft payroll weeks" value={canSeeFunnelStats ? draftWeeks : "—"} />
+        <MetricCard label="Leads" value={canSeeFunnelStats ? (funnelData?.totalLeads ?? "…") : "—"} />
+        <MetricCard label="Revenue" value={canSeeFunnelStats ? `$${(funnelData?.revenue ?? 0).toFixed(2)}` : "—"} />
+        <MetricCard label="Active employees" value={canSeeFunnelStats ? activeEmployees : "—"} />
+        <MetricCard label="Draft payroll weeks" value={canSeeFunnelStats ? draftWeeks : "—"} />
         <NeedsAttentionCard enabled={canSeeNeedsAttention} />
       </div>
       <FunnelSummaryCard range={range} enabled={canSeeFunnelStats} />

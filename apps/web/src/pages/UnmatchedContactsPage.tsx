@@ -86,17 +86,17 @@ function ThreadMessages({ channel, threadId }: { channel: "email" | "sms"; threa
   const smsDetail = useUnmatchedSmsThread(channel === "sms" ? threadId : null);
   const { data, isLoading } = channel === "email" ? emailDetail : smsDetail;
 
-  if (isLoading || !data) return <p className="px-4 pb-3 text-xs text-gray-400">Loading messages…</p>;
+  if (isLoading || !data) return <p className="px-4 pb-3 text-xs text-luma-ink-muted">Loading messages…</p>;
 
   return (
     <div className="space-y-2 px-4 pb-3">
       {data.messages.map((m) => (
         <div key={m.id} className={m.direction === "inbound" ? "text-left" : "text-right"}>
-          <div className={"inline-block max-w-[85%] rounded-lg px-3 py-2 text-left text-xs " + (m.direction === "inbound" ? "bg-gray-100 text-gray-800" : "bg-blue-600 text-white")}>
+          <div className={"inline-block max-w-[85%] rounded-lg px-3 py-2 text-left text-xs " + (m.direction === "inbound" ? "bg-luma-surface-alt text-luma-ink" : "bg-luma-action text-luma-bg")}>
             {"subject" in m && <p className="mb-0.5 font-semibold">{m.subject}</p>}
             <p className="whitespace-pre-wrap">{m.body}</p>
           </div>
-          <p className="mt-0.5 text-[11px] text-gray-400">{formatDateTime(m.createdAt)}</p>
+          <p className="mt-0.5 text-[11px] text-luma-ink-muted">{formatDateTime(m.createdAt)}</p>
         </div>
       ))}
     </div>
@@ -141,38 +141,38 @@ function ThreadRow({
               type="checkbox"
               checked={selected}
               onChange={onToggleSelect}
-              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="h-4 w-4 rounded border-luma-border text-luma-accent focus:ring-luma-accent"
               aria-label={`Select ${thread.contactLabel}`}
             />
           </label>
         )}
-        <button onClick={() => setExpanded((e) => !e)} className="block min-w-0 flex-1 px-4 py-3 text-left hover:bg-gray-50">
+        <button onClick={() => setExpanded((e) => !e)} className="block min-w-0 flex-1 px-4 py-3 text-left hover:bg-luma-bg">
           <div className="flex items-center justify-between">
-            <span className="flex items-center gap-2 text-sm font-medium text-gray-900">
+            <span className="flex items-center gap-2 text-sm font-medium text-luma-ink">
               <Badge color={thread.channel === "email" ? "blue" : "green"}>{thread.channel === "email" ? "Email" : "Text"}</Badge>
               {thread.contactLabel}
               {thread.aiIntent && <Badge color={INTENT_COLOR[thread.aiIntent] ?? "gray"}>{INTENT_LABEL[thread.aiIntent] ?? thread.aiIntent}</Badge>}
               {thread.linkedCustomerId && <Badge color="green">Lead created</Badge>}
               {thread.status !== "needs_review" && <Badge color={thread.status === "replied" ? "green" : "gray"}>{thread.status}</Badge>}
             </span>
-            <span className="text-xs text-gray-400">{formatDateTime(thread.lastMessageAt ?? thread.createdAt)}</span>
+            <span className="text-xs text-luma-ink-muted">{formatDateTime(thread.lastMessageAt ?? thread.createdAt)}</span>
           </div>
-          {thread.aiSummary && <p className="mt-1 truncate text-xs text-gray-400">{thread.aiSummary}</p>}
-          <p className="mt-1 truncate text-xs text-gray-500">{thread.lastMessagePreview ?? "No messages yet"}</p>
+          {thread.aiSummary && <p className="mt-1 truncate text-xs text-luma-ink-muted">{thread.aiSummary}</p>}
+          <p className="mt-1 truncate text-xs text-luma-ink-secondary">{thread.lastMessagePreview ?? "No messages yet"}</p>
         </button>
       </div>
       {expanded && (
-        <div className="space-y-3 border-t border-gray-100">
+        <div className="space-y-3 border-t border-luma-border">
           <div className="px-4 pt-3">
-            <p className="text-xs font-medium text-gray-400">From</p>
-            <p className="text-sm text-gray-800">{thread.contactLabel}</p>
+            <p className="text-xs font-medium text-luma-ink-muted">From</p>
+            <p className="text-sm text-luma-ink">{thread.contactLabel}</p>
           </div>
 
           <ThreadMessages channel={thread.channel} threadId={thread.id} />
 
           {thread.linkedCustomerId && (
-            <div className="mx-4 rounded-md bg-green-50 px-3 py-2">
-              <p className="text-xs text-green-800">
+            <div className="mx-4 rounded-md bg-luma-success-soft px-3 py-2">
+              <p className="text-xs text-luma-success">
                 A new lead was created for this sender, and this message was handed straight to Lucy's real pipeline — she's already replied. See{" "}
                 <a href={`/customers/${thread.linkedCustomerId}`} className="font-medium underline">
                   their customer record
@@ -184,8 +184,8 @@ function ThreadRow({
           )}
 
           {thread.suggestedMatchCustomerId && !thread.linkedCustomerId && (
-            <div className="mx-4 rounded-md bg-yellow-50 px-3 py-2">
-              <p className="text-xs text-yellow-800">
+            <div className="mx-4 rounded-md bg-luma-warning-soft px-3 py-2">
+              <p className="text-xs text-luma-warning">
                 Possibly an existing customer ({thread.suggestedMatchConfidence && (
                   <Badge color={CONFIDENCE_COLOR[thread.suggestedMatchConfidence]}>{thread.suggestedMatchConfidence} confidence</Badge>
                 )}
@@ -200,11 +200,11 @@ function ThreadRow({
 
           {thread.status === "needs_review" && (
             <div className="px-4 pb-3">
-              <p className="mb-1 text-xs font-medium text-gray-400">
+              <p className="mb-1 text-xs font-medium text-luma-ink-muted">
                 {thread.suggestedReply ? "Claude's suggested reply — review and edit before sending:" : "No suggested reply — write one, or dismiss:"}
               </p>
               <textarea
-                className="w-full rounded-md border border-gray-300 p-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full rounded-md border border-luma-border p-2 text-sm focus:border-luma-accent focus:outline-none focus:ring-1 focus:ring-luma-accent"
                 rows={4}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
@@ -218,11 +218,11 @@ function ThreadRow({
                   {dismiss.isPending ? "Dismissing…" : "Dismiss"}
                 </Button>
               </div>
-              {sendReply.isSuccess && sendReply.data.sent === false && <p className="mt-1 text-xs text-red-600">Send failed — nothing went out. Try again.</p>}
-              {sendReply.isError && <p className="mt-1 text-xs text-red-600">{sendReply.error instanceof ApiError ? sendReply.error.message : "Something went wrong."}</p>}
+              {sendReply.isSuccess && sendReply.data.sent === false && <p className="mt-1 text-xs text-luma-error">Send failed — nothing went out. Try again.</p>}
+              {sendReply.isError && <p className="mt-1 text-xs text-luma-error">{sendReply.error instanceof ApiError ? sendReply.error.message : "Something went wrong."}</p>}
             </div>
           )}
-          {thread.status === "replied" && thread.repliedAt && <p className="px-4 pb-3 text-xs text-gray-400">Replied {formatDateTime(thread.repliedAt)}.</p>}
+          {thread.status === "replied" && thread.repliedAt && <p className="px-4 pb-3 text-xs text-luma-ink-muted">Replied {formatDateTime(thread.repliedAt)}.</p>}
         </div>
       )}
     </Card>
@@ -285,11 +285,11 @@ export function UnmatchedContactsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Unmatched Contacts</h1>
-        {!isLoading && <p className="text-sm text-gray-500">{needsReview.length} awaiting review</p>}
+        <h1 className="font-serif text-2xl font-medium text-luma-ink">Unmatched Contacts</h1>
+        {!isLoading && <p className="text-sm text-luma-ink-secondary">{needsReview.length} awaiting review</p>}
       </div>
 
-      <div className="flex items-center gap-1 rounded-md border border-gray-200 bg-white p-1 text-sm w-fit">
+      <div className="flex items-center gap-1 rounded-md border border-luma-border bg-luma-surface p-1 text-sm w-fit">
         {(
           [
             { value: "all", label: "All", count: allNeedsReviewCount },
@@ -302,7 +302,7 @@ export function UnmatchedContactsPage() {
             onClick={() => changeChannel(opt.value)}
             className={
               "flex items-center gap-1.5 rounded px-3 py-1 font-medium " +
-              (channel === opt.value ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-50")
+              (channel === opt.value ? "bg-luma-action text-luma-bg" : "text-luma-ink-secondary hover:bg-luma-bg")
             }
           >
             {opt.label}
@@ -311,7 +311,7 @@ export function UnmatchedContactsPage() {
         ))}
       </div>
 
-      <p className="text-xs text-gray-400">
+      <p className="text-xs text-luma-ink-muted">
         Inbound email and text messages from an address or phone number that doesn't match any customer record, one thread per sender, combined
         here regardless of channel. Replies are auto-sent by default: a fixed acknowledgment goes out on the first message (asking for their
         name, and for texts, their email next), and Claude's own drafted reply goes out on every message after that. Threads only land here for
@@ -321,27 +321,27 @@ export function UnmatchedContactsPage() {
         message is handed straight to Lucy's real pipeline — she takes it from there, same as any other lead.
       </p>
 
-      {isLoading && <p className="text-sm text-gray-400">Loading…</p>}
+      {isLoading && <p className="text-sm text-luma-ink-muted">Loading…</p>}
       {!isLoading && combined.length === 0 && (
         <Card>
-          <p className="text-sm text-gray-500">Nothing here right now.</p>
+          <p className="text-sm text-luma-ink-secondary">Nothing here right now.</p>
         </Card>
       )}
 
       {needsReview.length > 0 && (
-        <div className="flex items-center gap-3 rounded-md border border-gray-200 bg-white px-3 py-2">
-          <label className="flex items-center gap-2 text-xs font-medium text-gray-600">
+        <div className="flex items-center gap-3 rounded-md border border-luma-border bg-luma-surface px-3 py-2">
+          <label className="flex items-center gap-2 text-xs font-medium text-luma-ink-secondary">
             <input
               type="checkbox"
               checked={allSelected}
               onChange={toggleSelectAll}
-              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="h-4 w-4 rounded border-luma-border text-luma-accent focus:ring-luma-accent"
             />
             Select all
           </label>
           {selectedKeys.size > 0 && (
             <>
-              <span className="text-xs text-gray-400">{selectedKeys.size} selected</span>
+              <span className="text-xs text-luma-ink-muted">{selectedKeys.size} selected</span>
               <Button variant="secondary" onClick={handleBulkDismiss} disabled={isBulkDismissing}>
                 {isBulkDismissing ? "Dismissing…" : `Dismiss ${selectedKeys.size}`}
               </Button>
@@ -358,8 +358,8 @@ export function UnmatchedContactsPage() {
       </div>
 
       {resolved.length > 0 && (
-        <details className="text-sm text-gray-500">
-          <summary className="cursor-pointer text-xs font-medium text-gray-400">{resolved.length} replied or dismissed</summary>
+        <details className="text-sm text-luma-ink-secondary">
+          <summary className="cursor-pointer text-xs font-medium text-luma-ink-muted">{resolved.length} replied or dismissed</summary>
           <div className="mt-2 space-y-2">
             {resolved.map((thread) => (
               <ThreadRow key={`${thread.channel}-${thread.id}`} thread={thread} selected={false} onToggleSelect={null} />

@@ -40,17 +40,17 @@ export function AiAssistantWidget() {
   return (
     <>
       {open && (
-        <div className="fixed bottom-20 right-6 z-50 flex h-[520px] w-96 flex-col rounded-lg border border-gray-200 bg-white shadow-xl">
-          <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
-            <p className="text-sm font-semibold text-gray-900">Ask about your data</p>
-            <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600" aria-label="Close">
+        <div className="fixed bottom-20 right-6 z-50 flex h-[520px] w-96 flex-col rounded-xl border border-luma-border bg-luma-surface shadow-xl">
+          <div className="flex items-center justify-between border-b border-luma-border px-4 py-3">
+            <p className="text-sm font-semibold text-luma-ink">Ask about your data</p>
+            <button type="button" onClick={() => setOpen(false)} className="text-luma-ink-muted hover:text-luma-ink" aria-label="Close">
               ✕
             </button>
           </div>
 
           <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
             {messages.length === 0 && (
-              <p className="text-sm text-gray-400">
+              <p className="text-sm text-luma-ink-muted">
                 Ask things like &ldquo;how many leads did we get last week?&rdquo; or &ldquo;what&rsquo;s our marketing CPA this
                 month?&rdquo;
               </p>
@@ -60,20 +60,20 @@ export function AiAssistantWidget() {
                 <span
                   className={
                     m.role === "user"
-                      ? "inline-block whitespace-pre-wrap rounded-lg bg-blue-600 px-3 py-2 text-left text-sm text-white"
-                      : "inline-block whitespace-pre-wrap rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-800"
+                      ? "inline-block whitespace-pre-wrap rounded-lg bg-luma-action px-3 py-2 text-left text-sm text-luma-bg"
+                      : "inline-block whitespace-pre-wrap rounded-lg bg-luma-surface-alt px-3 py-2 text-sm text-luma-ink"
                   }
                 >
                   {m.content}
                 </span>
               </div>
             ))}
-            {ask.isPending && <p className="text-sm text-gray-400">Thinking…</p>}
+            {ask.isPending && <p className="text-sm text-luma-ink-muted">Thinking…</p>}
           </div>
 
-          <form onSubmit={handleSubmit} className="flex items-center gap-2 border-t border-gray-200 p-3">
+          <form onSubmit={handleSubmit} className="flex items-center gap-2 border-t border-luma-border p-3">
             <input
-              className="flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="flex-1 rounded-lg border border-luma-border px-3 py-1.5 text-sm focus:border-luma-accent focus:outline-none focus:ring-1 focus:ring-luma-accent"
               placeholder="Ask a question…"
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -89,7 +89,7 @@ export function AiAssistantWidget() {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-2xl text-white shadow-lg hover:bg-blue-700"
+        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-luma-action text-2xl text-luma-bg shadow-lg hover:bg-luma-action-hover"
         aria-label="Ask about your data"
       >
         💬

@@ -31,13 +31,13 @@ export function UpcomingTriggerBanner({ personId }: { personId: string | null })
   const canCancel = trigger.status === "pending";
 
   return (
-    <p className="mt-1 flex items-center gap-1.5 text-xs text-gray-400">
+    <p className="mt-1 flex items-center gap-1.5 text-xs text-luma-ink-muted">
       <span aria-hidden="true">📅</span>
       Next scheduled: {trigger.label} — {trigger.status === "processing" ? "sending now" : formatDueIn(trigger.dueAt)}
       {canCancel && (
         <button
           type="button"
-          className="text-blue-500 hover:underline disabled:text-gray-300"
+          className="text-luma-accent hover:underline disabled:text-luma-ink-muted"
           disabled={cancelTrigger.isPending}
           onClick={() => cancelTrigger.mutate(trigger.kind)}
         >

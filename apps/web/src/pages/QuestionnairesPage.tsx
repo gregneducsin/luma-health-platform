@@ -13,8 +13,8 @@ const PERIOD_OPTIONS: { value: QuestionnairesQuery["period"]; label: string }[] 
 function SummaryTile({ label, value }: { label: string; value: string | number }) {
   return (
     <Card>
-      <p className="text-xs font-medium uppercase text-gray-400">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-gray-900">{value}</p>
+      <p className="text-xs font-medium uppercase text-luma-ink-muted">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-luma-ink">{value}</p>
     </Card>
   );
 }
@@ -43,7 +43,7 @@ function SortHeader({
       <button
         type="button"
         onClick={() => onSort(column)}
-        className={`flex items-center gap-1 font-medium uppercase ml-auto ${active ? "text-gray-900" : "text-gray-500 hover:text-gray-700"}`}
+        className={`flex items-center gap-1 font-medium uppercase ml-auto ${active ? "text-luma-ink" : "text-luma-ink-secondary hover:text-luma-ink-secondary"}`}
       >
         {label}
         <span className="text-[10px]">{active ? (sortDir === "asc" ? "▲" : "▼") : ""}</span>
@@ -97,17 +97,17 @@ export function QuestionnairesPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-gray-900">Questionnaires</h1>
-        <p className="text-sm text-gray-500">Performance by questionnaire source.</p>
+        <h1 className="font-serif text-2xl font-medium text-luma-ink">Questionnaires</h1>
+        <p className="text-sm text-luma-ink-secondary">Performance by questionnaire source.</p>
       </div>
 
       <Card>
         <div className="mb-3 flex items-center justify-between">
-          <p className="text-sm text-gray-500">
-            Summary for <span className="font-medium text-gray-900">{periodLabel}</span>
+          <p className="text-sm text-luma-ink-secondary">
+            Summary for <span className="font-medium text-luma-ink">{periodLabel}</span>
           </p>
           <select
-            className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+            className="rounded-md border border-luma-border px-2 py-1 text-sm"
             value={String(period)}
             onChange={(e) => setPeriod(e.target.value === "all" ? "all" : Number(e.target.value))}
           >
@@ -129,15 +129,15 @@ export function QuestionnairesPage() {
 
       <div className="flex items-center justify-between">
         <Input className="max-w-xs" placeholder="Search by questionnaire number…" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <p className="text-xs text-gray-400">{rows.length} questionnaires</p>
+        <p className="text-xs text-luma-ink-muted">{rows.length} questionnaires</p>
       </div>
 
       <Card className="overflow-x-auto p-0">
         {isLoading ? (
-          <p className="p-4 text-sm text-gray-500">Loading…</p>
+          <p className="p-4 text-sm text-luma-ink-secondary">Loading…</p>
         ) : (
           <table className="w-full text-sm">
-            <thead className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase text-gray-500">
+            <thead className="border-b border-luma-border bg-luma-bg text-left text-xs font-medium uppercase text-luma-ink-secondary">
               <tr>
                 <th className="px-4 py-2">Questionnaire</th>
                 <SortHeader label="Leads" column="leads" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
@@ -151,20 +151,20 @@ export function QuestionnairesPage() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.questionnaireId} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                  <td className="px-4 py-2 font-medium text-gray-900">{r.questionnaireId}</td>
-                  <td className="px-4 py-2 text-right text-gray-700">{r.leads}</td>
-                  <td className="px-4 py-2 text-right text-gray-700">{r.customers}</td>
-                  <td className="px-4 py-2 text-right text-gray-700">{r.conversionRate}%</td>
-                  <td className="px-4 py-2 text-right text-gray-700">{r.purchases}</td>
-                  <td className="px-4 py-2 text-right text-gray-700">${r.revenue}</td>
-                  <td className="px-4 py-2 text-right text-gray-700">{r.avgValue === null ? "—" : `$${r.avgValue}`}</td>
-                  <td className="px-4 py-2 text-right text-gray-500">{r.lastPurchase ?? "—"}</td>
+                <tr key={r.questionnaireId} className="border-b border-luma-border last:border-0 hover:bg-luma-bg">
+                  <td className="px-4 py-2 font-medium text-luma-ink">{r.questionnaireId}</td>
+                  <td className="px-4 py-2 text-right text-luma-ink-secondary">{r.leads}</td>
+                  <td className="px-4 py-2 text-right text-luma-ink-secondary">{r.customers}</td>
+                  <td className="px-4 py-2 text-right text-luma-ink-secondary">{r.conversionRate}%</td>
+                  <td className="px-4 py-2 text-right text-luma-ink-secondary">{r.purchases}</td>
+                  <td className="px-4 py-2 text-right text-luma-ink-secondary">${r.revenue}</td>
+                  <td className="px-4 py-2 text-right text-luma-ink-secondary">{r.avgValue === null ? "—" : `$${r.avgValue}`}</td>
+                  <td className="px-4 py-2 text-right text-luma-ink-secondary">{r.lastPurchase ?? "—"}</td>
                 </tr>
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-6 text-center text-sm text-gray-400">
+                  <td colSpan={8} className="px-4 py-6 text-center text-sm text-luma-ink-muted">
                     No questionnaire activity found.
                   </td>
                 </tr>

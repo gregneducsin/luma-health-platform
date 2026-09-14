@@ -21,18 +21,18 @@ const PERSONA_LABEL: Record<NeedsAttentionPersona, string> = { lucy: "Lucy", sar
 function ItemMessages({ item }: { item: NeedsAttentionItem }) {
   const { data, isLoading } = useNeedsAttentionMessages(item.channel, item.persona, item.conversationId);
 
-  if (isLoading || !data) return <p className="px-4 pb-3 text-xs text-gray-400">Loading recent messages…</p>;
-  if (data.messages.length === 0) return <p className="px-4 pb-3 text-xs text-gray-400">No messages yet.</p>;
+  if (isLoading || !data) return <p className="px-4 pb-3 text-xs text-luma-ink-muted">Loading recent messages…</p>;
+  if (data.messages.length === 0) return <p className="px-4 pb-3 text-xs text-luma-ink-muted">No messages yet.</p>;
 
   return (
     <div className="space-y-2 px-4 pb-3">
       {data.messages.map((m) => (
         <div key={m.id} className={m.direction === "inbound" ? "text-left" : "text-right"}>
-          <div className={"inline-block max-w-[85%] rounded-lg px-3 py-2 text-left text-xs " + (m.direction === "inbound" ? "bg-gray-100 text-gray-800" : "bg-blue-600 text-white")}>
+          <div className={"inline-block max-w-[85%] rounded-lg px-3 py-2 text-left text-xs " + (m.direction === "inbound" ? "bg-luma-surface-alt text-luma-ink" : "bg-luma-action text-luma-bg")}>
             {m.subject && <p className="mb-0.5 font-semibold">{m.subject}</p>}
             <p className="whitespace-pre-wrap">{m.body}</p>
           </div>
-          <p className="mt-0.5 text-[11px] text-gray-400">{formatDateTime(m.createdAt)}</p>
+          <p className="mt-0.5 text-[11px] text-luma-ink-muted">{formatDateTime(m.createdAt)}</p>
         </div>
       ))}
     </div>
@@ -45,24 +45,24 @@ function NeedsAttentionRow({ item }: { item: NeedsAttentionItem }) {
 
   return (
     <Card className="p-0">
-      <button onClick={() => setExpanded((e) => !e)} className="block w-full px-4 py-3 text-left hover:bg-gray-50">
+      <button onClick={() => setExpanded((e) => !e)} className="block w-full px-4 py-3 text-left hover:bg-luma-bg">
         <div className="flex items-center justify-between">
-          <span className="flex items-center gap-2 text-sm font-medium text-gray-900">
-            <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" aria-label="Needs attention" />
+          <span className="flex items-center gap-2 text-sm font-medium text-luma-ink">
+            <span className="h-2 w-2 shrink-0 rounded-full bg-luma-error" aria-label="Needs attention" />
             {item.firstName} {item.lastName}
             <Badge color={item.channel === "sms" ? "blue" : "purple"}>{CHANNEL_LABEL[item.channel]}</Badge>
             <Badge color="gray">{PERSONA_LABEL[item.persona]}</Badge>
           </span>
-          <span className="text-xs text-gray-400">{relativeTime(item.lastMessageAt)}</span>
+          <span className="text-xs text-luma-ink-muted">{relativeTime(item.lastMessageAt)}</span>
         </div>
-        <p className="mt-1 truncate text-xs text-gray-500">{item.lastMessagePreview ?? "No messages yet"}</p>
-        {item.reason && <p className="mt-0.5 truncate text-xs font-medium text-red-600">{item.reason}</p>}
+        <p className="mt-1 truncate text-xs text-luma-ink-secondary">{item.lastMessagePreview ?? "No messages yet"}</p>
+        {item.reason && <p className="mt-0.5 truncate text-xs font-medium text-luma-error">{item.reason}</p>}
       </button>
       {expanded && (
-        <div className="border-t border-gray-100">
+        <div className="border-t border-luma-border">
           <ItemMessages item={item} />
-          <div className="flex items-center justify-between border-t border-gray-100 px-4 py-2">
-            <a href={`/conversations?personId=${item.personId}`} className="text-xs font-medium text-blue-600 hover:underline">
+          <div className="flex items-center justify-between border-t border-luma-border px-4 py-2">
+            <a href={`/conversations?personId=${item.personId}`} className="text-xs font-medium text-luma-accent hover:underline">
               Open full thread to reply →
             </a>
             <Button
@@ -89,10 +89,10 @@ export function NeedsAttentionPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Needs Attention</h1>
-        {data && <p className="text-sm text-gray-500">{data.items.length} flagged across SMS and email</p>}
+        <h1 className="font-serif text-2xl font-medium text-luma-ink">Needs Attention</h1>
+        {data && <p className="text-sm text-luma-ink-secondary">{data.items.length} flagged across SMS and email</p>}
       </div>
-      <p className="text-xs text-gray-400">
+      <p className="text-xs text-luma-ink-muted">
         Every conversation Lucy or Sarah flagged for staff review — a safety-relevant reply, a rejected guardrail turn, or a failed link/send that
         needs a human follow-up — across both SMS and email, in one place. Click a row to preview recent messages; use the full conversation page to
         actually reply.
@@ -103,22 +103,22 @@ export function NeedsAttentionPage() {
           onClick={() => setOnlyAiDidntUnderstand((v) => !v)}
           className={
             "text-sm font-medium underline decoration-dotted underline-offset-2 " +
-            (onlyAiDidntUnderstand ? "text-red-700" : "text-red-600 hover:text-red-700")
+            (onlyAiDidntUnderstand ? "text-luma-error" : "text-luma-error hover:text-luma-error")
           }
         >
           {onlyAiDidntUnderstand ? `← Showing only what the AI didn't understand (${aiDidntUnderstandCount})` : `${aiDidntUnderstandCount} the AI didn't understand →`}
         </button>
       )}
 
-      {isLoading && <p className="text-sm text-gray-400">Loading…</p>}
+      {isLoading && <p className="text-sm text-luma-ink-muted">Loading…</p>}
       {data && data.items.length === 0 && (
         <Card>
-          <p className="text-sm text-gray-500">Nothing needs attention right now.</p>
+          <p className="text-sm text-luma-ink-secondary">Nothing needs attention right now.</p>
         </Card>
       )}
       {data && data.items.length > 0 && visibleItems.length === 0 && (
         <Card>
-          <p className="text-sm text-gray-500">Nothing in this filter right now.</p>
+          <p className="text-sm text-luma-ink-secondary">Nothing in this filter right now.</p>
         </Card>
       )}
       <div className="space-y-2">

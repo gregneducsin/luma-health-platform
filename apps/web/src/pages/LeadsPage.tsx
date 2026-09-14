@@ -15,8 +15,8 @@ const PERIOD_OPTIONS: { value: CustomersSummaryQuery["period"]; label: string }[
 function SummaryTile({ label, value }: { label: string; value: string | number }) {
   return (
     <Card>
-      <p className="text-xs font-medium uppercase text-gray-400">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-gray-900">{value}</p>
+      <p className="text-xs font-medium uppercase text-luma-ink-muted">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-luma-ink">{value}</p>
     </Card>
   );
 }
@@ -29,11 +29,11 @@ function SummaryBar() {
   return (
     <Card>
       <div className="mb-3 flex items-center justify-between">
-        <p className="text-sm text-gray-500">
-          Summary for <span className="font-medium text-gray-900">{periodLabel}</span>
+        <p className="text-sm text-luma-ink-secondary">
+          Summary for <span className="font-medium text-luma-ink">{periodLabel}</span>
         </p>
         <select
-          className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+          className="rounded-md border border-luma-border px-2 py-1 text-sm"
           value={String(period)}
           onChange={(e) => setPeriod(e.target.value === "all" ? "all" : Number(e.target.value))}
         >
@@ -101,7 +101,7 @@ function SortHeader({
       <button
         type="button"
         onClick={() => onSort(column)}
-        className={`flex items-center gap-1 font-medium uppercase ${active ? "text-gray-900" : "text-gray-500 hover:text-gray-700"}`}
+        className={`flex items-center gap-1 font-medium uppercase ${active ? "text-luma-ink" : "text-luma-ink-secondary hover:text-luma-ink-secondary"}`}
       >
         {label}
         <span className="text-[10px]">{active ? (sortDir === "asc" ? "▲" : "▼") : ""}</span>
@@ -164,7 +164,7 @@ export function LeadsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Leads</h1>
+        <h1 className="font-serif text-2xl font-medium text-luma-ink">Leads</h1>
         {canEdit && <Button onClick={() => setShowCreate((s) => !s)}>{showCreate ? "Cancel" : "New lead"}</Button>}
       </div>
 
@@ -180,7 +180,7 @@ export function LeadsPage() {
           onChange={(e) => updateFilter(setSearch)(e.target.value)}
         />
         <select
-          className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+          className="rounded-md border border-luma-border px-3 py-2 text-sm"
           value={leadType}
           onChange={(e) => updateFilter(setLeadType)(e.target.value)}
         >
@@ -192,7 +192,7 @@ export function LeadsPage() {
           ))}
         </select>
         <select
-          className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+          className="rounded-md border border-luma-border px-3 py-2 text-sm"
           value={purchaseStatus}
           onChange={(e) => updateFilter(setPurchaseStatus)(e.target.value)}
         >
@@ -201,7 +201,7 @@ export function LeadsPage() {
           <option value="not_purchased">Not Purchased</option>
         </select>
         <select
-          className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+          className="rounded-md border border-luma-border px-3 py-2 text-sm"
           value={questionnaireId}
           onChange={(e) => updateFilter(setQuestionnaireId)(e.target.value)}
         >
@@ -213,9 +213,9 @@ export function LeadsPage() {
           ))}
         </select>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-500">Lead received</span>
+          <span className="text-sm text-luma-ink-secondary">Lead received</span>
           <Input type="date" className="w-auto" value={dateFrom} onChange={(e) => updateFilter(setDateFrom)(e.target.value)} />
-          <span className="text-sm text-gray-400">–</span>
+          <span className="text-sm text-luma-ink-muted">–</span>
           <Input type="date" className="w-auto" value={dateTo} onChange={(e) => updateFilter(setDateTo)(e.target.value)} />
           {(dateFrom || dateTo) && (
             <button
@@ -225,7 +225,7 @@ export function LeadsPage() {
                 setDateFrom("");
                 setDateTo("");
               }}
-              className="text-xs text-gray-400 hover:text-gray-600"
+              className="text-xs text-luma-ink-muted hover:text-luma-ink-secondary"
             >
               Clear
             </button>
@@ -235,10 +235,10 @@ export function LeadsPage() {
 
       <Card className="overflow-x-auto p-0">
         {isLoading ? (
-          <p className="p-4 text-sm text-gray-500">Loading…</p>
+          <p className="p-4 text-sm text-luma-ink-secondary">Loading…</p>
         ) : (
           <table className="w-full text-sm">
-            <thead className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase text-gray-500">
+            <thead className="border-b border-luma-border bg-luma-bg text-left text-xs font-medium uppercase text-luma-ink-secondary">
               <tr>
                 <SortHeader label="Lead" column="lastName" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
                 <th className="px-3 py-2">Contact</th>
@@ -254,29 +254,29 @@ export function LeadsPage() {
               {data?.customers.map((c) => {
                 const daysToPurchase = daysBetween(c.leadReceivedDate, c.qualifyingPurchaseDate);
                 return (
-                  <tr key={c.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                  <tr key={c.id} className="border-b border-luma-border last:border-0 hover:bg-luma-bg">
                     <td className="px-3 py-2">
-                      <Link href={`/customers/${c.id}`} className="font-medium text-blue-600 hover:underline">
+                      <Link href={`/customers/${c.id}`} className="font-medium text-luma-accent hover:underline">
                         {c.firstName} {c.lastName}
                       </Link>
-                      <div className="text-xs text-gray-400">{c.personNumber}</div>
+                      <div className="text-xs text-luma-ink-muted">{c.personNumber}</div>
                     </td>
-                    <td className="px-3 py-2 text-gray-600">
+                    <td className="px-3 py-2 text-luma-ink-secondary">
                       <div>{c.email}</div>
-                      {c.phone && <div className="text-xs text-gray-400">{c.phone}</div>}
+                      {c.phone && <div className="text-xs text-luma-ink-muted">{c.phone}</div>}
                     </td>
                     <td className="px-3 py-2">
                       <Badge color={LEAD_TYPE_BADGE_COLOR[c.leadType] ?? "gray"}>{c.leadType}</Badge>
                     </td>
-                    <td className="px-3 py-2 text-gray-600">{c.leadReceivedDate}</td>
+                    <td className="px-3 py-2 text-luma-ink-secondary">{c.leadReceivedDate}</td>
                     <td className="px-3 py-2">
                       {c.questionnaireStatus ? (
                         <div>
-                          {c.questionnaireId && <div className="text-xs text-gray-600">{c.questionnaireId}</div>}
+                          {c.questionnaireId && <div className="text-xs text-luma-ink-secondary">{c.questionnaireId}</div>}
                           <Badge color={QUESTIONNAIRE_BADGE_COLOR[c.questionnaireStatus] ?? "gray"}>{c.questionnaireStatus}</Badge>
                         </div>
                       ) : (
-                        <span className="text-xs text-gray-400">Not started</span>
+                        <span className="text-xs text-luma-ink-muted">Not started</span>
                       )}
                     </td>
                     <td className="px-3 py-2">
@@ -292,20 +292,20 @@ export function LeadsPage() {
                         <Badge color="gray">Not purchased</Badge>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-gray-600">
+                    <td className="px-3 py-2 text-luma-ink-secondary">
                       {c.qualifyingPurchaseDate ?? "—"}
-                      {daysToPurchase !== null && <div className="text-xs text-gray-400">{daysToPurchase} days</div>}
+                      {daysToPurchase !== null && <div className="text-xs text-luma-ink-muted">{daysToPurchase} days</div>}
                     </td>
-                    <td className="px-3 py-2 text-gray-600">
+                    <td className="px-3 py-2 text-luma-ink-secondary">
                       {c.purchaseCount} order{c.purchaseCount === 1 ? "" : "s"}
-                      <div className="text-xs text-gray-400">{formatMoney(c.totalPaid)}</div>
+                      <div className="text-xs text-luma-ink-muted">{formatMoney(c.totalPaid)}</div>
                     </td>
                   </tr>
                 );
               })}
               {data?.customers.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-3 py-8 text-center text-sm text-gray-400">
+                  <td colSpan={8} className="px-3 py-8 text-center text-sm text-luma-ink-muted">
                     No leads found.
                   </td>
                 </tr>
@@ -316,7 +316,7 @@ export function LeadsPage() {
       </Card>
       {data && (
         <div className="flex items-center justify-between">
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-luma-ink-muted">
             {total === 0 ? "0 total" : `${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, total)} of ${total}`}
           </p>
           <div className="flex items-center gap-2">

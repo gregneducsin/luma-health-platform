@@ -12,7 +12,7 @@ export function PayrollEmployeesPage() {
     <div className="space-y-4">
       <PayrollSubNav />
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Employees</h1>
+        <h1 className="font-serif text-2xl font-medium text-luma-ink">Employees</h1>
         <Button onClick={() => setShowCreate((s) => !s)}>{showCreate ? "Cancel" : "New employee"}</Button>
       </div>
 
@@ -20,10 +20,10 @@ export function PayrollEmployeesPage() {
 
       <Card className="overflow-x-auto p-0">
         {isLoading ? (
-          <p className="p-4 text-sm text-gray-500">Loading…</p>
+          <p className="p-4 text-sm text-luma-ink-secondary">Loading…</p>
         ) : (
           <table className="w-full text-sm">
-            <thead className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase text-gray-500">
+            <thead className="border-b border-luma-border bg-luma-bg text-left text-xs font-medium uppercase text-luma-ink-secondary">
               <tr>
                 <th className="px-4 py-2">Name</th>
                 <th className="px-4 py-2">Email</th>
@@ -33,13 +33,13 @@ export function PayrollEmployeesPage() {
             </thead>
             <tbody>
               {data?.employees.map((e) => (
-                <tr key={e.id} className="border-b border-gray-100 last:border-0">
-                  <td className="px-4 py-2 text-gray-800">
+                <tr key={e.id} className="border-b border-luma-border last:border-0">
+                  <td className="px-4 py-2 text-luma-ink">
                     {e.firstName} {e.lastName}
-                    <div className="text-xs text-gray-400">{e.employeeNumber}</div>
+                    <div className="text-xs text-luma-ink-muted">{e.employeeNumber}</div>
                   </td>
-                  <td className="px-4 py-2 text-gray-600">{e.email}</td>
-                  <td className="px-4 py-2 text-right text-gray-600">${e.hourlyRate}/hr</td>
+                  <td className="px-4 py-2 text-luma-ink-secondary">{e.email}</td>
+                  <td className="px-4 py-2 text-right text-luma-ink-secondary">${e.hourlyRate}/hr</td>
                   <td className="px-4 py-2">
                     <Badge color={e.status === "active" ? "green" : "gray"}>{e.status}</Badge>
                   </td>
@@ -47,7 +47,7 @@ export function PayrollEmployeesPage() {
               ))}
               {data?.employees.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-6 text-center text-sm text-gray-400">
+                  <td colSpan={4} className="px-4 py-6 text-center text-sm text-luma-ink-muted">
                     No employees yet.
                   </td>
                 </tr>

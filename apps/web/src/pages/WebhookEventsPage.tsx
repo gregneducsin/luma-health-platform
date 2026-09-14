@@ -36,22 +36,22 @@ function WebhookEventRow({ item }: { item: WebhookEventItem }) {
 
   return (
     <>
-      <tr className="border-b border-gray-100 last:border-0 align-top hover:bg-gray-50">
-        <td className="px-4 py-2 text-gray-600">{formatDate(item.receivedAt)}</td>
-        <td className="px-4 py-2 text-gray-800">{item.source}</td>
+      <tr className="border-b border-luma-border last:border-0 align-top hover:bg-luma-bg">
+        <td className="px-4 py-2 text-luma-ink-secondary">{formatDate(item.receivedAt)}</td>
+        <td className="px-4 py-2 text-luma-ink">{item.source}</td>
         <td className="px-4 py-2">
           <Badge color={statusColor(item.status)}>{item.status}</Badge>
         </td>
         <td className="px-4 py-2">
           {item.personId ? (
-            <Link href={`/customers/${item.personId}`} className="font-medium text-blue-600 hover:underline">
+            <Link href={`/customers/${item.personId}`} className="font-medium text-luma-accent hover:underline">
               {item.customerName || "(no name)"}
             </Link>
           ) : (
-            <span className="text-gray-400">—</span>
+            <span className="text-luma-ink-muted">—</span>
           )}
         </td>
-        <td className="px-4 py-2 max-w-xs text-xs text-red-600">{item.errorMessage ?? ""}</td>
+        <td className="px-4 py-2 max-w-xs text-xs text-luma-error">{item.errorMessage ?? ""}</td>
         <td className="px-4 py-2">
           <Button variant="secondary" onClick={() => setExpanded((v) => !v)}>
             {expanded ? "Hide payload" : "View payload"}
@@ -59,9 +59,9 @@ function WebhookEventRow({ item }: { item: WebhookEventItem }) {
         </td>
       </tr>
       {expanded && (
-        <tr className="border-b border-gray-100 last:border-0 bg-gray-50">
+        <tr className="border-b border-luma-border last:border-0 bg-luma-bg">
           <td colSpan={6} className="px-4 py-3">
-            <pre className="max-h-96 overflow-auto rounded-md bg-gray-900 p-3 text-xs text-gray-100">{JSON.stringify(item.rawPayload, null, 2)}</pre>
+            <pre className="max-h-96 overflow-auto rounded-md bg-luma-action p-3 text-xs text-luma-bg">{JSON.stringify(item.rawPayload, null, 2)}</pre>
           </td>
         </tr>
       )}
@@ -77,23 +77,23 @@ export function WebhookEventsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Webhook Log</h1>
-        {data && <p className="text-sm text-gray-500">{data.items.length} shown</p>}
+        <h1 className="font-serif text-2xl font-medium text-luma-ink">Webhook Log</h1>
+        {data && <p className="text-sm text-luma-ink-secondary">{data.items.length} shown</p>}
       </div>
-      <p className="text-xs text-gray-400">
+      <p className="text-xs text-luma-ink-muted">
         Every inbound webhook delivery — GHL, Bask, iBluSend — including ones that failed validation before we ever processed them. Use "View payload" to see
         exactly what was sent, and the error message to see why it was rejected. Refreshes automatically every 15s.
       </p>
 
       <div className="flex flex-wrap items-center gap-2">
-        <select className="rounded-md border border-gray-300 px-3 py-1.5 text-sm" value={status} onChange={(e) => setStatus(e.target.value as WebhookEventStatus | "all")}>
+        <select className="rounded-md border border-luma-border px-3 py-1.5 text-sm" value={status} onChange={(e) => setStatus(e.target.value as WebhookEventStatus | "all")}>
           {STATUS_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
           ))}
         </select>
-        <select className="rounded-md border border-gray-300 px-3 py-1.5 text-sm" value={source} onChange={(e) => setSource(e.target.value)}>
+        <select className="rounded-md border border-luma-border px-3 py-1.5 text-sm" value={source} onChange={(e) => setSource(e.target.value)}>
           {SOURCE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
@@ -104,10 +104,10 @@ export function WebhookEventsPage() {
 
       <Card className="overflow-x-auto p-0">
         {isLoading ? (
-          <p className="p-4 text-sm text-gray-500">Loading…</p>
+          <p className="p-4 text-sm text-luma-ink-secondary">Loading…</p>
         ) : (
           <table className="w-full text-sm">
-            <thead className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase text-gray-500">
+            <thead className="border-b border-luma-border bg-luma-bg text-left text-xs font-medium uppercase text-luma-ink-secondary">
               <tr>
                 <th className="px-4 py-2">Received</th>
                 <th className="px-4 py-2">Source</th>
@@ -123,7 +123,7 @@ export function WebhookEventsPage() {
               ))}
               {data?.items.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-sm text-gray-400">
+                  <td colSpan={6} className="px-4 py-6 text-center text-sm text-luma-ink-muted">
                     No webhook deliveries yet.
                   </td>
                 </tr>

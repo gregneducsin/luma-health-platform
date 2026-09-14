@@ -19,7 +19,7 @@ export function PayrollWeeksPage() {
     <div className="space-y-4">
       <PayrollSubNav />
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Payroll weeks</h1>
+        <h1 className="font-serif text-2xl font-medium text-luma-ink">Payroll weeks</h1>
         <Button onClick={() => setShowCreate((s) => !s)}>{showCreate ? "Cancel" : "New week"}</Button>
       </div>
 
@@ -27,10 +27,10 @@ export function PayrollWeeksPage() {
 
       <Card className="overflow-x-auto p-0">
         {isLoading ? (
-          <p className="p-4 text-sm text-gray-500">Loading…</p>
+          <p className="p-4 text-sm text-luma-ink-secondary">Loading…</p>
         ) : (
           <table className="w-full text-sm">
-            <thead className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase text-gray-500">
+            <thead className="border-b border-luma-border bg-luma-bg text-left text-xs font-medium uppercase text-luma-ink-secondary">
               <tr>
                 <th className="px-4 py-2">Week</th>
                 <th className="px-4 py-2">Status</th>
@@ -38,9 +38,9 @@ export function PayrollWeeksPage() {
             </thead>
             <tbody>
               {data?.weeks.map((w) => (
-                <tr key={w.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                <tr key={w.id} className="border-b border-luma-border last:border-0 hover:bg-luma-bg">
                   <td className="px-4 py-2">
-                    <Link href={`/payroll/weeks/${w.id}`} className="font-medium text-blue-600 hover:underline">
+                    <Link href={`/payroll/weeks/${w.id}`} className="font-medium text-luma-accent hover:underline">
                       {w.weekStart} – {w.weekEnd}
                     </Link>
                   </td>
@@ -51,7 +51,7 @@ export function PayrollWeeksPage() {
               ))}
               {data?.weeks.length === 0 && (
                 <tr>
-                  <td colSpan={2} className="px-4 py-6 text-center text-sm text-gray-400">
+                  <td colSpan={2} className="px-4 py-6 text-center text-sm text-luma-ink-muted">
                     No payroll weeks yet.
                   </td>
                 </tr>

@@ -25,7 +25,7 @@ export function UsersPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Users</h1>
+        <h1 className="font-serif text-2xl font-medium text-luma-ink">Users</h1>
         <Button onClick={() => setShowInvite((s) => !s)}>{showInvite ? "Cancel" : "Invite user"}</Button>
       </div>
 
@@ -33,10 +33,10 @@ export function UsersPage() {
 
       <Card className="overflow-x-auto p-0">
         {isLoading ? (
-          <p className="p-4 text-sm text-gray-500">Loading…</p>
+          <p className="p-4 text-sm text-luma-ink-secondary">Loading…</p>
         ) : (
           <table className="w-full text-sm">
-            <thead className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase text-gray-500">
+            <thead className="border-b border-luma-border bg-luma-bg text-left text-xs font-medium uppercase text-luma-ink-secondary">
               <tr>
                 <th className="px-4 py-2">Name</th>
                 <th className="px-4 py-2">Email</th>
@@ -51,7 +51,7 @@ export function UsersPage() {
               ))}
               {data?.users.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-400">
+                  <td colSpan={5} className="px-4 py-6 text-center text-sm text-luma-ink-muted">
                     No users yet.
                   </td>
                 </tr>
@@ -72,18 +72,18 @@ function UserRow({ user, isSelf }: { user: AuthUser; isSelf: boolean }) {
   const canResetPassword = user.status === "active" || user.status === "locked";
 
   return (
-    <tr className="border-b border-gray-100 last:border-0">
-      <td className="px-4 py-2 text-gray-800">
+    <tr className="border-b border-luma-border last:border-0">
+      <td className="px-4 py-2 text-luma-ink">
         {user.firstName} {user.lastName}
-        {isSelf && <span className="ml-1 text-xs text-gray-400">(you)</span>}
+        {isSelf && <span className="ml-1 text-xs text-luma-ink-muted">(you)</span>}
       </td>
-      <td className="px-4 py-2 text-gray-600">{user.email}</td>
+      <td className="px-4 py-2 text-luma-ink-secondary">{user.email}</td>
       <td className="px-4 py-2">
         {isSelf ? (
-          <span className="text-gray-600">{ROLE_LABEL[user.role]}</span>
+          <span className="text-luma-ink-secondary">{ROLE_LABEL[user.role]}</span>
         ) : (
           <select
-            className="rounded-md border border-gray-300 px-2 py-1 text-xs"
+            className="rounded-md border border-luma-border px-2 py-1 text-xs"
             value={user.role}
             disabled={updateUser.isPending}
             onChange={(e) => updateUser.mutate({ id: user.id, input: { role: e.target.value as AuthUser["role"] } })}
@@ -164,7 +164,7 @@ function InviteUserForm({ onDone }: { onDone: () => void }) {
         </Field>
         <Field label="Role">
           <select
-            className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full rounded-md border border-luma-border px-3 py-1.5 text-sm focus:border-luma-accent focus:outline-none focus:ring-1 focus:ring-luma-accent"
             value={form.role}
             onChange={(e) => setForm({ ...form, role: e.target.value as AuthUser["role"] })}
           >

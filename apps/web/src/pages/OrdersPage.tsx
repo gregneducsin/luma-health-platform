@@ -33,9 +33,9 @@ const PERIOD_OPTIONS: { value: PurchasesSummaryQuery["period"]; label: string }[
 function SummaryTile({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
   return (
     <Card>
-      <p className="text-xs font-medium uppercase text-gray-400">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-gray-900">{value}</p>
-      {hint && <p className="mt-1 text-xs text-gray-400">{hint}</p>}
+      <p className="text-xs font-medium uppercase text-luma-ink-muted">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-luma-ink">{value}</p>
+      {hint && <p className="mt-1 text-xs text-luma-ink-muted">{hint}</p>}
     </Card>
   );
 }
@@ -48,11 +48,11 @@ function SummaryBar() {
   return (
     <Card>
       <div className="mb-3 flex items-center justify-between">
-        <p className="text-sm text-gray-500">
-          Summary for <span className="font-medium text-gray-900">{periodLabel}</span>
+        <p className="text-sm text-luma-ink-secondary">
+          Summary for <span className="font-medium text-luma-ink">{periodLabel}</span>
         </p>
         <select
-          className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+          className="rounded-md border border-luma-border px-2 py-1 text-sm"
           value={String(period)}
           onChange={(e) => setPeriod(e.target.value === "all" ? "all" : Number(e.target.value))}
         >
@@ -114,7 +114,7 @@ export function OrdersPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-gray-900">Orders</h1>
+      <h1 className="font-serif text-2xl font-medium text-luma-ink">Orders</h1>
 
       <SummaryBar />
 
@@ -126,7 +126,7 @@ export function OrdersPage() {
           onChange={(e) => updateFilter(setSearch)(e.target.value)}
         />
         <select
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+          className="rounded-md border border-luma-border px-3 py-1.5 text-sm"
           value={orderClassification}
           onChange={(e) => updateFilter(setOrderClassification)(e.target.value)}
         >
@@ -136,7 +136,7 @@ export function OrdersPage() {
         </select>
 
         <select
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+          className="rounded-md border border-luma-border px-3 py-1.5 text-sm"
           value={status}
           onChange={(e) => updateFilter(setStatus)(e.target.value as PurchaseWithCustomer["status"] | "")}
         >
@@ -149,7 +149,7 @@ export function OrdersPage() {
 
         <button
           type="button"
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+          className="rounded-md border border-luma-border px-3 py-1.5 text-sm text-luma-ink-secondary hover:bg-luma-bg"
           onClick={() => updateFilter(setSortDir)(sortDir === "asc" ? "desc" : "asc")}
           title="Sort by order date"
         >
@@ -159,10 +159,10 @@ export function OrdersPage() {
 
       <Card className="overflow-x-auto p-0">
         {isLoading ? (
-          <p className="p-4 text-sm text-gray-500">Loading…</p>
+          <p className="p-4 text-sm text-luma-ink-secondary">Loading…</p>
         ) : (
           <table className="w-full text-sm">
-            <thead className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase text-gray-500">
+            <thead className="border-b border-luma-border bg-luma-bg text-left text-xs font-medium uppercase text-luma-ink-secondary">
               <tr>
                 <th className="px-4 py-2">Date</th>
                 <th className="px-4 py-2">Order #</th>
@@ -175,26 +175,26 @@ export function OrdersPage() {
             </thead>
             <tbody>
               {data?.purchases.map((p) => (
-                <tr key={p.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                  <td className="px-4 py-2 text-gray-600">{p.purchaseDate}</td>
-                  <td className="px-4 py-2 text-gray-800">{p.orderNumber}</td>
+                <tr key={p.id} className="border-b border-luma-border last:border-0 hover:bg-luma-bg">
+                  <td className="px-4 py-2 text-luma-ink-secondary">{p.purchaseDate}</td>
+                  <td className="px-4 py-2 text-luma-ink">{p.orderNumber}</td>
                   <td className="px-4 py-2">
-                    <Link href={`/customers/${p.customerId}`} className="font-medium text-blue-600 hover:underline">
+                    <Link href={`/customers/${p.customerId}`} className="font-medium text-luma-accent hover:underline">
                       {p.customerFirstName} {p.customerLastName}
                     </Link>
-                    <div className="text-xs text-gray-400">{p.customerPersonNumber}</div>
+                    <div className="text-xs text-luma-ink-muted">{p.customerPersonNumber}</div>
                   </td>
-                  <td className="px-4 py-2 text-gray-600">{p.productName}</td>
-                  <td className="px-4 py-2 text-right text-gray-800">${p.amountPaid}</td>
+                  <td className="px-4 py-2 text-luma-ink-secondary">{p.productName}</td>
+                  <td className="px-4 py-2 text-right text-luma-ink">${p.amountPaid}</td>
                   <td className="px-4 py-2">
                     <Badge color={STATUS_COLOR[p.status] ?? "gray"}>{p.status}</Badge>
                   </td>
-                  <td className="px-4 py-2 text-gray-600">{p.orderClassification ?? "—"}</td>
+                  <td className="px-4 py-2 text-luma-ink-secondary">{p.orderClassification ?? "—"}</td>
                 </tr>
               ))}
               {data?.purchases.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-sm text-gray-400">
+                  <td colSpan={7} className="px-4 py-6 text-center text-sm text-luma-ink-muted">
                     No orders found.
                   </td>
                 </tr>
@@ -205,7 +205,7 @@ export function OrdersPage() {
       </Card>
       {data && (
         <div className="flex items-center justify-between">
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-luma-ink-muted">
             {total === 0 ? "0 total" : `${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, total)} of ${total}`}
           </p>
           <div className="flex items-center gap-2">

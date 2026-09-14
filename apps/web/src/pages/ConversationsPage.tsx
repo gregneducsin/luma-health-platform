@@ -34,7 +34,7 @@ function SenderBadge({ sentBy, staffEmail, botName }: { sentBy: "ai" | "staff" |
   if (!sentBy) return null;
   const label = sentBy === "ai" ? botName : (staffEmail?.split("@")[0] ?? "Staff");
   return (
-    <span className="text-[11px] font-medium text-gray-400" title={sentBy === "staff" && staffEmail ? staffEmail : undefined}>
+    <span className="text-[11px] font-medium text-luma-ink-muted" title={sentBy === "staff" && staffEmail ? staffEmail : undefined}>
       {label}
     </span>
   );
@@ -43,7 +43,7 @@ function SenderBadge({ sentBy, staffEmail, botName }: { sentBy: "ai" | "staff" |
 /** Which pipeline a message came from — the piece of context the old separate pages got for free from which tab you were on, now that everything's interleaved. */
 function ThreadBadge({ persona, channel }: { persona: ConversationPersona; channel: UnifiedConversationChannel }) {
   return (
-    <span className={"rounded px-1.5 py-0.5 text-[10px] font-medium uppercase " + (persona === "sales" ? "bg-blue-50 text-blue-600" : "bg-purple-50 text-purple-600")}>
+    <span className={"rounded px-1.5 py-0.5 text-[10px] font-medium uppercase " + (persona === "sales" ? "bg-luma-info-soft text-luma-info" : "bg-luma-accent-soft text-luma-accent")}>
       {PERSONA_LABEL[persona]} · {CHANNEL_LABEL[channel]}
     </span>
   );
@@ -91,19 +91,19 @@ function SalesResponseSummary() {
     <Card className="mb-4">
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <p className="text-xs font-medium uppercase text-gray-400">Sales contacted</p>
-          <p className="mt-1 text-2xl font-semibold text-gray-900">{stats?.totalContacted ?? "…"}</p>
+          <p className="text-xs font-medium uppercase text-luma-ink-muted">Sales contacted</p>
+          <p className="mt-1 text-2xl font-semibold text-luma-ink">{stats?.totalContacted ?? "…"}</p>
         </div>
         <div>
-          <p className="text-xs font-medium uppercase text-gray-400">Sales responded</p>
-          <p className="mt-1 text-2xl font-semibold text-gray-900">{stats?.totalResponded ?? "…"}</p>
+          <p className="text-xs font-medium uppercase text-luma-ink-muted">Sales responded</p>
+          <p className="mt-1 text-2xl font-semibold text-luma-ink">{stats?.totalResponded ?? "…"}</p>
         </div>
         <div>
-          <p className="text-xs font-medium uppercase text-gray-400">Response rate</p>
-          <p className="mt-1 text-2xl font-semibold text-gray-900">{ratePct === null ? "…" : `${ratePct}%`}</p>
+          <p className="text-xs font-medium uppercase text-luma-ink-muted">Response rate</p>
+          <p className="mt-1 text-2xl font-semibold text-luma-ink">{ratePct === null ? "…" : `${ratePct}%`}</p>
         </div>
       </div>
-      <p className="mt-2 text-xs text-gray-400">Sales (Lucy) leads only, each contact counted once regardless of channel or how many messages went back and forth.</p>
+      <p className="mt-2 text-xs text-luma-ink-muted">Sales (Lucy) leads only, each contact counted once regardless of channel or how many messages went back and forth.</p>
     </Card>
   );
 }
@@ -128,21 +128,21 @@ function ConversationList({ selectedPersonId, onSelect }: { selectedPersonId: st
 
   return (
     <Card className="flex h-[calc(100vh-268px)] flex-col overflow-hidden p-0">
-      <div className="border-b border-gray-200 px-4 py-3">
+      <div className="border-b border-luma-border px-4 py-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-900">Conversations</h2>
+          <h2 className="text-sm font-semibold text-luma-ink">Conversations</h2>
           {attentionCount > 0 && <Badge color="red">{attentionCount} need attention</Badge>}
         </div>
         <div className="mt-2 flex gap-1">
           <button
             onClick={() => setOnlyNeedsAttention(false)}
-            className={"rounded px-2 py-1 text-xs font-medium " + (!onlyNeedsAttention ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600")}
+            className={"rounded px-2 py-1 text-xs font-medium " + (!onlyNeedsAttention ? "bg-luma-action text-luma-bg" : "bg-luma-surface-alt text-luma-ink-secondary")}
           >
             All
           </button>
           <button
             onClick={() => setOnlyNeedsAttention(true)}
-            className={"rounded px-2 py-1 text-xs font-medium " + (onlyNeedsAttention ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600")}
+            className={"rounded px-2 py-1 text-xs font-medium " + (onlyNeedsAttention ? "bg-luma-action text-luma-bg" : "bg-luma-surface-alt text-luma-ink-secondary")}
           >
             Needs attention
           </button>
@@ -152,7 +152,7 @@ function ConversationList({ selectedPersonId, onSelect }: { selectedPersonId: st
             <button
               key={key}
               onClick={() => setLeadSourceFilter(key)}
-              className={"rounded px-2 py-1 text-xs font-medium " + (leadSourceFilter === key ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600")}
+              className={"rounded px-2 py-1 text-xs font-medium " + (leadSourceFilter === key ? "bg-luma-action text-luma-bg" : "bg-luma-surface-alt text-luma-ink-secondary")}
             >
               {LEAD_SOURCE_FILTER_LABELS[key]}
             </button>
@@ -161,23 +161,23 @@ function ConversationList({ selectedPersonId, onSelect }: { selectedPersonId: st
         <Input className="mt-2" placeholder="Search by name…" value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
       <div className="flex-1 overflow-y-auto">
-        {isLoading && <p className="p-4 text-sm text-gray-400">Loading…</p>}
-        {data && visible.length === 0 && <p className="p-4 text-sm text-gray-400">Nothing matches these filters.</p>}
+        {isLoading && <p className="p-4 text-sm text-luma-ink-muted">Loading…</p>}
+        {data && visible.length === 0 && <p className="p-4 text-sm text-luma-ink-muted">Nothing matches these filters.</p>}
         {visible.map((c) => (
           <button
             key={c.personId}
             onClick={() => onSelect(c.personId, c.firstName, c.lastName)}
-            className={"block w-full border-b border-gray-100 px-4 py-3 text-left hover:bg-gray-50 " + (selectedPersonId === c.personId ? "bg-blue-50" : "")}
+            className={"block w-full border-b border-luma-border px-4 py-3 text-left hover:bg-luma-bg " + (selectedPersonId === c.personId ? "bg-luma-info-soft" : "")}
           >
             <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-sm font-medium text-gray-900">
-                {c.needsAttention && <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" aria-label="Needs attention" />}
+              <span className="flex items-center gap-1.5 text-sm font-medium text-luma-ink">
+                {c.needsAttention && <span className="h-2 w-2 shrink-0 rounded-full bg-luma-error" aria-label="Needs attention" />}
                 {c.firstName} {c.lastName}
               </span>
-              <span className="text-xs text-gray-400">{relativeTime(c.lastMessageAt)}</span>
+              <span className="text-xs text-luma-ink-muted">{relativeTime(c.lastMessageAt)}</span>
             </div>
             <div className="mt-1 flex items-center gap-2">
-              <p className="flex-1 truncate text-xs text-gray-500">{c.lastMessagePreview ?? "No messages yet"}</p>
+              <p className="flex-1 truncate text-xs text-luma-ink-secondary">{c.lastMessagePreview ?? "No messages yet"}</p>
               {isCaterpillarLead(c.leadType) ? (
                 <Badge color="yellow">Caterpillar lead</Badge>
               ) : (
@@ -217,7 +217,7 @@ function StaffReplyBox({ personId, targets, defaultTarget }: { personId: string;
   }
 
   if (targets.length === 0) {
-    return <p className="text-xs text-gray-400">No thread to reply on for this contact yet.</p>;
+    return <p className="text-xs text-luma-ink-muted">No thread to reply on for this contact yet.</p>;
   }
 
   return (
@@ -230,7 +230,7 @@ function StaffReplyBox({ personId, targets, defaultTarget }: { personId: string;
               <button
                 key={`${t.persona}-${t.channel}`}
                 onClick={() => setTarget(t)}
-                className={"rounded px-2 py-1 text-[11px] font-medium " + (active ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600")}
+                className={"rounded px-2 py-1 text-[11px] font-medium " + (active ? "bg-luma-action text-luma-bg" : "bg-luma-surface-alt text-luma-ink-secondary")}
               >
                 Reply as {BOT_NAME[t.persona]} ({CHANNEL_LABEL[t.channel]})
               </button>
@@ -251,16 +251,16 @@ function StaffReplyBox({ personId, targets, defaultTarget }: { personId: string;
         </Button>
       </div>
       {target.channel === "email" && (
-        <p className="mt-1 text-[11px] text-gray-400">Sent as an email, greeted and signed off the same way an AI-drafted reply would be.</p>
+        <p className="mt-1 text-[11px] text-luma-ink-muted">Sent as an email, greeted and signed off the same way an AI-drafted reply would be.</p>
       )}
       {sendReply.isSuccess && sendReply.data.sent === false && (
-        <p className="mt-1 text-xs text-red-600">
+        <p className="mt-1 text-xs text-luma-error">
           {sendReply.data.reason === "no_phone" && "No phone number on file — nothing was sent."}
           {sendReply.data.reason === "send_failed" && "Send failed — the message was logged, but nothing actually went out."}
         </p>
       )}
       {sendReply.isError && (
-        <p className="mt-1 text-xs text-red-600">{sendReply.error instanceof ApiError ? sendReply.error.message : "Something went wrong."}</p>
+        <p className="mt-1 text-xs text-luma-error">{sendReply.error instanceof ApiError ? sendReply.error.message : "Something went wrong."}</p>
       )}
     </div>
   );
@@ -293,8 +293,8 @@ function ConversationDetailPanel({ personId, firstName, lastName }: { personId: 
   }, [personId]);
 
   const header = (
-    <div className="border-b border-gray-200 px-4 py-3">
-      <p className="text-sm font-semibold text-gray-900">
+    <div className="border-b border-luma-border px-4 py-3">
+      <p className="text-sm font-semibold text-luma-ink">
         {firstName} {lastName}
       </p>
     </div>
@@ -305,7 +305,7 @@ function ConversationDetailPanel({ personId, firstName, lastName }: { personId: 
       <Card className="flex h-[calc(100vh-268px)] flex-col overflow-hidden p-0">
         {header}
         <div className="flex flex-1 items-center justify-center">
-          <p className="text-sm text-gray-400">Loading conversation…</p>
+          <p className="text-sm text-luma-ink-muted">Loading conversation…</p>
         </div>
       </Card>
     );
@@ -324,15 +324,15 @@ function ConversationDetailPanel({ personId, firstName, lastName }: { personId: 
 
   return (
     <Card className="flex h-[calc(100vh-268px)] flex-col overflow-hidden p-0">
-      <div className="border-b border-gray-200 px-4 py-3">
+      <div className="border-b border-luma-border px-4 py-3">
         <div className="flex items-center justify-between">
           <div>
-            <p className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+            <p className="flex items-center gap-2 text-sm font-semibold text-luma-ink">
               {customer.firstName} {customer.lastName}
               {customer.hasQualifyingPurchase && <Badge color="green">Purchased</Badge>}
               {needsAttention && <Badge color="red">Needs attention</Badge>}
             </p>
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-luma-ink-muted">
               {[customer.phone, customer.email].filter(Boolean).join(" · ") || "No contact info on file"}
             </p>
             <UpcomingTriggerBanner personId={customer.id} />
@@ -355,9 +355,9 @@ function ConversationDetailPanel({ personId, firstName, lastName }: { personId: 
           </div>
         </div>
         {needsAttention && (
-          <div className="mt-2 rounded-md bg-red-50 px-3 py-2">
+          <div className="mt-2 rounded-md bg-luma-error-soft px-3 py-2">
             <div className="flex items-center justify-between">
-              <p className="text-xs text-red-700">{needsAttentionReason || "This conversation needs staff attention."}</p>
+              <p className="text-xs text-luma-error">{needsAttentionReason || "This conversation needs staff attention."}</p>
               <Button variant="secondary" onClick={() => clearAttention.mutate(personId)} disabled={clearAttention.isPending}>
                 {clearAttention.isPending ? "Marking…" : "Mark reviewed"}
               </Button>
@@ -366,17 +366,17 @@ function ConversationDetailPanel({ personId, firstName, lastName }: { personId: 
         )}
       </div>
 
-      <div className="border-b border-gray-200 px-4 py-2">
+      <div className="border-b border-luma-border px-4 py-2">
         <CollapsibleCustomerNotes customerId={personId} />
       </div>
 
       {channelsPresent.size > 1 && (
-        <div className="flex gap-1 border-b border-gray-200 px-4 py-2">
+        <div className="flex gap-1 border-b border-luma-border px-4 py-2">
           {(Object.keys(CHANNEL_FILTER_LABELS) as ChannelFilter[]).map((key) => (
             <button
               key={key}
               onClick={() => setChannelFilter(key)}
-              className={"rounded px-2 py-1 text-xs font-medium " + (channelFilter === key ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600")}
+              className={"rounded px-2 py-1 text-xs font-medium " + (channelFilter === key ? "bg-luma-action text-luma-bg" : "bg-luma-surface-alt text-luma-ink-secondary")}
             >
               {CHANNEL_FILTER_LABELS[key]}
             </button>
@@ -386,7 +386,7 @@ function ConversationDetailPanel({ personId, firstName, lastName }: { personId: 
 
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
         {visibleMessages.length === 0 && (
-          <p className="text-sm text-gray-400">{messages.length === 0 ? "No messages yet." : "No messages on this channel."}</p>
+          <p className="text-sm text-luma-ink-muted">{messages.length === 0 ? "No messages yet." : "No messages on this channel."}</p>
         )}
         {visibleMessages.map((m: UnifiedMessage, i) => {
           // A bare time ("6:16 PM") with no date reads identically whether
@@ -398,26 +398,26 @@ function ConversationDetailPanel({ personId, firstName, lastName }: { personId: 
             <div key={`${m.persona}-${m.channel}-${m.id}`}>
               {showDateDivider && (
                 <div className="my-3 flex items-center justify-center">
-                  <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-medium text-gray-500">{formatDate(m.createdAt)}</span>
+                  <span className="rounded-full bg-luma-surface-alt px-2.5 py-0.5 text-[11px] font-medium text-luma-ink-secondary">{formatDate(m.createdAt)}</span>
                 </div>
               )}
               <div className={m.direction === "inbound" ? "text-left" : "text-right"}>
                 <div className={"inline-flex max-w-[75%] flex-col gap-1 " + (m.direction === "inbound" ? "items-start" : "items-end")}>
                   <ThreadBadge persona={m.persona} channel={m.channel} />
-                  {m.subject && <span className="px-1 text-[11px] font-medium text-gray-500">{m.subject}</span>}
+                  {m.subject && <span className="px-1 text-[11px] font-medium text-luma-ink-secondary">{m.subject}</span>}
                   <span
                     className={
                       m.direction === "inbound"
-                        ? "inline-block whitespace-pre-wrap rounded-lg bg-gray-100 px-3 py-2 text-left text-sm text-gray-800"
-                        : "inline-block whitespace-pre-wrap rounded-lg px-3 py-2 text-left text-sm text-white " +
-                          (m.persona === "sales" ? "bg-blue-600" : "bg-purple-600")
+                        ? "inline-block whitespace-pre-wrap rounded-lg bg-luma-surface-alt px-3 py-2 text-left text-sm text-luma-ink"
+                        : "inline-block whitespace-pre-wrap rounded-lg px-3 py-2 text-left text-sm text-luma-bg " +
+                          (m.persona === "sales" ? "bg-luma-action" : "bg-luma-accent")
                     }
                   >
                     {m.body}
                   </span>
                   <div className="flex items-center gap-2 px-1">
                     {m.direction === "outbound" && <SenderBadge sentBy={m.sentBy} staffEmail={m.sentByStaffEmail} botName={BOT_NAME[m.persona]} />}
-                    <span className="text-[11px] text-gray-400">{formatTime(m.createdAt)}</span>
+                    <span className="text-[11px] text-luma-ink-muted">{formatTime(m.createdAt)}</span>
                     <SentimentBadge sentiment={m.sentiment} />
                     {m.direction === "outbound" && <DeliveryStatusBadge deliveryStatus={m.deliveryStatus} />}
                   </div>
@@ -428,9 +428,9 @@ function ConversationDetailPanel({ personId, firstName, lastName }: { personId: 
         })}
       </div>
 
-      <div className="border-t border-gray-200 p-3">
+      <div className="border-t border-luma-border p-3">
         <StaffReplyBox personId={personId} targets={availableReplyTargets} defaultTarget={defaultTarget} />
-        <p className="mt-1 text-xs text-gray-400">You can also text or email the customer directly anytime.</p>
+        <p className="mt-1 text-xs text-luma-ink-muted">You can also text or email the customer directly anytime.</p>
       </div>
     </Card>
   );
@@ -477,7 +477,7 @@ export function ConversationsPage() {
             <ConversationDetailPanel personId={selected.personId} firstName={selected.firstName} lastName={selected.lastName} />
           ) : (
             <Card className="flex h-[calc(100vh-268px)] items-center justify-center">
-              <p className="text-sm text-gray-400">Select a conversation to view it.</p>
+              <p className="text-sm text-luma-ink-muted">Select a conversation to view it.</p>
             </Card>
           )}
         </div>

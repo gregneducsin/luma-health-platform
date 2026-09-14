@@ -34,9 +34,9 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-luma-bg px-4">
       <Card className="w-full max-w-sm">
-        <h1 className="mb-4 text-lg font-semibold text-gray-900">Luma Health</h1>
+        <h1 className="mb-4 text-lg font-semibold text-luma-ink">Luma Health</h1>
         <form onSubmit={handleSubmit} className="space-y-3">
           <Field label="Email">
             <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />

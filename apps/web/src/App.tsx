@@ -145,7 +145,7 @@ export default function App() {
       </Route>
 
       <Route>
-        <div className="flex min-h-screen items-center justify-center text-sm text-gray-500">Page not found.</div>
+        <div className="flex min-h-screen items-center justify-center text-sm text-luma-ink-secondary">Page not found.</div>
       </Route>
     </Switch>
   );

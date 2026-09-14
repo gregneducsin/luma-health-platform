@@ -1,1 +1,49 @@
 @import "tailwindcss";
+
+/*
+ * Luma Health brand tokens — a "premium wellness brand + modern operational
+ * software" system (per the 2026-09-14 CRM redesign brief), not pulled from
+ * exact hex values off mylumahealth.com (unreachable from this environment).
+ * Warm ivory/charcoal neutrals throughout, a single restrained clay accent
+ * used sparingly for links/focus/active states, and muted (not saturated)
+ * status colors. Fraunces carries editorial "brand" moments (page titles,
+ * headline numbers); Inter is the operational typeface for everything a
+ * staff member reads and scans all day (tables, forms, nav, labels).
+ */
+@theme {
+  --font-serif: "Fraunces", ui-serif, Georgia, serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  --color-luma-bg: #faf7f1;
+  --color-luma-surface: #ffffff;
+  --color-luma-surface-alt: #f2ede2;
+
+  --color-luma-ink: #211d19;
+  --color-luma-ink-secondary: #6b6156;
+  --color-luma-ink-muted: #a89d8d;
+
+  --color-luma-border: #e6ddcd;
+  --color-luma-border-strong: #d8cbb3;
+
+  --color-luma-action: #211d19;
+  --color-luma-action-hover: #38322a;
+
+  --color-luma-accent: #8a6f4e;
+  --color-luma-accent-hover: #715a3d;
+  --color-luma-accent-soft: #f1e8d8;
+
+  --color-luma-success: #4f7358;
+  --color-luma-success-soft: #e7eee3;
+  --color-luma-warning: #a9782e;
+  --color-luma-warning-soft: #f5ebd8;
+  --color-luma-error: #9c4a3e;
+  --color-luma-error-soft: #f5e4df;
+  --color-luma-info: #4c6b78;
+  --color-luma-info-soft: #e4edef;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--color-luma-ink);
+  background-color: var(--color-luma-bg);
+}

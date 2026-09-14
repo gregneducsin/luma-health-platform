@@ -22,7 +22,7 @@ export function ProtectedRoute({ children, roles }: { children: ReactNode; roles
   }, [isLoading, data?.user, navigate]);
 
   if (isLoading) {
-    return <div className="flex min-h-screen items-center justify-center text-sm text-gray-500">Loading…</div>;
+    return <div className="flex min-h-screen items-center justify-center text-sm text-luma-ink-secondary">Loading…</div>;
   }
   if (!data?.user) {
     return null;
@@ -30,7 +30,7 @@ export function ProtectedRoute({ children, roles }: { children: ReactNode; roles
   if (roles && !roles.includes(data.user.role)) {
     return (
       <Layout>
-        <div className="flex min-h-[50vh] items-center justify-center text-sm text-gray-500">You don't have access to this page.</div>
+        <div className="flex min-h-[50vh] items-center justify-center text-sm text-luma-ink-secondary">You don't have access to this page.</div>
       </Layout>
     );
   }

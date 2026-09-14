@@ -16,12 +16,12 @@ export function AdminLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-1 border-b border-gray-200 pb-2">
+      <div className="flex gap-1 border-b border-luma-border pb-2">
         {visible.map((item) => (
           <Link
             key={item.href}
             href={item.href}
-            className={"rounded px-3 py-1.5 text-sm font-medium " + (location === item.href ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}
+            className={"rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-150 " + (location === item.href ? "bg-luma-action text-luma-bg" : "bg-luma-surface-alt text-luma-ink-secondary hover:bg-luma-border")}
           >
             {item.label}
           </Link>

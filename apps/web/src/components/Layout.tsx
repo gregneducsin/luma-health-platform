@@ -38,38 +38,42 @@ export function Layout({ children }: { children: ReactNode }) {
   const visibleNavItems = NAV_ITEMS.filter((item) => !role || item.roles.includes(role));
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-[1800px] items-center justify-between px-4 py-3">
-          <nav className="flex items-center gap-4">
-            <span className="mr-2 text-sm font-semibold text-gray-900">Luma Health</span>
-            {visibleNavItems.map((item) => (
+    <div className="flex min-h-screen bg-luma-bg">
+      <aside className="flex w-56 shrink-0 flex-col border-r border-luma-border bg-luma-surface-alt">
+        <div className="px-5 py-5">
+          <span className="font-serif text-xl font-medium text-luma-ink">Luma.</span>
+        </div>
+        <nav className="flex flex-1 flex-col gap-0.5 px-3">
+          {visibleNavItems.map((item) => {
+            const active =
+              location === item.href ||
+              (item.href === "/payroll/employees" && location.startsWith("/payroll")) ||
+              (item.href === "/inbox" && location.startsWith("/inbox"));
+            return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={
-                  "flex items-center gap-1.5 " +
-                  ((location === item.href ||
-                    (item.href === "/payroll/employees" && location.startsWith("/payroll")) ||
-                    (item.href === "/inbox" && location.startsWith("/inbox")))
-                    ? "text-sm font-medium text-blue-600"
-                    : "text-sm font-medium text-gray-600 hover:text-gray-900")
+                  "flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150 " +
+                  (active ? "bg-luma-surface text-luma-ink" : "text-luma-ink-secondary hover:bg-luma-surface hover:text-luma-ink")
                 }
               >
-                {item.label}
+                <span>{item.label}</span>
                 {item.href === "/inbox" && needsAttentionCount + unmatchedContactsCount > 0 && <Badge color="red">{needsAttentionCount + unmatchedContactsCount}</Badge>}
               </Link>
-            ))}
-          </nav>
-          <div className="flex items-center gap-3">
-            {data?.user && <span className="text-sm text-gray-500">{data.user.email}</span>}
-            <Button variant="secondary" onClick={() => logout.mutate()} disabled={logout.isPending}>
-              Log out
-            </Button>
-          </div>
-        </div>
-      </header>
-      <main className="mx-auto max-w-[1800px] px-4 py-6">{children}</main>
+            );
+          })}
+        </nav>
+      </aside>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex items-center justify-end gap-3 border-b border-luma-border bg-luma-surface px-6 py-3">
+          {data?.user && <span className="text-sm text-luma-ink-secondary">{data.user.email}</span>}
+          <Button variant="secondary" onClick={() => logout.mutate()} disabled={logout.isPending}>
+            Log out
+          </Button>
+        </header>
+        <main className="flex-1 px-6 py-6">{children}</main>
+      </div>
       {role === "admin" && <AiAssistantWidget />}
     </div>
   );

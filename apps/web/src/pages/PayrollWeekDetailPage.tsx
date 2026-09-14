@@ -17,8 +17,8 @@ export function PayrollWeekDetailPage() {
   const approve = useApprovePayrollWeek(id!);
   const pay = usePayPayrollWeek(id!);
 
-  if (isLoading) return <p className="text-sm text-gray-500">Loading…</p>;
-  if (!data) return <p className="text-sm text-gray-500">Payroll week not found.</p>;
+  if (isLoading) return <p className="text-sm text-luma-ink-secondary">Loading…</p>;
+  if (!data) return <p className="text-sm text-luma-ink-secondary">Payroll week not found.</p>;
 
   const { week, hours, bonuses } = data;
   const isDraft = week.status === "draft";
@@ -27,7 +27,7 @@ export function PayrollWeekDetailPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">
+          <h1 className="font-serif text-2xl font-medium text-luma-ink">
             {week.weekStart} – {week.weekEnd}
           </h1>
           <Badge color={week.status === "paid" ? "green" : week.status === "approved" ? "blue" : "gray"}>{week.status}</Badge>
@@ -54,7 +54,7 @@ export function PayrollWeekDetailPage() {
 
       <Card className="overflow-x-auto p-0">
         <table className="w-full text-sm">
-          <thead className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase text-gray-500">
+          <thead className="border-b border-luma-border bg-luma-bg text-left text-xs font-medium uppercase text-luma-ink-secondary">
             <tr>
               <th className="px-4 py-2">Employee</th>
               <th className="px-4 py-2 text-right">Hours</th>
@@ -64,18 +64,18 @@ export function PayrollWeekDetailPage() {
           </thead>
           <tbody>
             {hours.map((h) => (
-              <tr key={h.id} className="border-b border-gray-100 last:border-0">
-                <td className="px-4 py-2 text-gray-800">
+              <tr key={h.id} className="border-b border-luma-border last:border-0">
+                <td className="px-4 py-2 text-luma-ink">
                   {h.employeeFirstName} {h.employeeLastName}
                 </td>
-                <td className="px-4 py-2 text-right text-gray-600">{h.hoursWorked}</td>
-                <td className="px-4 py-2 text-right text-gray-600">${h.hourlyRateSnapshot}</td>
-                <td className="px-4 py-2 text-right font-medium text-gray-800">${h.hourlyEarnings}</td>
+                <td className="px-4 py-2 text-right text-luma-ink-secondary">{h.hoursWorked}</td>
+                <td className="px-4 py-2 text-right text-luma-ink-secondary">${h.hourlyRateSnapshot}</td>
+                <td className="px-4 py-2 text-right font-medium text-luma-ink">${h.hourlyEarnings}</td>
               </tr>
             ))}
             {hours.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-sm text-gray-400">
+                <td colSpan={4} className="px-4 py-6 text-center text-sm text-luma-ink-muted">
                   No hours entered yet.
                 </td>
               </tr>
@@ -88,7 +88,7 @@ export function PayrollWeekDetailPage() {
 
       <Card className="overflow-x-auto p-0">
         <table className="w-full text-sm">
-          <thead className="border-b border-gray-200 bg-gray-50 text-left text-xs font-medium uppercase text-gray-500">
+          <thead className="border-b border-luma-border bg-luma-bg text-left text-xs font-medium uppercase text-luma-ink-secondary">
             <tr>
               <th className="px-4 py-2">Bonus description</th>
               <th className="px-4 py-2 text-right">Amount</th>
@@ -96,14 +96,14 @@ export function PayrollWeekDetailPage() {
           </thead>
           <tbody>
             {bonuses.map((b) => (
-              <tr key={b.id} className="border-b border-gray-100 last:border-0">
-                <td className="px-4 py-2 text-gray-800">{b.description}</td>
-                <td className="px-4 py-2 text-right text-gray-600">${b.amount}</td>
+              <tr key={b.id} className="border-b border-luma-border last:border-0">
+                <td className="px-4 py-2 text-luma-ink">{b.description}</td>
+                <td className="px-4 py-2 text-right text-luma-ink-secondary">${b.amount}</td>
               </tr>
             ))}
             {bonuses.length === 0 && (
               <tr>
-                <td colSpan={2} className="px-4 py-6 text-center text-sm text-gray-400">
+                <td colSpan={2} className="px-4 py-6 text-center text-sm text-luma-ink-muted">
                   No bonuses yet.
                 </td>
               </tr>
@@ -131,12 +131,12 @@ function HoursEntryForm({ weekId }: { weekId: string }) {
 
   return (
     <Card>
-      <h2 className="mb-2 text-sm font-semibold text-gray-900">Enter hours</h2>
+      <h2 className="mb-2 text-sm font-semibold text-luma-ink">Enter hours</h2>
       <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-3">
         <Field label="Employee">
           <select
             required
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+            className="rounded-md border border-luma-border px-3 py-1.5 text-sm"
             value={employeeId}
             onChange={(e) => setEmployeeId(e.target.value)}
           >
@@ -181,12 +181,12 @@ function BonusForm({ weekId }: { weekId: string }) {
 
   return (
     <Card>
-      <h2 className="mb-2 text-sm font-semibold text-gray-900">Add bonus</h2>
+      <h2 className="mb-2 text-sm font-semibold text-luma-ink">Add bonus</h2>
       <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-3">
         <Field label="Employee">
           <select
             required
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+            className="rounded-md border border-luma-border px-3 py-1.5 text-sm"
             value={employeeId}
             onChange={(e) => setEmployeeId(e.target.value)}
           >
