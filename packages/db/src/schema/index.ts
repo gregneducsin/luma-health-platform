@@ -6,3 +6,4 @@ export * from "./payroll";
 export * from "./messaging";
 export * from "./support";
 export * from "./email";
+export * from "./meta";
