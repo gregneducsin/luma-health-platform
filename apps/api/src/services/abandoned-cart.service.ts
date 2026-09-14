@@ -149,7 +149,7 @@ async function isStillEligible(personId: string, questionnaireEventId: string): 
   return { ok: true };
 }
 
-type SendResult = { ok: true; providerMessageId: string } | { ok: false; reason: string };
+type SendResult = { ok: true; providerMessageId: string | null } | { ok: false; reason: string };
 
 async function sendOpener(personId: string, questionnaireEventId: string): Promise<SendResult> {
   const [customer] = await db
