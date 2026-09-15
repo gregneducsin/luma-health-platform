@@ -364,6 +364,20 @@ function splitName(fullName: string): { firstName: string; lastName: string } {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
+ * DTC ("text us directly") is a Facebook/Meta ad variant that sends people
+ * straight into an SMS reply instead of a lead-gen form — the ad itself
+ * hands them a promo code to mention, e.g. "hey- id like to claim your fall
+ * offer for glp-1 my promo code is 44hh45". That's the one reliable signal
+ * this pipeline has to tell a DTC-ad lead apart from an ordinary unmatched
+ * text — there's no separate webhook or dedicated phone line for it.
+ * Deliberately just a phrase match, not an attempt to extract/validate the
+ * code itself (not needed — only which leadType a resulting lead gets uses
+ * this), and checked against the whole thread transcript so it still
+ * catches a code mentioned on a later turn, not just the first message.
+ */
+const DTC_PROMO_CODE_RE = /\bpromo\s*code\b/i;
+
+/**
  * The only place this pipeline creates data unattended: a brand-new
  * customer row, never a link to an existing one (that stays human-gated via
  * suggestedMatchCustomerId, same as the email version). Only fires once we
@@ -388,6 +402,7 @@ async function maybeCreateLead(
   thread: UnmatchedSmsThread,
   classification: Classification,
   matchedExisting: boolean,
+  isDtcLead: boolean,
 ): Promise<{ customerId: string; justCreated: boolean } | null> {
   if (thread.linkedCustomerId) return { customerId: thread.linkedCustomerId, justCreated: false };
   if (matchedExisting) return null;
@@ -406,11 +421,11 @@ async function maybeCreateLead(
       email,
       phone: thread.fromPhone,
       leadReceivedDate: new Date().toISOString().slice(0, 10),
-      leadType: "SMS Inquiry",
+      leadType: isDtcLead ? "DTC" : "SMS Inquiry",
     })
     .returning({ id: customersTable.id });
 
-  logger.info({ threadId: thread.id, customerId: created.id }, "created a new lead from an unmatched inbound SMS");
+  logger.info({ threadId: thread.id, customerId: created.id, leadType: isDtcLead ? "DTC" : "SMS Inquiry" }, "created a new lead from an unmatched inbound SMS");
   return { customerId: created.id, justCreated: true };
 }
 
@@ -653,7 +668,10 @@ export async function recordAndClassifyUnmatchedSms(fromPhone: string, body: str
     ? null
     : await findAutoConnectCustomerId(nameMatch, emailMatch, Boolean(classification?.confirmsExistingCustomer) && !classification?.needsHumanReview, normalizedPhone);
 
-  const leadResult = classification && !autoConnectCustomerId ? await maybeCreateLead(thread, classification, Boolean(matchCandidate) || emailLookup.ambiguous) : null;
+  const leadResult =
+    classification && !autoConnectCustomerId
+      ? await maybeCreateLead(thread, classification, Boolean(matchCandidate) || emailLookup.ambiguous, DTC_PROMO_CODE_RE.test(transcriptText))
+      : null;
 
   // The email just given THIS turn (not previously on file) turns out to
   // match an existing customer, and the texted name doesn't already agree

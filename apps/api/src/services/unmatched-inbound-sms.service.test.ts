@@ -219,6 +219,34 @@ describe("recordAndClassifyUnmatchedSms", () => {
     expect(thread.repliedAt).not.toBeNull();
   });
 
+  it("tags the lead as DTC instead of SMS Inquiry when the thread mentions a promo code — the Facebook/Meta \"text us directly\" ad variant", async () => {
+    // A collision-free name — see the neighboring "only attaches a
+    // suggested match..." test's comment for why a plain common name
+    // nondeterministically matches other tests' own candidate searches in
+    // this shared-schema suite.
+    const lastName = `DtcLead${crypto.randomUUID().slice(0, 6)}`;
+    const phone = uniquePhone();
+    createMock.mockResolvedValueOnce(
+      toolResponse(
+        classification({
+          intent: "new_lead_interest",
+          summary: "Wants to claim a promo offer.",
+          suggestedReply: "Could you share your name and email so we can get you set up?",
+          senderName: `Jamie ${lastName}`,
+          senderEmail: `jamie.${lastName.toLowerCase()}@example.com`,
+        }),
+      ),
+    );
+    const thread = await recordAndClassifyUnmatchedSms(
+      phone,
+      `hey- id like to claim your fall offer for glp-1 my promo code is 44hh45, I'm Jamie ${lastName}, jamie.${lastName.toLowerCase()}@example.com`,
+    );
+
+    expect(thread.linkedCustomerId).not.toBeNull();
+    const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, thread.linkedCustomerId as string));
+    expect(customer.leadType).toBe("DTC");
+  });
+
   it("still creates the lead once name and email are both already known, even when this turn's own intent classifies as 'other' — a real production case where a bare email address, then a plain 'thanks', both got classified as 'other' and the lead never got created", async () => {
     const phone = uniquePhone();
     sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_ack_janelle" });

@@ -65,6 +65,7 @@ const QUESTIONNAIRE_BADGE_COLOR: Record<string, "gray" | "green" | "yellow" | "b
 const LEAD_TYPE_BADGE_COLOR: Record<string, "gray" | "green" | "yellow" | "blue" | "purple"> = {
   "Meta Form Fill": "blue",
   Questionnaire: "purple",
+  DTC: "yellow",
 };
 
 /** Whole days between two YYYY-MM-DD dates, or null if either is missing. Never negative — a purchase can't precede the lead. */
