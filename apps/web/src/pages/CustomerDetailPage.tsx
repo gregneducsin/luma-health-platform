@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { useParams, Link } from "wouter";
-import { useCustomer, useCreatePurchase, useUpdatePurchase, useCreateIntakeLink } from "../hooks/useCustomers";
+import { useCustomer, useCreatePurchase, useUpdateCustomer, useUpdatePurchase, useCreateIntakeLink } from "../hooks/useCustomers";
 import { Badge, Button, Card, ErrorText, Field, Input } from "../components/ui";
 import { ApiError, useCurrentUser } from "../hooks/useAuth";
 import { formatDate, formatDateTime } from "../lib/formatTime";
 import { CustomerNotesCard } from "../components/CustomerNotesCard";
+import type { Customer } from "@luma/shared";
 
 const STATUS_COLORS: Record<string, "gray" | "green" | "yellow" | "red"> = {
   pending: "yellow",
@@ -23,6 +24,7 @@ export function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data, isLoading } = useCustomer(id);
   const [showAddPurchase, setShowAddPurchase] = useState(false);
+  const [editingContact, setEditingContact] = useState(false);
   const { data: currentUser } = useCurrentUser();
   const canEdit = currentUser?.user?.role === "admin";
 
@@ -47,28 +49,37 @@ export function CustomerDetailPage() {
           >
             View in Conversations →
           </Link>
+          {canEdit && !editingContact && (
+            <Button variant="secondary" onClick={() => setEditingContact(true)}>
+              Edit contact
+            </Button>
+          )}
         </div>
       </div>
 
       <Card>
-        <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-          <div>
-            <dt className="text-xs text-luma-ink-muted">Email</dt>
-            <dd className="text-luma-ink">{customer.email}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-luma-ink-muted">Phone</dt>
-            <dd className="text-luma-ink">{customer.phone ?? "—"}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-luma-ink-muted">Lead type</dt>
-            <dd className="text-luma-ink">{customer.leadType}</dd>
-          </div>
-          <div>
-            <dt className="text-xs text-luma-ink-muted">Lead received</dt>
-            <dd className="text-luma-ink">{customer.leadReceivedDate}</dd>
-          </div>
-        </dl>
+        {editingContact ? (
+          <EditContactForm customer={customer} onDone={() => setEditingContact(false)} />
+        ) : (
+          <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+            <div>
+              <dt className="text-xs text-luma-ink-muted">Email</dt>
+              <dd className="text-luma-ink">{customer.email}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-luma-ink-muted">Phone</dt>
+              <dd className="text-luma-ink">{customer.phone ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-luma-ink-muted">Lead type</dt>
+              <dd className="text-luma-ink">{customer.leadType}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-luma-ink-muted">Lead received</dt>
+              <dd className="text-luma-ink">{customer.leadReceivedDate}</dd>
+            </div>
+          </dl>
+        )}
       </Card>
 
       <CustomerNotesCard customerId={customer.id} />
@@ -215,6 +226,45 @@ function PurchaseRow({
         )}
       </td>
     </tr>
+  );
+}
+
+/** Inline replacement for the read-only contact info card — same fields the create-lead form takes, minus leadType/leadReceivedDate (those are set by whichever webhook/trigger created the lead and stay display-only here to avoid quietly rewriting funnel history). */
+function EditContactForm({ customer, onDone }: { customer: Customer; onDone: () => void }) {
+  const [form, setForm] = useState({ firstName: customer.firstName, lastName: customer.lastName, email: customer.email, phone: customer.phone ?? "" });
+  const updateCustomer = useUpdateCustomer(customer.id);
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    updateCustomer.mutate({ ...form, phone: form.phone.trim() || undefined }, { onSuccess: onDone });
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <Field label="First name">
+        <Input required value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} />
+      </Field>
+      <Field label="Last name">
+        <Input required value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} />
+      </Field>
+      <Field label="Email">
+        <Input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+      </Field>
+      <Field label="Phone">
+        <Input type="tel" placeholder="+15551234567" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+      </Field>
+      <div className="col-span-2 flex items-center gap-2 sm:col-span-4">
+        <Button type="submit" disabled={updateCustomer.isPending}>
+          {updateCustomer.isPending ? "Saving…" : "Save"}
+        </Button>
+        <Button type="button" variant="secondary" onClick={onDone}>
+          Cancel
+        </Button>
+        <ErrorText>
+          {updateCustomer.isError ? (updateCustomer.error instanceof ApiError ? updateCustomer.error.message : "Something went wrong.") : null}
+        </ErrorText>
+      </div>
+    </form>
   );
 }
 
