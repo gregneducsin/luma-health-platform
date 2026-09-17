@@ -1,6 +1,12 @@
-import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { describe, expect, it, beforeAll, afterAll, vi } from "vitest";
 import request from "supertest";
 import { createApp } from "../app.js";
+
+const { prepareCallMock } = vi.hoisted(() => ({ prepareCallMock: vi.fn() }));
+vi.mock("../lib/iblusend-calls.js", async () => {
+  const actual = await vi.importActual<typeof import("../lib/iblusend-calls.js")>("../lib/iblusend-calls.js");
+  return { ...actual, prepareCall: prepareCallMock };
+});
 
 const PASSWORD = "CorrectHorseBattery1";
 
@@ -950,6 +956,89 @@ describe("Intake link", () => {
       .post("/api/app/customers/00000000-0000-0000-0000-000000000000/intake-link")
       .set("x-csrf-token", csrf)
       .send({});
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("Click-to-call", () => {
+  let app: ReturnType<typeof createApp>;
+
+  beforeAll(() => {
+    app = createApp();
+  });
+
+  it("admin can prepare a call for a customer with a phone number on file — this only prepares, it never dials", async () => {
+    prepareCallMock.mockClear();
+    prepareCallMock.mockResolvedValueOnce({ callId: "call-abc", confirmationUrl: "https://iblusend.com/api/v1/call-session?token=xyz" });
+
+    await seedUser("call-admin1@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "call-admin1@example.com");
+
+    const customerRes = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "Call", lastName: "Target", email: "call-target1@example.com", phone: "+15551230001", leadReceivedDate: "2026-08-15" });
+    const customerId = customerRes.body.customer.id;
+
+    const res = await agent.post(`/api/app/customers/${customerId}/call`).set("x-csrf-token", csrf).send({});
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({ callId: "call-abc", confirmationUrl: "https://iblusend.com/api/v1/call-session?token=xyz" });
+    expect(prepareCallMock).toHaveBeenCalledWith("+15551230001", "Call Target", customerId);
+  });
+
+  it("customer_service can also prepare a call — this is a staff action taken on a lead, not account management", async () => {
+    prepareCallMock.mockClear();
+    prepareCallMock.mockResolvedValueOnce({ callId: "call-def", confirmationUrl: "https://iblusend.com/api/v1/call-session?token=abc" });
+
+    await seedUser("call-admin2@example.com", "admin");
+    const admin = await loginAgent(app, "call-admin2@example.com");
+    const customerRes = await admin.agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", admin.csrf)
+      .send({ firstName: "Call", lastName: "Target2", email: "call-target2@example.com", phone: "+15551230002", leadReceivedDate: "2026-08-15" });
+    const customerId = customerRes.body.customer.id;
+
+    await seedUser("call-cs1@example.com", "customer_service");
+    const { agent, csrf } = await loginAgent(app, "call-cs1@example.com");
+    const res = await agent.post(`/api/app/customers/${customerId}/call`).set("x-csrf-token", csrf).send({});
+    expect(res.status).toBe(201);
+  });
+
+  it("rejects the manager role — read-only access to Leads", async () => {
+    await seedUser("call-admin3@example.com", "admin");
+    const admin = await loginAgent(app, "call-admin3@example.com");
+    const customerRes = await admin.agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", admin.csrf)
+      .send({ firstName: "Call", lastName: "Target3", email: "call-target3@example.com", phone: "+15551230003", leadReceivedDate: "2026-08-15" });
+    const customerId = customerRes.body.customer.id;
+
+    await seedUser("call-manager1@example.com", "manager");
+    const { agent, csrf } = await loginAgent(app, "call-manager1@example.com");
+    const res = await agent.post(`/api/app/customers/${customerId}/call`).set("x-csrf-token", csrf).send({});
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 400 and never calls prepareCall when the customer has no phone number on file", async () => {
+    prepareCallMock.mockClear();
+
+    await seedUser("call-admin4@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "call-admin4@example.com");
+    const customerRes = await agent
+      .post("/api/app/customers")
+      .set("x-csrf-token", csrf)
+      .send({ firstName: "No", lastName: "Phone", email: "call-nophone@example.com", leadReceivedDate: "2026-08-15" });
+    const customerId = customerRes.body.customer.id;
+
+    const res = await agent.post(`/api/app/customers/${customerId}/call`).set("x-csrf-token", csrf).send({});
+    expect(res.status).toBe(400);
+    expect(prepareCallMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 for an unknown customer id", async () => {
+    await seedUser("call-admin5@example.com", "admin");
+    const { agent, csrf } = await loginAgent(app, "call-admin5@example.com");
+    const res = await agent.post("/api/app/customers/00000000-0000-0000-0000-000000000000/call").set("x-csrf-token", csrf).send({});
     expect(res.status).toBe(404);
   });
 });

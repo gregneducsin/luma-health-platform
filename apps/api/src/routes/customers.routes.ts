@@ -12,6 +12,7 @@ import * as customersService from "../services/customers.service.js";
 import * as purchasesService from "../services/purchases.service.js";
 import { createIntakeLink } from "../services/intake-links.service.js";
 import { getUpcomingTrigger, cancelUpcomingTrigger } from "../services/scheduled-triggers.service.js";
+import { prepareCall } from "../lib/iblusend-calls.js";
 import { requireRole } from "../middleware/requireAuth.js";
 import { requireCsrf } from "../middleware/csrf.js";
 
@@ -193,6 +194,29 @@ export function createCustomersRouter(): RouterType {
         return;
       }
       res.json({ customer });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Click-to-call — see lib/iblusend-calls.ts's docstring: this only
+  // prepares a call and hands back iBluSend's own confirmation page, it
+  // never dials by itself. Same role set as notes/upcoming-trigger above:
+  // this is a staff action taken on a specific lead's record, not an
+  // account-management action.
+  router.post("/:id/call", requireRole("admin", "customer_service"), requireCsrf, async (req, res, next) => {
+    try {
+      const customer = await customersService.getCustomer(req.params.id as string);
+      if (!customer) {
+        res.status(404).json({ error: "Customer not found." });
+        return;
+      }
+      if (!customer.phone) {
+        res.status(400).json({ error: "This customer has no phone number on file." });
+        return;
+      }
+      const { callId, confirmationUrl } = await prepareCall(customer.phone, `${customer.firstName} ${customer.lastName}`.trim(), customer.id);
+      res.status(201).json({ callId, confirmationUrl });
     } catch (err) {
       next(err);
     }

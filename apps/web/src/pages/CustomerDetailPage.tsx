@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useParams, Link } from "wouter";
-import { useCustomer, useCreatePurchase, useUpdateCustomer, useUpdatePurchase, useCreateIntakeLink } from "../hooks/useCustomers";
+import { useCustomer, useCreatePurchase, useUpdateCustomer, useUpdatePurchase, useCreateIntakeLink, usePrepareCall } from "../hooks/useCustomers";
 import { Badge, Button, Card, ErrorText, Field, Input } from "../components/ui";
 import { ApiError, useCurrentUser } from "../hooks/useAuth";
 import { formatDate, formatDateTime } from "../lib/formatTime";
@@ -27,6 +27,7 @@ export function CustomerDetailPage() {
   const [editingContact, setEditingContact] = useState(false);
   const { data: currentUser } = useCurrentUser();
   const canEdit = currentUser?.user?.role === "admin";
+  const canCall = currentUser?.user?.role === "admin" || currentUser?.user?.role === "customer_service";
 
   if (isLoading) return <p className="text-sm text-luma-ink-secondary">Loading…</p>;
   if (!data) return <p className="text-sm text-luma-ink-secondary">Customer not found.</p>;
@@ -42,13 +43,14 @@ export function CustomerDetailPage() {
           </h1>
           <p className="text-sm text-luma-ink-secondary">{customer.personNumber}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <Link
             href={`/conversations?personId=${customer.id}`}
             className="rounded-md border border-luma-border px-3 py-1.5 text-sm text-luma-ink-secondary hover:bg-luma-bg"
           >
             View in Conversations →
           </Link>
+          {canCall && <CallButton customer={customer} />}
           {canEdit && !editingContact && (
             <Button variant="secondary" onClick={() => setEditingContact(true)}>
               Edit contact
@@ -226,6 +228,34 @@ function PurchaseRow({
         )}
       </td>
     </tr>
+  );
+}
+
+/**
+ * Click-to-call, not an autodialer: this only prepares the call on our
+ * backend and opens iBluSend's own confirmation page in a new tab — a
+ * signed-in human still has to review it and press Start call there before
+ * anything actually rings. Disabled with no phone number on file, since
+ * the backend would just reject the request anyway.
+ */
+function CallButton({ customer }: { customer: Customer }) {
+  const prepareCall = usePrepareCall(customer.id);
+
+  function handleClick() {
+    prepareCall.mutate(undefined, {
+      onSuccess: (data) => {
+        window.open(data.confirmationUrl, "_blank", "noopener,noreferrer");
+      },
+    });
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <Button variant="secondary" onClick={handleClick} disabled={!customer.phone || prepareCall.isPending}>
+        {prepareCall.isPending ? "Preparing call…" : "Call"}
+      </Button>
+      <ErrorText>{prepareCall.isError ? (prepareCall.error instanceof ApiError ? prepareCall.error.message : "Something went wrong.") : null}</ErrorText>
+    </div>
   );
 }
 
