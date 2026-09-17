@@ -21,8 +21,8 @@ export interface PrepareCallResult {
 }
 
 export class CallsNotConfiguredError extends Error {
-  constructor() {
-    super("IBLUSEND_API_KEY is not set.");
+  constructor(missing: string) {
+    super(`${missing} is not set.`);
     this.name = "CallsNotConfiguredError";
   }
 }
@@ -32,11 +32,22 @@ export class CallsNotConfiguredError extends Error {
  * and each click is a genuinely new call attempt, not a retry of a prior
  * one — retries of the *same* attempt (e.g. a network blip on our end)
  * would need to reuse the same key instead, but that's not the case here.
+ *
+ * line_id is required on every request rather than left to iBluSend's
+ * per-key default — confirmed against a real 400 line_required response
+ * that Luma's key has no default line configured. Get the id from
+ * GET /api/v1/calling-lines (calls:write) and set it as
+ * IBLUSEND_CALLING_LINE_ID; this throws our own clear config error instead
+ * of surfacing iBluSend's generic 400 if it's missing.
  */
 export async function prepareCall(to: string, contactName: string, clientReference: string): Promise<PrepareCallResult> {
   const apiKey = process.env.IBLUSEND_API_KEY;
   if (!apiKey) {
-    throw new CallsNotConfiguredError();
+    throw new CallsNotConfiguredError("IBLUSEND_API_KEY");
+  }
+  const lineId = process.env.IBLUSEND_CALLING_LINE_ID;
+  if (!lineId) {
+    throw new CallsNotConfiguredError("IBLUSEND_CALLING_LINE_ID");
   }
 
   let res: Response;
@@ -48,7 +59,7 @@ export async function prepareCall(to: string, contactName: string, clientReferen
         "Content-Type": "application/json",
         "Idempotency-Key": crypto.randomUUID(),
       },
-      body: JSON.stringify({ to, contact_name: contactName, client_reference: clientReference }),
+      body: JSON.stringify({ to, line_id: lineId, contact_name: contactName, client_reference: clientReference }),
     });
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
