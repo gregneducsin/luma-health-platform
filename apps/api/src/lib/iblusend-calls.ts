@@ -33,12 +33,14 @@ export class CallsNotConfiguredError extends Error {
  * one — retries of the *same* attempt (e.g. a network blip on our end)
  * would need to reuse the same key instead, but that's not the case here.
  *
- * line_id is required on every request rather than left to iBluSend's
- * per-key default — confirmed against a real 400 line_required response
- * that Luma's key has no default line configured. Get the id from
- * GET /api/v1/calling-lines (calls:write) and set it as
- * IBLUSEND_CALLING_LINE_ID; this throws our own clear config error instead
- * of surfacing iBluSend's generic 400 if it's missing.
+ * line_id is omitted here on purpose — Luma's IBLUSEND_API_KEY now has a
+ * default calling line bound to it directly in iBluSend's dashboard
+ * (Settings → Developer → API Keys), which is what the docs mean by
+ * "optional when the key has a default line." An earlier version of this
+ * required an IBLUSEND_CALLING_LINE_ID env var and sent it explicitly, from
+ * before that default was configured — no longer needed now that the key
+ * itself carries one. If IBLUSEND_CALLING_LINE_ID is set anyway (e.g. a
+ * second line added later without its own key), it's still honored.
  */
 export async function prepareCall(to: string, contactName: string, clientReference: string): Promise<PrepareCallResult> {
   const apiKey = process.env.IBLUSEND_API_KEY;
@@ -46,9 +48,6 @@ export async function prepareCall(to: string, contactName: string, clientReferen
     throw new CallsNotConfiguredError("IBLUSEND_API_KEY");
   }
   const lineId = process.env.IBLUSEND_CALLING_LINE_ID;
-  if (!lineId) {
-    throw new CallsNotConfiguredError("IBLUSEND_CALLING_LINE_ID");
-  }
 
   let res: Response;
   try {
@@ -59,7 +58,7 @@ export async function prepareCall(to: string, contactName: string, clientReferen
         "Content-Type": "application/json",
         "Idempotency-Key": crypto.randomUUID(),
       },
-      body: JSON.stringify({ to, line_id: lineId, contact_name: contactName, client_reference: clientReference }),
+      body: JSON.stringify({ to, ...(lineId ? { line_id: lineId } : {}), contact_name: contactName, client_reference: clientReference }),
     });
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
