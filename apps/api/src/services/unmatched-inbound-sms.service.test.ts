@@ -39,6 +39,9 @@ vi.mock("./sarah-dispatch.service.js", async () => {
   return { ...actual, processInboundSupportMessage: (...args: unknown[]) => processInboundSupportMessageMock(...args) };
 });
 
+const notifySnapmeDtcLeadRespondedMock = vi.fn();
+vi.mock("../lib/snapme-webhook.js", () => ({ notifySnapmeDtcLeadResponded: (...args: unknown[]) => notifySnapmeDtcLeadRespondedMock(...args) }));
+
 const {
   recordAndClassifyUnmatchedSms,
   listUnmatchedSmsThreads,
@@ -94,6 +97,7 @@ beforeEach(() => {
   processInboundMessageMock.mockClear();
   processInboundSupportMessageMock.mockClear();
   notifySlackMock.mockClear();
+  notifySnapmeDtcLeadRespondedMock.mockClear();
 });
 
 describe("recordAndClassifyUnmatchedSms", () => {
@@ -251,6 +255,13 @@ describe("recordAndClassifyUnmatchedSms", () => {
     expect(thread.linkedCustomerId).not.toBeNull();
     const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, thread.linkedCustomerId as string));
     expect(customer.leadType).toBe("DTC");
+
+    expect(notifySnapmeDtcLeadRespondedMock).toHaveBeenCalledTimes(1);
+    expect(notifySnapmeDtcLeadRespondedMock).toHaveBeenCalledWith(
+      `hey- id like to claim your fall offer for glp-1 my promo code is 44hh45, I'm Jamie ${lastName}, jamie.${lastName.toLowerCase()}@example.com`,
+      phone,
+      `jamie.${lastName.toLowerCase()}@example.com`,
+    );
   });
 
   it("also tags the lead as DTC when the thread says \"priority code\" instead of \"promo code\" — a real production case, ads use different wording for the same thing", async () => {
@@ -275,6 +286,45 @@ describe("recordAndClassifyUnmatchedSms", () => {
     expect(thread.linkedCustomerId).not.toBeNull();
     const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, thread.linkedCustomerId as string));
     expect(customer.leadType).toBe("DTC");
+  });
+
+  it("notifies snapme.link with the original priority-code message, not the later turn's bare email, when name and email arrive across separate turns — real production case (Siba)", async () => {
+    const phone = uniquePhone();
+    const codeMessage = "Hi Luma - I'd like to check if I qualify for GLP-1. My priority code: LUMK6MF";
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_ack" }); // consumed by the first-message auto-ack
+    await recordAndClassifyUnmatchedSms(phone, codeMessage); // turn 1: code only, no name/email yet — classifyAndDraft left unprimed
+
+    createMock.mockResolvedValueOnce(toolResponse(classification({ senderName: "Siba" })));
+    await recordAndClassifyUnmatchedSms(phone, "Hi this is Siba"); // turn 2: name only
+
+    createMock.mockResolvedValueOnce(
+      toolResponse(classification({ intent: "new_lead_interest", senderName: "Siba", senderEmail: "pandeysiba@gmail.com" })),
+    );
+    const thread = await recordAndClassifyUnmatchedSms(phone, "pandeysiba@gmail.com"); // turn 3: email — this is the turn that actually creates the lead
+
+    expect(thread.linkedCustomerId).not.toBeNull();
+    expect(notifySnapmeDtcLeadRespondedMock).toHaveBeenCalledTimes(1);
+    expect(notifySnapmeDtcLeadRespondedMock).toHaveBeenCalledWith(codeMessage, phone, "pandeysiba@gmail.com");
+  });
+
+  it("does not notify snapme.link for a non-DTC lead", async () => {
+    const lastName = `NonDtc${crypto.randomUUID().slice(0, 6)}`;
+    createMock.mockResolvedValueOnce(
+      toolResponse(
+        classification({
+          intent: "new_lead_interest",
+          senderName: `Jamie ${lastName}`,
+          senderEmail: `jamie.${lastName.toLowerCase()}@example.com`,
+        }),
+      ),
+    );
+    const thread = await recordAndClassifyUnmatchedSms(
+      uniquePhone(),
+      `Hi, I'm interested in weight loss options. I'm Jamie ${lastName}, jamie.${lastName.toLowerCase()}@example.com`,
+    );
+
+    expect(thread.linkedCustomerId).not.toBeNull();
+    expect(notifySnapmeDtcLeadRespondedMock).not.toHaveBeenCalled();
   });
 
   it("still creates the lead once name and email are both already known, even when this turn's own intent classifies as 'other' — a real production case where a bare email address, then a plain 'thanks', both got classified as 'other' and the lead never got created", async () => {

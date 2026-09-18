@@ -9,6 +9,7 @@ import { getOrCreateConversation, appendMessage } from "./conversations.service.
 import { getOrCreateSupportConversation, appendSupportMessage } from "./support-conversations.service.js";
 import { logger } from "../lib/logger.js";
 import { notifySlack } from "../lib/slack.js";
+import { notifySnapmeDtcLeadResponded } from "../lib/snapme-webhook.js";
 
 /**
  * SMS twin of unmatched-inbound-email.service.ts. What used to happen to a
@@ -684,10 +685,22 @@ export async function recordAndClassifyUnmatchedSms(fromPhone: string, body: str
     ? null
     : await findAutoConnectCustomerId(nameMatch, emailMatch, Boolean(classification?.confirmsExistingCustomer) && !classification?.needsHumanReview, normalizedPhone);
 
-  const leadResult =
-    classification && !autoConnectCustomerId
-      ? await maybeCreateLead(thread, classification, Boolean(matchCandidate) || emailLookup.ambiguous, DTC_CODE_RE.test(transcriptText))
-      : null;
+  const isDtcLead = DTC_CODE_RE.test(transcriptText);
+  const leadResult = classification && !autoConnectCustomerId ? await maybeCreateLead(thread, classification, Boolean(matchCandidate) || emailLookup.ambiguous, isDtcLead) : null;
+
+  // Fire-and-forget notification to snapme.link's ad-attribution resolver —
+  // see notifySnapmeDtcLeadResponded's docstring. Only on the turn that
+  // actually creates the DTC lead; never for a returning/already-known DTC
+  // customer or a non-DTC lead. Sends the actual message that carried the
+  // promo/priority code, not necessarily this turn's own text — a real
+  // production case (Siba) mentioned the code on her first text but didn't
+  // finish giving her name and email (so the lead wasn't created) until a
+  // later turn, whose own body was just a bare email address with no code
+  // and nothing for their attribution system to resolve against.
+  if (leadResult?.justCreated && isDtcLead) {
+    const dtcMessage = messages.find((m) => m.direction === "inbound" && DTC_CODE_RE.test(m.body))?.body ?? body;
+    void notifySnapmeDtcLeadResponded(dtcMessage, normalizedPhone, knownEmailThisTurn);
+  }
 
   // The email just given THIS turn (not previously on file) turns out to
   // match an existing customer, and the texted name doesn't already agree
