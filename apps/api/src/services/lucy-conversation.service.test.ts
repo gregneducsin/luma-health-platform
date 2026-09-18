@@ -71,6 +71,7 @@ function modelResult(overrides: Partial<ClaudeInteractiveResult> = {}): ClaudeIn
     promoOffered: false,
     inboundSentiment: null,
     learnedFirstName: null,
+    preferredReengagementDate: null,
     ...overrides,
   };
 }

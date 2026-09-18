@@ -26,7 +26,7 @@ import type { ClaudeInteractiveResult, BotPreviewRequestBody } from "./types.js"
 import type { KnowledgeTopic } from "./knowledge-catalog.js";
 import { APPROVED_REVIEW_URLS } from "./knowledge-catalog.js";
 import { ClaudeInteractiveSchema } from "./safety.js";
-import { OBJECTION_LIBRARY, OBJECTION_KEYS, type ObjectionScript, type ObjectionKey } from "./objection-handling.js";
+import { OBJECTION_LIBRARY, OBJECTION_KEYS, REENGAGEMENT_TIME_QUESTIONS, type ObjectionScript, type ObjectionKey } from "./objection-handling.js";
 
 const CALL_TIMEOUT_MS = 10_000;
 const MODEL = "claude-haiku-4-5-20251001";
@@ -132,7 +132,11 @@ function buildObjectionSection(objectionStage: 0 | 1 | 2, lastObjectionKey: Obje
     lines.push(`[objection: ${o.key}]`);
     lines.push(`REBUTTAL — reply: "${o.rebuttal.reply}" nextQuestion: "${resolveNextQuestion(o.rebuttal.nextQuestion)}" (requires knowledgeTopicsUsed to include one of: ${o.rebuttal.requiredTopics.join(", ") || "none required"})`);
     lines.push(`SECOND_ATTEMPT — reply: "${o.secondAttempt.reply}" nextQuestion: "${resolveNextQuestion(o.secondAttempt.nextQuestion)}"`);
-    lines.push(`STAND_DOWN (action=pause, no nextQuestion) — reply: "${o.standDown.reply}"`);
+    lines.push(
+      o.standDown.nextQuestion
+        ? `STAND_DOWN (action=reply) — reply: "${o.standDown.reply}" nextQuestion: "${resolveNextQuestion(o.standDown.nextQuestion)}"`
+        : `STAND_DOWN (action=pause, no nextQuestion) — reply: "${o.standDown.reply}"`,
+    );
     lines.push("");
   }
 
@@ -204,11 +208,14 @@ function buildSystemPrompt(body: BotPreviewRequestBody, knowledgeCatalog: readon
 
   const knowledgeSection = buildKnowledgeSection(knowledgeCatalog);
   const objectionSection = buildObjectionSection(body.objectionStage, body.objectionKey);
+  const todayEastern = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
   return `\
 You are Lucy, an automated assistant for Luma Health's weight-management outreach team.
 You are already in an ongoing SMS text-message conversation with a potential patient.
 DO NOT re-introduce yourself. Never mention your own name again unless directly asked your identity.
+
+Today's date (Eastern time): ${todayEastern}
 
 CURRENT CONVERSATION STATE:
 ${slotSummary}
@@ -272,6 +279,15 @@ not part of your reply — never mention it to the patient. If there is no inbou
 (a proactive opener), leave it null.
 
 ${objectionSection}
+REENGAGEMENT TIMING — only relevant when "Last question asked to patient" above is exactly one of:
+${REENGAGEMENT_TIME_QUESTIONS.map((q) => ` - "${q}"`).join("\n")}
+If it is one of those, and the patient's current message gives any usable indication of timing (a specific date,
+or a relative phrase like "next week", "end of the month", "in a couple weeks", "after the holidays"), compute
+the actual calendar date that maps to using today's date above, and set preferredReengagementDate to that date
+as "YYYY-MM-DD". Round vague-but-directional phrases sensibly (e.g. "end of the month" -> the last day of the
+current month; "next week" -> 7 days out). If their answer has no extractable timeframe at all (e.g. "not sure",
+"I'll reach out", or they just move on to something else), leave preferredReengagementDate null — a default
+follow-up is already scheduled regardless. Never set this field on any other turn.
 IDENTITY — this is covered in the terms and conditions the patient agrees to at signup, not something to get into over text. If a patient asks "are you an AI?", "are you a bot?", "are you a real person?", or similar, do not confirm or deny it either way — never claim to be human, but never volunteer or admit to being automated either. Stay in persona and redirect naturally back to helping them (e.g. ask what they're hoping to get done, or move the conversation toward the questionnaire). Never claim to be a doctor, nurse, or any kind of medical provider.
 If the patient insists on talking to a human, use action "staff_review".
 ${knowledgeSection}
@@ -350,6 +366,10 @@ const BOT_REPLY_TOOL = {
       learnedFirstName: {
         type: ["string", "null"],
         description: "The patient's first name, ONLY on the turn they actually state it themselves — null otherwise, including turns after it's already known.",
+      },
+      preferredReengagementDate: {
+        type: ["string", "null"],
+        description: "See REENGAGEMENT TIMING in the system prompt — 'YYYY-MM-DD' only when the patient just answered a 'when's a better time' question with an extractable timeframe, else null.",
       },
     },
     required: [
@@ -462,6 +482,7 @@ export async function callClaudeInteractive(
     promoOffered: validated.promoOffered ?? false,
     inboundSentiment: validated.inboundSentiment ?? null,
     learnedFirstName: validated.learnedFirstName ?? null,
+    preferredReengagementDate: validated.preferredReengagementDate ?? null,
   };
 }
 

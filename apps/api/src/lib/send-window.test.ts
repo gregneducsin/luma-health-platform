@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampToSendWindow } from "./send-window.js";
+import { clampToSendWindow, nineAmEasternOnDate } from "./send-window.js";
 
 /** Formats a Date as its America/New_York wall-clock time, for readable assertions. */
 function easternClock(date: Date): string {
@@ -68,5 +68,19 @@ describe("clampToSendWindow", () => {
     // 2026-07-15 14:00 ET (EDT, UTC-4) = 18:00 UTC
     const input = new Date("2026-07-15T18:00:00.000Z");
     expect(clampToSendWindow(input)).toEqual(input);
+  });
+});
+
+describe("nineAmEasternOnDate", () => {
+  it("returns 9:00am Eastern for a plain YYYY-MM-DD date in standard time", () => {
+    const result = nineAmEasternOnDate("2026-01-20");
+    expect(easternDate(result)).toBe("01/20/2026");
+    expect(easternClock(result)).toBe("09:00");
+  });
+
+  it("returns 9:00am Eastern for a plain YYYY-MM-DD date during daylight saving", () => {
+    const result = nineAmEasternOnDate("2026-07-20");
+    expect(easternDate(result)).toBe("07/20/2026");
+    expect(easternClock(result)).toBe("09:00");
   });
 });

@@ -22,24 +22,27 @@ function easternHour(date: Date): number {
 }
 
 /**
- * 9:00:00 AM Eastern on the same calendar date (in Eastern) that `date`
- * falls on. Correct across the DST boundary: a fixed UTC offset can't be
- * hardcoded year-round, so this guesses standard time (-05:00) first and
- * corrects for daylight time (-04:00) if that guess doesn't actually render
- * as 9am in America/New_York.
+ * 9:00:00 AM Eastern on the given year/month/day. Correct across the DST
+ * boundary: a fixed UTC offset can't be hardcoded year-round, so this
+ * guesses standard time (-05:00) first and corrects for daylight time
+ * (-04:00) if that guess doesn't actually render as 9am in America/New_York.
  */
-function nineAmEasternOnSameDateAs(date: Date): Date {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone: SEND_WINDOW_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
-  const y = parts.find((p) => p.type === "year")!.value;
-  const m = parts.find((p) => p.type === "month")!.value;
-  const d = parts.find((p) => p.type === "day")!.value;
-
+function nineAmEasternForYMD(y: string, m: string, d: string): Date {
   let guess = new Date(`${y}-${m}-${d}T${String(SEND_WINDOW_START_HOUR).padStart(2, "0")}:00:00-05:00`);
   const renderedHour = easternHour(guess);
   if (renderedHour !== SEND_WINDOW_START_HOUR) {
     guess = new Date(guess.getTime() - (renderedHour - SEND_WINDOW_START_HOUR) * 60 * 60 * 1000);
   }
   return guess;
+}
+
+/** 9:00:00 AM Eastern on the same calendar date (in Eastern) that `date` falls on. */
+function nineAmEasternOnSameDateAs(date: Date): Date {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: SEND_WINDOW_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  const y = parts.find((p) => p.type === "year")!.value;
+  const m = parts.find((p) => p.type === "month")!.value;
+  const d = parts.find((p) => p.type === "day")!.value;
+  return nineAmEasternForYMD(y, m, d);
 }
 
 /**
@@ -53,4 +56,16 @@ export function clampToSendWindow(date: Date): Date {
   const hour = easternHour(date);
   if (hour >= SEND_WINDOW_START_HOUR) return date;
   return nineAmEasternOnSameDateAs(date);
+}
+
+/**
+ * 9:00am Eastern on a plain "YYYY-MM-DD" date — used to turn a customer's
+ * stated preferred follow-up date (e.g. from Lucy's
+ * preferredReengagementDate, see provider.ts) into a concrete send time,
+ * rather than firing at midnight UTC or whatever hour a naive `new
+ * Date(isoDate)` would land on.
+ */
+export function nineAmEasternOnDate(isoDate: string): Date {
+  const [y, m, d] = isoDate.split("-");
+  return nineAmEasternForYMD(y, m, d);
 }

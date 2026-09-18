@@ -4,6 +4,11 @@ import { db, customersTable } from "@luma/db";
 import type { LucyTurnResult } from "./lucy-conversation.service.js";
 import { isCustomerEmailDnd, setCustomerEmailDnd, setCustomerSmsDnd } from "./dnd.service.js";
 
+/** "YYYY-MM-DD" in America/New_York — same format provider.ts computes preferredReengagementDate in. */
+function isoDateInEastern(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+}
+
 beforeAll(() => {
   process.env.EMAIL_PROVIDER = "google_workspace";
   process.env.GOOGLE_WORKSPACE_SMTP_USER = "bot@example.com";
@@ -53,6 +58,7 @@ function okResult(overrides: Partial<Extract<LucyTurnResult, { ok: true }>> = {}
     source: "model",
     preCheckCode: null,
     learnedFirstName: null,
+    preferredReengagementDate: null,
     ...overrides,
   };
 }
@@ -148,6 +154,50 @@ describe("processInboundEmail", () => {
     const [trigger] = await db.select().from(objectionReengagementTriggersTable).where(eq(objectionReengagementTriggersTable.personId, personId));
     expect(trigger).toBeDefined();
     expect(trigger.status).toBe("pending");
+  });
+
+  it("schedules a re-engagement text once no_time reaches stand-down over email too", async () => {
+    runLucyTurnMock.mockClear();
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<reply-notime-standdown@example.com>" });
+    runLucyTurnMock.mockResolvedValueOnce(
+      okResult({ objectionKey: "no_time", objectionStage: 2, reply: "No worries at all.", nextQuestion: "What's a better time for us to follow up with you?" }),
+    );
+
+    const personId = await seedCustomer();
+    await processInboundEmail(personId, "Question about pricing", "I don't have time for this right now", "<inbound-notime-standdown@example.com>");
+
+    const { db, objectionReengagementTriggersTable } = await import("@luma/db");
+    const { eq } = await import("drizzle-orm");
+    const [trigger] = await db.select().from(objectionReengagementTriggersTable).where(eq(objectionReengagementTriggersTable.personId, personId));
+    expect(trigger).toBeDefined();
+    expect(trigger.status).toBe("pending");
+  });
+
+  it("reschedules an existing pending re-engagement trigger to the date the customer answers with, over email too", async () => {
+    runLucyTurnMock.mockClear();
+    sendEmailMock.mockClear();
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<reply-standdown-2@example.com>" });
+    runLucyTurnMock.mockResolvedValueOnce(okResult({ objectionKey: "no_time", objectionStage: 2, nextQuestion: "What's a better time for us to follow up with you?" }));
+    const personId = await seedCustomer();
+    await processInboundEmail(personId, "Question about pricing", "no time right now", "<inbound-standdown-2@example.com>");
+
+    const { db, objectionReengagementTriggersTable } = await import("@luma/db");
+    const { eq } = await import("drizzle-orm");
+    const [beforeAnswer] = await db.select().from(objectionReengagementTriggersTable).where(eq(objectionReengagementTriggersTable.personId, personId));
+    const defaultDueAt = beforeAnswer.dueAt.getTime();
+
+    const answerDate = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000);
+    sendEmailMock.mockResolvedValueOnce({ messageId: "<reply-standdown-3@example.com>" });
+    runLucyTurnMock.mockResolvedValueOnce(
+      okResult({ objectionKey: null, objectionStage: 0, nextQuestion: null, reply: "Sounds good, I'll follow up then.", preferredReengagementDate: isoDateInEastern(answerDate) }),
+    );
+    await processInboundEmail(personId, "Re: Question about pricing", "call me in about 3 weeks", "<inbound-standdown-3@example.com>");
+
+    const [afterAnswer] = await db.select().from(objectionReengagementTriggersTable).where(eq(objectionReengagementTriggersTable.personId, personId));
+    expect(afterAnswer.status).toBe("pending");
+    expect(afterAnswer.dueAt.getTime()).not.toBe(defaultDueAt);
+    expect(Math.abs(afterAnswer.dueAt.getTime() - answerDate.getTime())).toBeLessThan(24 * 60 * 60 * 1000);
   });
 
   it("greets the customer by first name and signs off as Lucy — Claude's draft is only the substantive reply, not a full email", async () => {

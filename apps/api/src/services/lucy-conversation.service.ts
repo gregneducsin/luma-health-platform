@@ -24,6 +24,7 @@ export type LucyTurnResult =
       source: "pre_check_block" | "model";
       preCheckCode: string | null;
       learnedFirstName: string | null;
+      preferredReengagementDate: string | null;
     }
   | { ok: false; code: string };
 
@@ -171,6 +172,7 @@ export async function runLucyTurn(personId: string, body: BotPreviewRequestBody)
         source: "pre_check_block",
         preCheckCode: pre.code,
         learnedFirstName: null,
+        preferredReengagementDate: null,
       };
     }
   }
@@ -262,5 +264,6 @@ export async function runLucyTurn(personId: string, body: BotPreviewRequestBody)
     source: "model",
     preCheckCode: null,
     learnedFirstName: result.learnedFirstName,
+    preferredReengagementDate: result.preferredReengagementDate,
   };
 }
