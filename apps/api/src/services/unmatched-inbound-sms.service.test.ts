@@ -351,6 +351,15 @@ describe("recordAndClassifyUnmatchedSms", () => {
     expect(notifySnapmePriorityCodeReceivedMock).not.toHaveBeenCalled();
   });
 
+  it("extracts the code when it's written with an equals sign instead of \"is\"/\":\" — real manual test phrasing", async () => {
+    const phone = uniquePhone();
+    createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "Code only." })));
+    await recordAndClassifyUnmatchedSms(phone, "priority code=TEST123");
+
+    expect(notifySnapmePriorityCodeReceivedMock).toHaveBeenCalledTimes(1);
+    expect(notifySnapmePriorityCodeReceivedMock).toHaveBeenCalledWith(phone, "TEST123");
+  });
+
   it("still creates the lead once name and email are both already known, even when this turn's own intent classifies as 'other' — a real production case where a bare email address, then a plain 'thanks', both got classified as 'other' and the lead never got created", async () => {
     const phone = uniquePhone();
     sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_ack_janelle" });

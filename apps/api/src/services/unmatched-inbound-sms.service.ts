@@ -383,14 +383,15 @@ const DTC_CODE_RE = /\b(?:promo|priority)\s*code\b/i;
 /**
  * Pulls the actual code value out of a message already known to match
  * DTC_CODE_RE — e.g. "my promo code is 44hh45" -> "44hh45", "My priority
- * code: LUMK6MF." -> "LUMK6MF". Optional "is"/":"/"#" between the phrase and
- * the value covers both real production wordings seen so far; the value
- * itself is captured up to the next whitespace or punctuation. Returns null
- * on the rare message that says "promo code" without actually including a
- * value (e.g. someone asking "what's my promo code?") — callers must treat
- * that as "nothing to send," not fall back to guessing.
+ * code: LUMK6MF." -> "LUMK6MF", "priority code=TEST123" -> "TEST123".
+ * Optional "is"/":"/"#"/"=" between the phrase and the value covers every
+ * wording seen so far (production and manual test texts); the value itself
+ * is captured up to the next whitespace or punctuation. Returns null on the
+ * rare message that says "promo code" without actually including a value
+ * (e.g. someone asking "what's my promo code?") — callers must treat that
+ * as "nothing to send," not fall back to guessing.
  */
-const DTC_CODE_VALUE_RE = /\b(?:promo|priority)\s*code\b\s*(?:is|[:#])?\s*([A-Za-z0-9-]+)/i;
+const DTC_CODE_VALUE_RE = /\b(?:promo|priority)\s*code\b\s*(?:is|[:=#])?\s*([A-Za-z0-9-]+)/i;
 function extractDtcCode(text: string): string | null {
   return DTC_CODE_VALUE_RE.exec(text)?.[1] ?? null;
 }

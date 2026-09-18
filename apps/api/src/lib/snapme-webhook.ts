@@ -1,3 +1,4 @@
+import { logger } from "./logger.js";
 import { notifySmsSlack } from "./slack.js";
 
 /**
@@ -28,7 +29,12 @@ export async function notifySnapmePriorityCodeReceived(phone: string, code: stri
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       void notifySmsSlack(`snapme.link priority-code notify failed — ${phone} — ${res.status} ${text}`);
+      return;
     }
+    // Only success signal this call has — there's no callback from
+    // snapme.link, so this is what you grep Railway's logs for to confirm a
+    // notification actually went out (vs. never having fired at all).
+    logger.info({ phone, code }, "notified snapme.link of a received priority/promo code");
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     void notifySmsSlack(`snapme.link priority-code notify failed — ${phone} — ${reason}`);
