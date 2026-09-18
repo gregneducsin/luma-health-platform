@@ -39,8 +39,8 @@ vi.mock("./sarah-dispatch.service.js", async () => {
   return { ...actual, processInboundSupportMessage: (...args: unknown[]) => processInboundSupportMessageMock(...args) };
 });
 
-const notifySnapmeDtcLeadRespondedMock = vi.fn();
-vi.mock("../lib/snapme-webhook.js", () => ({ notifySnapmeDtcLeadResponded: (...args: unknown[]) => notifySnapmeDtcLeadRespondedMock(...args) }));
+const notifySnapmePriorityCodeReceivedMock = vi.fn();
+vi.mock("../lib/snapme-webhook.js", () => ({ notifySnapmePriorityCodeReceived: (...args: unknown[]) => notifySnapmePriorityCodeReceivedMock(...args) }));
 
 const {
   recordAndClassifyUnmatchedSms,
@@ -97,7 +97,7 @@ beforeEach(() => {
   processInboundMessageMock.mockClear();
   processInboundSupportMessageMock.mockClear();
   notifySlackMock.mockClear();
-  notifySnapmeDtcLeadRespondedMock.mockClear();
+  notifySnapmePriorityCodeReceivedMock.mockClear();
 });
 
 describe("recordAndClassifyUnmatchedSms", () => {
@@ -256,12 +256,11 @@ describe("recordAndClassifyUnmatchedSms", () => {
     const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, thread.linkedCustomerId as string));
     expect(customer.leadType).toBe("DTC");
 
-    expect(notifySnapmeDtcLeadRespondedMock).toHaveBeenCalledTimes(1);
-    expect(notifySnapmeDtcLeadRespondedMock).toHaveBeenCalledWith(
-      `hey- id like to claim your fall offer for glp-1 my promo code is 44hh45, I'm Jamie ${lastName}, jamie.${lastName.toLowerCase()}@example.com`,
-      phone,
-      `jamie.${lastName.toLowerCase()}@example.com`,
-    );
+    // Fires immediately off the inbound text itself — phone + the actual
+    // code value only, not the message or email — see
+    // notifySnapmePriorityCodeReceived's docstring.
+    expect(notifySnapmePriorityCodeReceivedMock).toHaveBeenCalledTimes(1);
+    expect(notifySnapmePriorityCodeReceivedMock).toHaveBeenCalledWith(phone, "44hh45");
   });
 
   it("also tags the lead as DTC when the thread says \"priority code\" instead of \"promo code\" — a real production case, ads use different wording for the same thing", async () => {
@@ -286,16 +285,22 @@ describe("recordAndClassifyUnmatchedSms", () => {
     expect(thread.linkedCustomerId).not.toBeNull();
     const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, thread.linkedCustomerId as string));
     expect(customer.leadType).toBe("DTC");
+
+    expect(notifySnapmePriorityCodeReceivedMock).toHaveBeenCalledTimes(1);
+    expect(notifySnapmePriorityCodeReceivedMock).toHaveBeenCalledWith(phone, "LUMK6MF");
   });
 
-  it("notifies snapme.link with the original priority-code message, not the later turn's bare email, when name and email arrive across separate turns — real production case (Siba)", async () => {
+  it("notifies snapme.link on the turn the code actually arrives, not the later turn that creates the lead, when name and email come in across separate turns — real production case (Siba)", async () => {
     const phone = uniquePhone();
     const codeMessage = "Hi Luma - I'd like to check if I qualify for GLP-1. My priority code: LUMK6MF";
     sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_ack" }); // consumed by the first-message auto-ack
     await recordAndClassifyUnmatchedSms(phone, codeMessage); // turn 1: code only, no name/email yet — classifyAndDraft left unprimed
 
+    expect(notifySnapmePriorityCodeReceivedMock).toHaveBeenCalledTimes(1);
+    expect(notifySnapmePriorityCodeReceivedMock).toHaveBeenCalledWith(phone, "LUMK6MF");
+
     createMock.mockResolvedValueOnce(toolResponse(classification({ senderName: "Siba" })));
-    await recordAndClassifyUnmatchedSms(phone, "Hi this is Siba"); // turn 2: name only
+    await recordAndClassifyUnmatchedSms(phone, "Hi this is Siba"); // turn 2: name only, no code mentioned again
 
     createMock.mockResolvedValueOnce(
       toolResponse(classification({ intent: "new_lead_interest", senderName: "Siba", senderEmail: "pandeysiba@gmail.com" })),
@@ -303,8 +308,9 @@ describe("recordAndClassifyUnmatchedSms", () => {
     const thread = await recordAndClassifyUnmatchedSms(phone, "pandeysiba@gmail.com"); // turn 3: email — this is the turn that actually creates the lead
 
     expect(thread.linkedCustomerId).not.toBeNull();
-    expect(notifySnapmeDtcLeadRespondedMock).toHaveBeenCalledTimes(1);
-    expect(notifySnapmeDtcLeadRespondedMock).toHaveBeenCalledWith(codeMessage, phone, "pandeysiba@gmail.com");
+    // Still just the one notification from turn 1 — lead creation itself no
+    // longer triggers a second, separate call.
+    expect(notifySnapmePriorityCodeReceivedMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not notify snapme.link for a non-DTC lead", async () => {
@@ -324,7 +330,25 @@ describe("recordAndClassifyUnmatchedSms", () => {
     );
 
     expect(thread.linkedCustomerId).not.toBeNull();
-    expect(notifySnapmeDtcLeadRespondedMock).not.toHaveBeenCalled();
+    expect(notifySnapmePriorityCodeReceivedMock).not.toHaveBeenCalled();
+  });
+
+  it("notifies snapme.link even when the code-bearing text never goes on to create a lead", async () => {
+    const phone = uniquePhone();
+    createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "First contact, code only." })));
+    const thread = await recordAndClassifyUnmatchedSms(phone, "hey what's the deal, my promo code is XZ99, is this real?");
+
+    expect(thread.linkedCustomerId).toBeNull(); // no name/email yet — no lead created
+    expect(notifySnapmePriorityCodeReceivedMock).toHaveBeenCalledTimes(1);
+    expect(notifySnapmePriorityCodeReceivedMock).toHaveBeenCalledWith(phone, "XZ99");
+  });
+
+  it("does not notify snapme.link, but logs a warning, when the code phrase appears with no extractable value", async () => {
+    const phone = uniquePhone();
+    createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "Asking about a code, no value given." })));
+    await recordAndClassifyUnmatchedSms(phone, "hi, what's my promo code?");
+
+    expect(notifySnapmePriorityCodeReceivedMock).not.toHaveBeenCalled();
   });
 
   it("still creates the lead once name and email are both already known, even when this turn's own intent classifies as 'other' — a real production case where a bare email address, then a plain 'thanks', both got classified as 'other' and the lead never got created", async () => {
@@ -714,7 +738,8 @@ describe("recordAndClassifyUnmatchedSms", () => {
     const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, thread.linkedCustomerId as string));
     expect(customer.leadType).toBe("DTC");
     expect(processInboundMessageMock).toHaveBeenCalledWith(thread.linkedCustomerId, message, "meta_form");
-    expect(notifySnapmeDtcLeadRespondedMock).toHaveBeenCalledTimes(1);
+    expect(notifySnapmePriorityCodeReceivedMock).toHaveBeenCalledTimes(1);
+    expect(notifySnapmePriorityCodeReceivedMock).toHaveBeenCalledWith(phone, "LUMK6MF");
   });
 
   it("holds the reply for human review when Claude sets needsHumanReview, even for an otherwise-ordinary reply", async () => {

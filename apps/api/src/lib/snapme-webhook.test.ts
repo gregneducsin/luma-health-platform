@@ -3,9 +3,9 @@ import { describe, expect, it, afterEach, vi } from "vitest";
 const notifySmsSlackMock = vi.fn();
 vi.mock("./slack.js", () => ({ notifySmsSlack: (...args: unknown[]) => notifySmsSlackMock(...args) }));
 
-const { notifySnapmeDtcLeadResponded } = await import("./snapme-webhook.js");
+const { notifySnapmePriorityCodeReceived } = await import("./snapme-webhook.js");
 
-describe("notifySnapmeDtcLeadResponded", () => {
+describe("notifySnapmePriorityCodeReceived", () => {
   const original = process.env.SNAPME_DTC_RESOLVER_URL;
 
   afterEach(() => {
@@ -20,44 +20,34 @@ describe("notifySnapmeDtcLeadResponded", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    await notifySnapmeDtcLeadResponded("hey- id like to claim your fall offer, my promo code is 44hh45", "+15551234567", null);
+    await notifySnapmePriorityCodeReceived("+15551234567", "44hh45");
 
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("POSTs message and phone, omitting email when unknown — matches snapme.link's GHL-style resolver body", async () => {
+  it("POSTs just phone and code", async () => {
     process.env.SNAPME_DTC_RESOLVER_URL = "https://www.snapme.link/resolve/99c5ebdb1e86854a";
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal("fetch", fetchMock);
 
-    await notifySnapmeDtcLeadResponded("my priority code is LUMK6MF", "+15551234567", null);
+    await notifySnapmePriorityCodeReceived("+15551234567", "LUMK6MF");
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://www.snapme.link/resolve/99c5ebdb1e86854a",
       expect.objectContaining({ method: "POST", headers: expect.objectContaining({ "Content-Type": "application/json" }) }),
     );
     const sentBody = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(sentBody).toEqual({ message: "my priority code is LUMK6MF", phone: "+15551234567" });
+    expect(sentBody).toEqual({ phone: "+15551234567", code: "LUMK6MF" });
+    expect(sentBody).not.toHaveProperty("message");
     expect(sentBody).not.toHaveProperty("email");
     expect(sentBody).not.toHaveProperty("ghl_contact_id");
-  });
-
-  it("includes email when already known", async () => {
-    process.env.SNAPME_DTC_RESOLVER_URL = "https://www.snapme.link/resolve/99c5ebdb1e86854a";
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
-    vi.stubGlobal("fetch", fetchMock);
-
-    await notifySnapmeDtcLeadResponded("my promo code is 44hh45", "+15551234567", "siba@example.com");
-
-    const sentBody = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(sentBody).toEqual({ message: "my promo code is 44hh45", phone: "+15551234567", email: "siba@example.com" });
   });
 
   it("alerts Slack but never throws on a non-2xx response", async () => {
     process.env.SNAPME_DTC_RESOLVER_URL = "https://www.snapme.link/resolve/99c5ebdb1e86854a";
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 500, text: () => Promise.resolve("server error") }));
 
-    await expect(notifySnapmeDtcLeadResponded("hi", "+15551234567", null)).resolves.toBeUndefined();
+    await expect(notifySnapmePriorityCodeReceived("+15551234567", "44hh45")).resolves.toBeUndefined();
     expect(notifySmsSlackMock).toHaveBeenCalledTimes(1);
   });
 
@@ -65,7 +55,7 @@ describe("notifySnapmeDtcLeadResponded", () => {
     process.env.SNAPME_DTC_RESOLVER_URL = "https://www.snapme.link/resolve/99c5ebdb1e86854a";
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
 
-    await expect(notifySnapmeDtcLeadResponded("hi", "+15551234567", null)).resolves.toBeUndefined();
+    await expect(notifySnapmePriorityCodeReceived("+15551234567", "44hh45")).resolves.toBeUndefined();
     expect(notifySmsSlackMock).toHaveBeenCalledTimes(1);
   });
 });

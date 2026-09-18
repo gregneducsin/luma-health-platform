@@ -9,7 +9,7 @@ import { getOrCreateConversation, appendMessage } from "./conversations.service.
 import { getOrCreateSupportConversation, appendSupportMessage } from "./support-conversations.service.js";
 import { logger } from "../lib/logger.js";
 import { notifySlack } from "../lib/slack.js";
-import { notifySnapmeDtcLeadResponded } from "../lib/snapme-webhook.js";
+import { notifySnapmePriorityCodeReceived } from "../lib/snapme-webhook.js";
 
 /**
  * SMS twin of unmatched-inbound-email.service.ts. What used to happen to a
@@ -381,6 +381,21 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DTC_CODE_RE = /\b(?:promo|priority)\s*code\b/i;
 
 /**
+ * Pulls the actual code value out of a message already known to match
+ * DTC_CODE_RE — e.g. "my promo code is 44hh45" -> "44hh45", "My priority
+ * code: LUMK6MF." -> "LUMK6MF". Optional "is"/":"/"#" between the phrase and
+ * the value covers both real production wordings seen so far; the value
+ * itself is captured up to the next whitespace or punctuation. Returns null
+ * on the rare message that says "promo code" without actually including a
+ * value (e.g. someone asking "what's my promo code?") — callers must treat
+ * that as "nothing to send," not fall back to guessing.
+ */
+const DTC_CODE_VALUE_RE = /\b(?:promo|priority)\s*code\b\s*(?:is|[:#])?\s*([A-Za-z0-9-]+)/i;
+function extractDtcCode(text: string): string | null {
+  return DTC_CODE_VALUE_RE.exec(text)?.[1] ?? null;
+}
+
+/**
  * The only place this pipeline creates data unattended: a brand-new
  * customer row, never a link to an existing one (that stays human-gated via
  * suggestedMatchCustomerId, same as the email version). Only fires once we
@@ -598,6 +613,21 @@ async function sendAutoAcknowledgment(threadId: string, fromPhone: string): Prom
  */
 export async function recordAndClassifyUnmatchedSms(fromPhone: string, body: string): Promise<UnmatchedSmsThread> {
   const normalizedPhone = normalizePhone(fromPhone);
+
+  // Fires immediately, ahead of everything else below — see
+  // notifySnapmePriorityCodeReceived's docstring for why this can't wait
+  // for a lead to exist. Only looks at THIS turn's own text, not the whole
+  // thread, so it fires once, on whichever message actually carries the
+  // code.
+  if (DTC_CODE_RE.test(body)) {
+    const code = extractDtcCode(body);
+    if (code) {
+      void notifySnapmePriorityCodeReceived(normalizedPhone, code);
+    } else {
+      logger.warn({ phone: normalizedPhone, body }, "inbound SMS matched the promo/priority-code phrase but no code value could be extracted");
+    }
+  }
+
   const thread = await getOrCreateThread(normalizedPhone);
 
   const priorMessages = await listUnmatchedSmsMessages(thread.id);
@@ -710,20 +740,6 @@ export async function recordAndClassifyUnmatchedSms(fromPhone: string, body: str
     : await findAutoConnectCustomerId(nameMatch, emailMatch, Boolean(classification?.confirmsExistingCustomer) && !classification?.needsHumanReview, normalizedPhone);
 
   const leadResult = classification && !autoConnectCustomerId ? await maybeCreateLead(thread, classification, Boolean(matchCandidate) || emailLookup.ambiguous, isDtcLead) : null;
-
-  // Fire-and-forget notification to snapme.link's ad-attribution resolver —
-  // see notifySnapmeDtcLeadResponded's docstring. Only on the turn that
-  // actually creates the DTC lead; never for a returning/already-known DTC
-  // customer or a non-DTC lead. Sends the actual message that carried the
-  // promo/priority code, not necessarily this turn's own text — a real
-  // production case (Siba) mentioned the code on her first text but didn't
-  // finish giving her name and email (so the lead wasn't created) until a
-  // later turn, whose own body was just a bare email address with no code
-  // and nothing for their attribution system to resolve against.
-  if (leadResult?.justCreated && isDtcLead) {
-    const dtcMessage = messages.find((m) => m.direction === "inbound" && DTC_CODE_RE.test(m.body))?.body ?? body;
-    void notifySnapmeDtcLeadResponded(dtcMessage, normalizedPhone, knownEmailThisTurn);
-  }
 
   // The email just given THIS turn (not previously on file) turns out to
   // match an existing customer, and the texted name doesn't already agree
