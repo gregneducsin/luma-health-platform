@@ -687,6 +687,36 @@ describe("recordAndClassifyUnmatchedSms", () => {
     expect(sendMessageMock).not.toHaveBeenCalled();
   });
 
+  it("still creates a DTC lead and hands off to Lucy even when Claude mislabels a promo/priority-code sender as existing_customer_support — real production cases (Glenys, Angela), who described prior GLP-1 experience and were misread as already having an account", async () => {
+    const lastName = `DtcRestart${crypto.randomUUID().slice(0, 6)}`;
+    const phone = uniquePhone();
+    createMock.mockResolvedValueOnce(
+      toolResponse(
+        classification({
+          // Claude's own mistaken label — no DB match backs this up
+          // (matchCandidateIndex stays null), only "I've taken a GLP-1
+          // before / want to get back on it" reads as existing-customer
+          // support to it. isDtcLead should override this.
+          intent: "existing_customer_support",
+          summary: "Wants to restart semaglutide, mentions a priority code.",
+          suggestedReply: "A team member will follow up about restarting your prescription.",
+          senderName: `Glenys ${lastName}`,
+          senderEmail: `glenys.${lastName.toLowerCase()}@example.com`,
+          needsHumanReview: false,
+        }),
+      ),
+    );
+    const message = `My priority code: LUMK6MF. I'd like to get back on semaglutide, I've taken a GLP-1 before. I'm Glenys ${lastName}, glenys.${lastName.toLowerCase()}@example.com`;
+    const thread = await recordAndClassifyUnmatchedSms(phone, message);
+
+    expect(thread.linkedCustomerId).not.toBeNull();
+    expect(thread.status).toBe("replied");
+    const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, thread.linkedCustomerId as string));
+    expect(customer.leadType).toBe("DTC");
+    expect(processInboundMessageMock).toHaveBeenCalledWith(thread.linkedCustomerId, message, "meta_form");
+    expect(notifySnapmeDtcLeadRespondedMock).toHaveBeenCalledTimes(1);
+  });
+
   it("holds the reply for human review when Claude sets needsHumanReview, even for an otherwise-ordinary reply", async () => {
     const phone = uniquePhone();
     createMock.mockResolvedValueOnce(toolResponse(classification({ summary: "First contact." })));

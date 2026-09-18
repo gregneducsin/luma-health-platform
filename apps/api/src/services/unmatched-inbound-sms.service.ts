@@ -400,6 +400,19 @@ const DTC_CODE_RE = /\b(?:promo|priority)\s*code\b/i;
  * member noticed and stepped in manually. Once we have a real name and
  * email and nothing below rules it out, that's enough evidence on its own —
  * spam senders don't hand over a working name and email and keep replying.
+ *
+ * classification.intent === "existing_customer_support" normally blocks lead
+ * creation too — but not when isDtcLead is true. Two real production leads
+ * (Glenys, Angela) mentioned a priority/promo code while also describing
+ * prior GLP-1 experience or wanting to "get back on" a medication, and
+ * Claude read that as an existing-customer support case even though no name
+ * or email in our database matched either of them (matchedExisting was
+ * false). A sender quoting a Facebook/Meta ad's promo or priority code is,
+ * by definition, responding to cold outreach — they cannot already have a
+ * Luma account, whatever their classified intent says. isDtcLead is a
+ * deterministic phrase match (see DTC_CODE_RE), not Claude's own judgment,
+ * so it overrides that one specific self-reported label rather than
+ * trusting it the way matchedExisting's real DB evidence is trusted above.
  */
 async function maybeCreateLead(
   thread: UnmatchedSmsThread,
@@ -409,7 +422,8 @@ async function maybeCreateLead(
 ): Promise<{ customerId: string; justCreated: boolean } | null> {
   if (thread.linkedCustomerId) return { customerId: thread.linkedCustomerId, justCreated: false };
   if (matchedExisting) return null;
-  if (classification.intent === "spam_or_irrelevant" || classification.intent === "existing_customer_support") return null;
+  if (classification.intent === "spam_or_irrelevant") return null;
+  if (classification.intent === "existing_customer_support" && !isDtcLead) return null;
 
   const name = thread.fromName ?? classification.senderName;
   const email = thread.collectedEmail ?? classification.senderEmail;
@@ -597,6 +611,12 @@ export async function recordAndClassifyUnmatchedSms(fromPhone: string, body: str
   const messages = await listUnmatchedSmsMessages(thread.id);
   const transcriptText = messages.map((m) => m.body).join(" ");
 
+  // Computed early (not just where it's used for lead-tagging below) since
+  // needsHumanReview also needs it — see maybeCreateLead's docstring for why
+  // a DTC promo/priority-code sender overrides a mistaken
+  // existing_customer_support classification.
+  const isDtcLead = DTC_CODE_RE.test(transcriptText);
+
   const candidates = await findMatchCandidates(thread.fromName, transcriptText).catch((err) => {
     logger.warn({ reason: err instanceof Error ? err.message : String(err) }, "unmatched-sms candidate lookup failed");
     return [];
@@ -673,7 +693,11 @@ export async function recordAndClassifyUnmatchedSms(fromPhone: string, body: str
   }
 
   const needsHumanReview = Boolean(
-    classification?.needsHumanReview || matchCandidate || emailLookup.ambiguous || classification?.intent === "existing_customer_support" || offScopeReply,
+    classification?.needsHumanReview ||
+      matchCandidate ||
+      emailLookup.ambiguous ||
+      (classification?.intent === "existing_customer_support" && !isDtcLead) ||
+      offScopeReply,
   );
 
   // A message Claude flags for an unrelated reason (needsHumanReview true)
@@ -685,7 +709,6 @@ export async function recordAndClassifyUnmatchedSms(fromPhone: string, body: str
     ? null
     : await findAutoConnectCustomerId(nameMatch, emailMatch, Boolean(classification?.confirmsExistingCustomer) && !classification?.needsHumanReview, normalizedPhone);
 
-  const isDtcLead = DTC_CODE_RE.test(transcriptText);
   const leadResult = classification && !autoConnectCustomerId ? await maybeCreateLead(thread, classification, Boolean(matchCandidate) || emailLookup.ambiguous, isDtcLead) : null;
 
   // Fire-and-forget notification to snapme.link's ad-attribution resolver —
