@@ -366,16 +366,18 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /**
  * DTC ("text us directly") is a Facebook/Meta ad variant that sends people
  * straight into an SMS reply instead of a lead-gen form — the ad itself
- * hands them a promo code to mention, e.g. "hey- id like to claim your fall
- * offer for glp-1 my promo code is 44hh45". That's the one reliable signal
- * this pipeline has to tell a DTC-ad lead apart from an ordinary unmatched
- * text — there's no separate webhook or dedicated phone line for it.
- * Deliberately just a phrase match, not an attempt to extract/validate the
- * code itself (not needed — only which leadType a resulting lead gets uses
- * this), and checked against the whole thread transcript so it still
- * catches a code mentioned on a later turn, not just the first message.
+ * hands them a code to mention, e.g. "hey- id like to claim your fall offer
+ * for glp-1 my promo code is 44hh45", or "My priority code: LUMK6MF". Ads
+ * use different wording for the same thing ("promo code", "priority code"),
+ * so this matches either — that's the one reliable signal this pipeline has
+ * to tell a DTC-ad lead apart from an ordinary unmatched text, since there's
+ * no separate webhook or dedicated phone line for it. Deliberately just a
+ * phrase match, not an attempt to extract/validate the code itself (not
+ * needed — only which leadType a resulting lead gets uses this), and
+ * checked against the whole thread transcript so it still catches a code
+ * mentioned on a later turn, not just the first message.
  */
-const DTC_PROMO_CODE_RE = /\bpromo\s*code\b/i;
+const DTC_CODE_RE = /\b(?:promo|priority)\s*code\b/i;
 
 /**
  * The only place this pipeline creates data unattended: a brand-new
@@ -670,7 +672,7 @@ export async function recordAndClassifyUnmatchedSms(fromPhone: string, body: str
 
   const leadResult =
     classification && !autoConnectCustomerId
-      ? await maybeCreateLead(thread, classification, Boolean(matchCandidate) || emailLookup.ambiguous, DTC_PROMO_CODE_RE.test(transcriptText))
+      ? await maybeCreateLead(thread, classification, Boolean(matchCandidate) || emailLookup.ambiguous, DTC_CODE_RE.test(transcriptText))
       : null;
 
   // The email just given THIS turn (not previously on file) turns out to

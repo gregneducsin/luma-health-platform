@@ -247,6 +247,30 @@ describe("recordAndClassifyUnmatchedSms", () => {
     expect(customer.leadType).toBe("DTC");
   });
 
+  it("also tags the lead as DTC when the thread says \"priority code\" instead of \"promo code\" — a real production case, ads use different wording for the same thing", async () => {
+    const lastName = `DtcLead${crypto.randomUUID().slice(0, 6)}`;
+    const phone = uniquePhone();
+    createMock.mockResolvedValueOnce(
+      toolResponse(
+        classification({
+          intent: "new_lead_interest",
+          summary: "Wants to claim a priority offer.",
+          suggestedReply: "Could you share your name and email so we can get you set up?",
+          senderName: `Siba ${lastName}`,
+          senderEmail: `siba.${lastName.toLowerCase()}@example.com`,
+        }),
+      ),
+    );
+    const thread = await recordAndClassifyUnmatchedSms(
+      phone,
+      `Hi Luma - I'd like to check if I qualify for GLP-1. My priority code: LUMK6MF. I'm Siba ${lastName}, siba.${lastName.toLowerCase()}@example.com`,
+    );
+
+    expect(thread.linkedCustomerId).not.toBeNull();
+    const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, thread.linkedCustomerId as string));
+    expect(customer.leadType).toBe("DTC");
+  });
+
   it("still creates the lead once name and email are both already known, even when this turn's own intent classifies as 'other' — a real production case where a bare email address, then a plain 'thanks', both got classified as 'other' and the lead never got created", async () => {
     const phone = uniquePhone();
     sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_ack_janelle" });
