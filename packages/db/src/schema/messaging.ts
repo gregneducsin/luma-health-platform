@@ -64,7 +64,7 @@ export const followUpJobsTable = pgTable(
     intakeLinkTokenId: uuid("intake_link_token_id")
       .notNull()
       .references(() => intakeLinkTokensTable.id, { onDelete: "cascade" }),
-    messageStep: text("message_step", { enum: ["provider_check_in", "intake_questions_check_in"] })
+    messageStep: text("message_step", { enum: ["provider_check_in", "intake_questions_check_in", "abandoned_cart_offer"] })
       .notNull()
       .default("provider_check_in"),
     dueAt: timestamp("due_at", { withTimezone: true }).notNull(),

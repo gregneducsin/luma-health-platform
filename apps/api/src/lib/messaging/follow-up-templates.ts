@@ -10,7 +10,11 @@
  * incomplete). If that send succeeds, intake_questions_check_in is
  * scheduled 1 hour after — relative to when the first one actually sent,
  * not a fixed offset from the click, so the "an hour later" promise holds
- * even if the sweep runs a few minutes late.
+ * even if the sweep runs a few minutes late. If THAT send also succeeds and
+ * they're still incomplete, abandoned_cart_offer fires 24 hours after that
+ * (clamped to the 9am-11:59pm Eastern send window — see send-window.ts) —
+ * the sequence used to just end silently after two plain check-ins with no
+ * discount ever offered; this is that closing offer.
  *
  * Every template below is a small set of pre-approved variants, picked at
  * random (see pickVariant), not one fixed string — every lead getting the
@@ -25,7 +29,7 @@ function pickVariant(variants: readonly string[]): string {
   return variants[Math.floor(Math.random() * variants.length)];
 }
 
-export type FollowUpMessageStep = "provider_check_in" | "intake_questions_check_in";
+export type FollowUpMessageStep = "provider_check_in" | "intake_questions_check_in" | "abandoned_cart_offer";
 
 /**
  * provider_check_in fires only ~2 hours after the opener (which already
@@ -33,6 +37,16 @@ export type FollowUpMessageStep = "provider_check_in" | "intake_questions_check_
  * full self-introduction there read as robotic rather than as a real
  * follow-up from someone the recipient just heard from, so it's dropped
  * here the same way intake_questions_check_in already omits it.
+ *
+ * abandoned_cart_offer reuses renderAbandonedCartFollowUp's exact copy
+ * (below) rather than its own text — same $20-off abandoned-questionnaire
+ * offer already used elsewhere for the same situation (started but didn't
+ * finish), no reason for a second, differently-worded version of the same
+ * approved claim to exist. Always the "already has a conversation" variant:
+ * a lead in this chain has, by definition, already been messaged twice
+ * (provider_check_in, intake_questions_check_in), so re-introducing Lucy
+ * here would repeat the same robotic-duplicate problem the other steps
+ * already avoid.
  */
 const TEMPLATES: Record<FollowUpMessageStep, (firstName: string) => string> = {
   provider_check_in: (firstName) =>
@@ -45,6 +59,7 @@ const TEMPLATES: Record<FollowUpMessageStep, (firstName: string) => string> = {
       `Hey ${firstName}, just checking in. Do you have any questions about the intake form?`,
       `Hey ${firstName}, checking back in. Any questions on the intake form so far?`,
     ]),
+  abandoned_cart_offer: (firstName) => renderAbandonedCartFollowUp(firstName),
 };
 
 export function renderFollowUpMessage(step: FollowUpMessageStep, firstName: string): string {

@@ -2,12 +2,13 @@ import { and, eq, lte, sql } from "drizzle-orm";
 import { db, followUpJobsTable, intakeLinkTokensTable, questionnaireEventsTable, purchasesTable, customersTable } from "@luma/db";
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { renderFollowUpMessage } from "../lib/messaging/follow-up-templates.js";
-import { getOrCreateConversation, appendMessage } from "./conversations.service.js";
+import { getOrCreateConversation, appendMessage, updateConversationState } from "./conversations.service.js";
 import { isCustomerSmsDnd } from "./dnd.service.js";
 import { clampToSendWindow } from "../lib/send-window.js";
 import { logger } from "../lib/logger.js";
 
 const SECOND_STEP_DELAY_MS = 60 * 60 * 1000;
+const THIRD_STEP_DELAY_MS = 24 * 60 * 60 * 1000;
 
 export interface FollowUpSweepResult {
   readonly sentCount: number;
@@ -21,10 +22,12 @@ export interface FollowUpSweepResult {
  *   - if the person already submitted the questionnaire or completed a
  *     purchase since they clicked the link, cancel the job.
  *   - otherwise, send the message via the SMS provider. On success, mark
- *     `sent` and — if this was the provider_check_in step — schedule
- *     intake_questions_check_in due 1 hour from now (relative to the actual
- *     send, not the original click, so the "an hour later" promise holds
- *     even when the sweep runs a little late).
+ *     `sent` and schedule the next step, relative to the actual send (not
+ *     the original click), so the "an hour later"/"a day later" promise
+ *     holds even when the sweep runs a little late: provider_check_in
+ *     schedules intake_questions_check_in 1 hour out, which in turn
+ *     schedules abandoned_cart_offer 24 hours out — a $20-off closing offer
+ *     rather than letting the sequence just end with nothing further.
  *   - if the send itself fails (e.g. no SMS provider configured yet, or a
  *     missing phone number), mark `failed` with a reason. Not retried
  *     automatically — this is expected and correct until a provider exists.
@@ -107,6 +110,13 @@ export async function sweepFollowUpJobs(): Promise<FollowUpSweepResult> {
     try {
       const conversation = await getOrCreateConversation(job.personId, token?.leadSource ?? "abandoned_cart");
       await appendMessage(conversation.id, "outbound", sendResult.body, { providerMessageId: sendResult.providerMessageId, deliveryStatus: "sent" });
+      // abandoned_cart_offer promises $20 off directly — the eventual
+      // send_form in the reply-driven conversation must use the promo link,
+      // not the plain one. Same reasoning/pattern as the abandoned-cart
+      // opener in abandoned-cart.service.ts.
+      if (job.messageStep === "abandoned_cart_offer") {
+        await updateConversationState(conversation.id, { promoOffered: true });
+      }
     } catch (err) {
       logger.warn({ personId: job.personId, reason: err instanceof Error ? err.message : String(err) }, "failed to log follow-up SMS into the conversation");
     }
@@ -120,6 +130,17 @@ export async function sweepFollowUpJobs(): Promise<FollowUpSweepResult> {
         // in intake-links.service.ts — see send-window.ts.
         dueAt: clampToSendWindow(new Date(Date.now() + SECOND_STEP_DELAY_MS)),
       });
+    } else if (job.messageStep === "intake_questions_check_in") {
+      // The sequence used to just end here with no discount ever offered —
+      // this is the closing $20-off abandoned-cart offer, 24 hours out
+      // (also clamped to the send window) rather than immediately, so it
+      // doesn't read as a third text in the same afternoon.
+      await db.insert(followUpJobsTable).values({
+        personId: job.personId,
+        intakeLinkTokenId: job.intakeLinkTokenId,
+        messageStep: "abandoned_cart_offer",
+        dueAt: clampToSendWindow(new Date(Date.now() + THIRD_STEP_DELAY_MS)),
+      });
     }
   }
 
@@ -132,7 +153,7 @@ export async function sweepFollowUpJobs(): Promise<FollowUpSweepResult> {
 
 type SendResult = { ok: true; providerMessageId: string | null; body: string } | { ok: false; reason: string };
 
-async function attemptSend(personId: string, messageStep: "provider_check_in" | "intake_questions_check_in"): Promise<SendResult> {
+async function attemptSend(personId: string, messageStep: "provider_check_in" | "intake_questions_check_in" | "abandoned_cart_offer"): Promise<SendResult> {
   const [customer] = await db
     .select({ firstName: customersTable.firstName, phone: customersTable.phone })
     .from(customersTable)

@@ -34,7 +34,7 @@ async function seedPendingJob(
   personId: string,
   clickedAt: Date,
   dueAt: Date,
-  messageStep: "provider_check_in" | "intake_questions_check_in" = "provider_check_in",
+  messageStep: "provider_check_in" | "intake_questions_check_in" | "abandoned_cart_offer" = "provider_check_in",
   leadSource: "abandoned_cart" | "meta_form" = "abandoned_cart",
 ) {
   const [token] = await db
@@ -103,7 +103,8 @@ describe("sweepFollowUpJobs", () => {
     expect(Math.abs(new Date(step2!.dueAt).getTime() - expectedDueAt.getTime())).toBeLessThan(5000);
   });
 
-  it("does not schedule a third message after intake_questions_check_in sends", async () => {
+  it("sends intake_questions_check_in and schedules the abandoned_cart_offer $20-off closing text 24 hours later, clamped to the send window — the sequence used to just end here with nothing further", async () => {
+    const { clampToSendWindow } = await import("../lib/send-window.js");
     sendMessageMock.mockClear();
     sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_456" });
     const personId = await seedCustomer();
@@ -114,11 +115,43 @@ describe("sweepFollowUpJobs", () => {
       "intake_questions_check_in",
     );
 
+    const beforeSweep = Date.now();
     await sweepFollowUpJobs();
+
+    const jobs = await db.select().from(followUpJobsTable).where(eq(followUpJobsTable.intakeLinkTokenId, tokenId));
+    expect(jobs.length).toBe(2);
+    const sent = jobs.find((j) => j.messageStep === "intake_questions_check_in")!;
+    expect(sent.status).toBe("sent");
+    const third = jobs.find((j) => j.messageStep === "abandoned_cart_offer")!;
+    expect(third).toBeDefined();
+    expect(third.status).toBe("pending");
+    const expectedDueAt = clampToSendWindow(new Date(beforeSweep + 24 * 60 * 60 * 1000));
+    expect(Math.abs(third.dueAt.getTime() - expectedDueAt.getTime())).toBeLessThan(5000);
+  });
+
+  it("sends the abandoned_cart_offer text (mentions $20 off), marks the conversation promoOffered, and does not schedule a fourth message", async () => {
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_offer" });
+    const personId = await seedCustomer();
+    const { tokenId } = await seedPendingJob(
+      personId,
+      new Date(Date.now() - 28 * 60 * 60 * 1000),
+      new Date(Date.now() - 60_000),
+      "abandoned_cart_offer",
+    );
+
+    await sweepFollowUpJobs();
+
+    expect(sendMessageMock).toHaveBeenCalledTimes(1);
+    const [, body] = sendMessageMock.mock.calls[0];
+    expect(body).toContain("$20");
 
     const jobs = await db.select().from(followUpJobsTable).where(eq(followUpJobsTable.intakeLinkTokenId, tokenId));
     expect(jobs.length).toBe(1);
     expect(jobs[0].status).toBe("sent");
+
+    const [conversation] = await db.select().from(conversationsTable).where(eq(conversationsTable.personId, personId));
+    expect(conversation.promoOffered).toBe(true);
   });
 
   it("cancels a due job when the person submitted the questionnaire after clicking", async () => {
