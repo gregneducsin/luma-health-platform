@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, lte, sql } from "drizzle-orm";
 import { db, customersTable, supportConversationsTable, unmatchedSmsThreadsTable, unmatchedSmsMessagesTable, type UnmatchedSmsThread, type UnmatchedSmsMessage } from "@luma/db";
 import { getSmsProvider } from "../lib/sms-provider.js";
 import { normalizePhone } from "../lib/phone.js";
@@ -527,6 +527,20 @@ const EMAIL_MATCH_CONFIRM_VARIANTS = [
   "Got it! One thing — we've got that email on file under a different name already. Is that you going by another name, or want to double check the email you gave me?",
 ] as const;
 
+/** One-time 24-hour nudge when a thread goes cold waiting on a name — see sweepUnmatchedSmsFollowUps. */
+const NAME_FOLLOW_UP_VARIANTS = [
+  "Hey, just following up — what's your name? We'd love to help you get started.",
+  "Hi again! Didn't want to lose touch — could you share your name so we can help you out?",
+] as const;
+
+/** Same as NAME_FOLLOW_UP_VARIANTS, once the sender's name is already known. */
+function emailFollowUpVariants(name: string): readonly string[] {
+  return [
+    `Hey ${name}, just checking back in — what's your email so I can get your account started?`,
+    `Hi ${name}! Still there? Let me know your email whenever you get a chance so we can move forward.`,
+  ];
+}
+
 function pickVariant(variants: readonly string[]): string {
   return variants[Math.floor(Math.random() * variants.length)];
 }
@@ -790,6 +804,7 @@ export async function listUnmatchedSmsThreads(): Promise<UnmatchedSmsThreadSumma
     linkedCustomerId: string | null;
     status: UnmatchedSmsThread["status"];
     repliedAt: Date | null;
+    followUpSentAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
     lastMessageAt: Date | null;
@@ -800,6 +815,7 @@ export async function listUnmatchedSmsThreads(): Promise<UnmatchedSmsThreadSumma
       t.ai_intent as "aiIntent", t.ai_summary as "aiSummary",
       t.suggested_match_customer_id as "suggestedMatchCustomerId", t.suggested_match_confidence as "suggestedMatchConfidence",
       t.suggested_reply as "suggestedReply", t.linked_customer_id as "linkedCustomerId", t.status, t.replied_at as "repliedAt",
+      t.follow_up_sent_at as "followUpSentAt",
       t.created_at as "createdAt", t.updated_at as "updatedAt",
       (select max(m.created_at) from unmatched_sms_messages m where m.thread_id = t.id) as "lastMessageAt",
       (select m.body from unmatched_sms_messages m where m.thread_id = t.id order by m.created_at desc limit 1) as "lastMessagePreview"
@@ -845,4 +861,56 @@ export async function sendUnmatchedInboundSmsReply(id: string, body: string): Pr
   await db.insert(unmatchedSmsMessagesTable).values({ threadId: thread.id, direction: "outbound", body, providerMessageId });
   await db.update(unmatchedSmsThreadsTable).set({ status: "replied", repliedAt: new Date() }).where(eq(unmatchedSmsThreadsTable.id, id));
   return { sent: true };
+}
+
+const FOLLOW_UP_DELAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * A thread stuck at needs_review with nothing further from the sender for
+ * 24 hours: the lead never replied with their name (or, if they gave a
+ * name, never followed up with an email), so no lead was ever created and
+ * the thread has just been sitting there. Sends exactly one nudge
+ * re-asking whichever of the two we're still missing, then sets
+ * followUpSentAt so it never fires again for this thread — a real customer
+ * (Siba, promo/priority-code DTC lead) went cold after the auto-ack asking
+ * for her name and nothing else ever followed up with her.
+ *
+ * Only fires when OUR last message is the most recent one in the thread —
+ * if the sender's most recent message is inbound, they did reply and
+ * something else (an unresolved staff-review queue entry, most likely) is
+ * the actual problem, not a cold lead; not this sweep's job to fix that.
+ */
+export async function sweepUnmatchedSmsFollowUps(): Promise<void> {
+  const cutoff = new Date(Date.now() - FOLLOW_UP_DELAY_MS);
+  const staleThreads = await db
+    .select()
+    .from(unmatchedSmsThreadsTable)
+    .where(
+      and(
+        eq(unmatchedSmsThreadsTable.status, "needs_review"),
+        isNull(unmatchedSmsThreadsTable.linkedCustomerId),
+        isNull(unmatchedSmsThreadsTable.followUpSentAt),
+        lte(unmatchedSmsThreadsTable.updatedAt, cutoff),
+      ),
+    );
+
+  for (const thread of staleThreads) {
+    // Both already known means this is stuck on something other than a
+    // missing name/email (e.g. a suggested-match awaiting staff review) —
+    // re-asking for info we already have would make no sense.
+    if (thread.fromName && thread.collectedEmail) continue;
+
+    const messages = await listUnmatchedSmsMessages(thread.id);
+    const lastMessage = messages[messages.length - 1];
+    if (!lastMessage || lastMessage.direction !== "outbound") continue;
+
+    const body = thread.fromName ? pickVariant(emailFollowUpVariants(thread.fromName)) : pickVariant(NAME_FOLLOW_UP_VARIANTS);
+    const sent = await sendSmsAndLog(thread.id, thread.fromPhone, body);
+    if (sent) {
+      // Clears any stale AI-drafted suggestedReply left over from before the
+      // nudge — this follow-up already re-asks the same thing, so leaving
+      // the old suggestion in the review queue would just be confusing.
+      await db.update(unmatchedSmsThreadsTable).set({ followUpSentAt: new Date(), suggestedReply: null }).where(eq(unmatchedSmsThreadsTable.id, thread.id));
+    }
+  }
 }

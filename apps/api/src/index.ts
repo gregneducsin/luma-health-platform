@@ -10,6 +10,7 @@ import { sweepReviewRequestTriggers } from "./services/order-fulfillment.service
 import { sweepLeadCheckinTriggers } from "./services/lead-checkin.service.js";
 import { sweepObjectionReengagementTriggers } from "./services/objection-reengagement.service.js";
 import { sweepInboundEmail } from "./services/email-inbound.service.js";
+import { sweepUnmatchedSmsFollowUps } from "./services/unmatched-inbound-sms.service.js";
 import { notifySlack, notifySmsSlack } from "./lib/slack.js";
 
 // Migrations are applied as a discrete step before this process starts (see
@@ -107,6 +108,16 @@ setInterval(() => {
     void notifySmsSlack(`Objection re-engagement sweep failed: ${err instanceof Error ? err.message : String(err)}`);
   });
 }, OBJECTION_REENGAGEMENT_SWEEP_INTERVAL_MS);
+
+// Unmatched-SMS follow-up is due 24 hours out — same coarse tick as the
+// lead-checkin sweep above is plenty precise for a delay measured in days.
+const UNMATCHED_SMS_FOLLOW_UP_SWEEP_INTERVAL_MS = 30 * 60 * 1000;
+setInterval(() => {
+  sweepUnmatchedSmsFollowUps().catch((err) => {
+    logger.error({ err }, "unmatched-SMS follow-up sweep failed");
+    void notifySmsSlack(`Unmatched-SMS follow-up sweep failed: ${err instanceof Error ? err.message : String(err)}`);
+  });
+}, UNMATCHED_SMS_FOLLOW_UP_SWEEP_INTERVAL_MS);
 
 // Inbound-email IMAP poll — same in-process interval pattern as the sweeps
 // above, just polling a mailbox instead of due DB rows (see

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeAll, beforeEach } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, customersTable } from "@luma/db";
 
 beforeAll(() => {
@@ -46,7 +46,13 @@ const {
   getUnmatchedSmsThreadDetail,
   dismissUnmatchedSmsThread,
   sendUnmatchedInboundSmsReply,
+  sweepUnmatchedSmsFollowUps,
 } = await import("./unmatched-inbound-sms.service.js");
+
+/** Backdates a thread's updated_at past the 24-hour follow-up window — drizzle's own .set() would just re-stamp it via $onUpdate, so this goes around it with raw SQL. */
+async function backdateThreadUpdatedAt(threadId: string, hoursAgo: number): Promise<void> {
+  await db.execute(sql`update unmatched_sms_threads set updated_at = now() - make_interval(hours => ${hoursAgo}) where id = ${threadId}`);
+}
 
 function toolResponse(input: Record<string, unknown>) {
   return { content: [{ type: "tool_use", name: "classify_unmatched_sms", input }] };
@@ -885,5 +891,91 @@ describe("sendUnmatchedInboundSmsReply", () => {
 
     expect(result).toEqual({ sent: false, reason: "send_failed" });
     expect((await getUnmatchedSmsThread(thread.id))?.status).toBe("needs_review");
+  });
+});
+
+describe("sweepUnmatchedSmsFollowUps", () => {
+  it("sends a one-time nudge re-asking for a name when the thread has gone cold for 24 hours after the auto-ack — real production case (Siba, promo/priority-code DTC lead)", async () => {
+    const phone = uniquePhone();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_ack" });
+    const thread = await recordAndClassifyUnmatchedSms(phone, "Hi Luma - I'd like to check if I qualify for GLP-1. My priority code: LUMK6MF");
+    await backdateThreadUpdatedAt(thread.id, 25);
+
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_followup" });
+    await sweepUnmatchedSmsFollowUps();
+
+    expect(sendMessageMock).toHaveBeenCalledTimes(1);
+    const [to] = sendMessageMock.mock.calls[0];
+    expect(to).toBe(phone);
+
+    const detail = await getUnmatchedSmsThreadDetail(thread.id);
+    expect(detail?.thread.followUpSentAt).not.toBeNull();
+    expect(detail?.messages.at(-1)).toMatchObject({ direction: "outbound" });
+  });
+
+  it("re-asks for email instead, once the name is already known but the email never came", async () => {
+    // Single turn, name extracted from this same message — the last message
+    // in the thread stays the outbound ack either way, since a second turn
+    // with no queued classification would otherwise leave the sender's own
+    // message as the most recent one (see the "most recent is inbound" test
+    // below), which the sweep must not nudge.
+    createMock.mockResolvedValueOnce(toolResponse(classification({ senderName: "Siba" })));
+    const phone = uniquePhone();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_ack" });
+    const thread = await recordAndClassifyUnmatchedSms(phone, "Hi this is Siba, my promo code is 123abc");
+    await backdateThreadUpdatedAt(thread.id, 25);
+
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_followup" });
+    await sweepUnmatchedSmsFollowUps();
+
+    expect(sendMessageMock).toHaveBeenCalledTimes(1);
+    const [, body] = sendMessageMock.mock.calls[0];
+    expect(body).toContain("Siba");
+    expect(body.toLowerCase()).toContain("email");
+  });
+
+  it("does not nudge twice — followUpSentAt gates it to exactly one per thread", async () => {
+    const phone = uniquePhone();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_ack" });
+    const thread = await recordAndClassifyUnmatchedSms(phone, "hi, my promo code is 99xyz");
+    await backdateThreadUpdatedAt(thread.id, 25);
+
+    sendMessageMock.mockClear();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_followup" });
+    await sweepUnmatchedSmsFollowUps();
+    expect(sendMessageMock).toHaveBeenCalledTimes(1);
+
+    await backdateThreadUpdatedAt(thread.id, 25);
+    sendMessageMock.mockClear();
+    await sweepUnmatchedSmsFollowUps();
+    expect(sendMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("does not nudge a thread whose most recent message is inbound — the sender already replied, this isn't a cold lead", async () => {
+    // Second turn's classifyAndDraft call is left unprimed (resolves to
+    // undefined, caught and treated as a failed classification) so nothing
+    // auto-sends in response to it — the sender's own message is left as
+    // the thread's most recent one, which is exactly the case being tested.
+    const phone = uniquePhone();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_ack" });
+    await recordAndClassifyUnmatchedSms(phone, "hi, my promo code is 99xyz");
+    sendMessageMock.mockClear();
+    const thread = await recordAndClassifyUnmatchedSms(phone, "is this safe for my heart condition?");
+    await backdateThreadUpdatedAt(thread.id, 25);
+
+    await sweepUnmatchedSmsFollowUps();
+    expect(sendMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("does not nudge a thread that's still within the 24-hour window", async () => {
+    const phone = uniquePhone();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_ack" });
+    await recordAndClassifyUnmatchedSms(phone, "hi, my promo code is 99xyz");
+
+    sendMessageMock.mockClear();
+    await sweepUnmatchedSmsFollowUps();
+    expect(sendMessageMock).not.toHaveBeenCalled();
   });
 });
