@@ -40,3 +40,39 @@ export async function notifySnapmePriorityCodeReceived(phone: string, code: stri
     void notifySmsSlack(`snapme.link priority-code notify failed — ${phone} — ${reason}`);
   }
 }
+
+/**
+ * Outbound notification to snapme.link's funnel "reply" endpoint — fired
+ * once per thread, the first time the customer replies to whatever message
+ * we sent back after they texted in a promo/priority code. Distinct from
+ * notifySnapmePriorityCodeReceived above (a different signal, a different
+ * URL): that one fires the instant the code itself arrives; this one fires
+ * on their next reply after that, carrying the same code alongside the
+ * actual reply text, so snapme.link can see the funnel progressing past the
+ * initial code drop. See unmatched-inbound-sms.service.ts for the
+ * once-per-thread gating (dtcReplyNotifiedAt).
+ *
+ * Fire-and-forget: a failure here must never affect the rest of the inbound
+ * SMS pipeline, so this only ever logs + alerts, never throws to its caller.
+ */
+export async function notifySnapmeDtcReplyReceived(phone: string, code: string, response: string): Promise<void> {
+  const url = process.env.SNAPME_DTC_REPLY_URL;
+  if (!url) return;
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, code, response }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      void notifySmsSlack(`snapme.link reply notify failed — ${phone} — ${res.status} ${text}`);
+      return;
+    }
+    logger.info({ phone, code }, "notified snapme.link of the customer's reply to the priority/promo code funnel");
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    void notifySmsSlack(`snapme.link reply notify failed — ${phone} — ${reason}`);
+  }
+}

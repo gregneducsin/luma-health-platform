@@ -401,6 +401,15 @@ export const unmatchedSmsThreadsTable = pgTable(
      * nudged once, not on a repeating schedule.
      */
     followUpSentAt: timestamp("follow_up_sent_at", { withTimezone: true }),
+    /**
+     * Set the first time we notify snapme.link's /reply funnel endpoint for
+     * this thread — see notifySnapmeDtcReplyReceived in
+     * unmatched-inbound-sms.service.ts. That notification fires once per
+     * thread, on the customer's first reply after a priority/promo code was
+     * already mentioned earlier in the same thread; this column is what
+     * makes it fire exactly once instead of on every subsequent reply too.
+     */
+    dtcReplyNotifiedAt: timestamp("dtc_reply_notified_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()

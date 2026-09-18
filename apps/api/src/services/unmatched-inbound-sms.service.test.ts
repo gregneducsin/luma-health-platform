@@ -40,7 +40,11 @@ vi.mock("./sarah-dispatch.service.js", async () => {
 });
 
 const notifySnapmePriorityCodeReceivedMock = vi.fn();
-vi.mock("../lib/snapme-webhook.js", () => ({ notifySnapmePriorityCodeReceived: (...args: unknown[]) => notifySnapmePriorityCodeReceivedMock(...args) }));
+const notifySnapmeDtcReplyReceivedMock = vi.fn();
+vi.mock("../lib/snapme-webhook.js", () => ({
+  notifySnapmePriorityCodeReceived: (...args: unknown[]) => notifySnapmePriorityCodeReceivedMock(...args),
+  notifySnapmeDtcReplyReceived: (...args: unknown[]) => notifySnapmeDtcReplyReceivedMock(...args),
+}));
 
 const {
   recordAndClassifyUnmatchedSms,
@@ -98,6 +102,7 @@ beforeEach(() => {
   processInboundSupportMessageMock.mockClear();
   notifySlackMock.mockClear();
   notifySnapmePriorityCodeReceivedMock.mockClear();
+  notifySnapmeDtcReplyReceivedMock.mockClear();
 });
 
 describe("recordAndClassifyUnmatchedSms", () => {
@@ -300,7 +305,13 @@ describe("recordAndClassifyUnmatchedSms", () => {
     expect(notifySnapmePriorityCodeReceivedMock).toHaveBeenCalledWith(phone, "LUMK6MF");
 
     createMock.mockResolvedValueOnce(toolResponse(classification({ senderName: "Siba" })));
-    await recordAndClassifyUnmatchedSms(phone, "Hi this is Siba"); // turn 2: name only, no code mentioned again
+    await recordAndClassifyUnmatchedSms(phone, "Hi this is Siba"); // turn 2: name only, no code mentioned again — this is her first reply after the code
+
+    // The /reply funnel notification fires here, on turn 2 — the customer's
+    // first reply after the code arrived — carrying that same code plus her
+    // actual reply text.
+    expect(notifySnapmeDtcReplyReceivedMock).toHaveBeenCalledTimes(1);
+    expect(notifySnapmeDtcReplyReceivedMock).toHaveBeenCalledWith(phone, "LUMK6MF", "Hi this is Siba");
 
     createMock.mockResolvedValueOnce(
       toolResponse(classification({ intent: "new_lead_interest", senderName: "Siba", senderEmail: "pandeysiba@gmail.com" })),
@@ -311,6 +322,9 @@ describe("recordAndClassifyUnmatchedSms", () => {
     // Still just the one notification from turn 1 — lead creation itself no
     // longer triggers a second, separate call.
     expect(notifySnapmePriorityCodeReceivedMock).toHaveBeenCalledTimes(1);
+    // And still just the one reply notification from turn 2 — turn 3 doesn't
+    // refire it, even though the code is still present in the thread history.
+    expect(notifySnapmeDtcReplyReceivedMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not notify snapme.link for a non-DTC lead", async () => {
@@ -331,6 +345,17 @@ describe("recordAndClassifyUnmatchedSms", () => {
 
     expect(thread.linkedCustomerId).not.toBeNull();
     expect(notifySnapmePriorityCodeReceivedMock).not.toHaveBeenCalled();
+  });
+
+  it("never notifies snapme.link's /reply funnel when no promo/priority code was ever mentioned in the thread", async () => {
+    const phone = uniquePhone();
+    sendMessageMock.mockResolvedValueOnce({ providerMessageId: "msg_ack" }); // consumed by the first-message auto-ack
+    await recordAndClassifyUnmatchedSms(phone, "Hi, I'm interested in your program"); // turn 1: no code
+
+    createMock.mockResolvedValueOnce(toolResponse(classification({ senderName: "Taylor" })));
+    await recordAndClassifyUnmatchedSms(phone, "It's Taylor"); // turn 2: a reply, but there was never a code to reply to
+
+    expect(notifySnapmeDtcReplyReceivedMock).not.toHaveBeenCalled();
   });
 
   it("notifies snapme.link even when the code-bearing text never goes on to create a lead", async () => {

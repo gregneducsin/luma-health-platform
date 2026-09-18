@@ -9,7 +9,7 @@ import { getOrCreateConversation, appendMessage } from "./conversations.service.
 import { getOrCreateSupportConversation, appendSupportMessage } from "./support-conversations.service.js";
 import { logger } from "../lib/logger.js";
 import { notifySlack } from "../lib/slack.js";
-import { notifySnapmePriorityCodeReceived } from "../lib/snapme-webhook.js";
+import { notifySnapmePriorityCodeReceived, notifySnapmeDtcReplyReceived } from "../lib/snapme-webhook.js";
 
 /**
  * SMS twin of unmatched-inbound-email.service.ts. What used to happen to a
@@ -637,6 +637,22 @@ export async function recordAndClassifyUnmatchedSms(fromPhone: string, body: str
     void notifySlack(`New unmatched SMS — ${normalizedPhone}`);
   }
 
+  // Fires once per thread — see notifySnapmeDtcReplyReceived's docstring.
+  // Only looks at messages that existed BEFORE this turn (priorMessages),
+  // so this fires on the customer's first reply after a code was already
+  // mentioned earlier, not on the turn the code itself arrives (that's
+  // notifySnapmePriorityCodeReceived's job, above) and not again on every
+  // later reply (dtcReplyNotifiedAt gates that once it's set below).
+  let dtcReplyNotifiedNow = false;
+  if (!thread.dtcReplyNotifiedAt && !isFirstMessage) {
+    const priorInboundWithCode = priorMessages.find((m) => m.direction === "inbound" && DTC_CODE_RE.test(m.body));
+    const priorCode = priorInboundWithCode ? extractDtcCode(priorInboundWithCode.body) : null;
+    if (priorCode) {
+      void notifySnapmeDtcReplyReceived(normalizedPhone, priorCode, body);
+      dtcReplyNotifiedNow = true;
+    }
+  }
+
   await db.insert(unmatchedSmsMessagesTable).values({ threadId: thread.id, direction: "inbound", body });
 
   const messages = await listUnmatchedSmsMessages(thread.id);
@@ -831,6 +847,7 @@ export async function recordAndClassifyUnmatchedSms(fromPhone: string, body: str
             ? "dismissed"
             : "needs_review",
       repliedAt: autoConnectCustomerId || leadResult?.justCreated || autoSent ? new Date() : thread.repliedAt,
+      dtcReplyNotifiedAt: dtcReplyNotifiedNow ? new Date() : thread.dtcReplyNotifiedAt,
     })
     .where(eq(unmatchedSmsThreadsTable.id, thread.id))
     .returning();
@@ -858,6 +875,7 @@ export async function listUnmatchedSmsThreads(): Promise<UnmatchedSmsThreadSumma
     status: UnmatchedSmsThread["status"];
     repliedAt: Date | null;
     followUpSentAt: Date | null;
+    dtcReplyNotifiedAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
     lastMessageAt: Date | null;
@@ -868,7 +886,7 @@ export async function listUnmatchedSmsThreads(): Promise<UnmatchedSmsThreadSumma
       t.ai_intent as "aiIntent", t.ai_summary as "aiSummary",
       t.suggested_match_customer_id as "suggestedMatchCustomerId", t.suggested_match_confidence as "suggestedMatchConfidence",
       t.suggested_reply as "suggestedReply", t.linked_customer_id as "linkedCustomerId", t.status, t.replied_at as "repliedAt",
-      t.follow_up_sent_at as "followUpSentAt",
+      t.follow_up_sent_at as "followUpSentAt", t.dtc_reply_notified_at as "dtcReplyNotifiedAt",
       t.created_at as "createdAt", t.updated_at as "updatedAt",
       (select max(m.created_at) from unmatched_sms_messages m where m.thread_id = t.id) as "lastMessageAt",
       (select m.body from unmatched_sms_messages m where m.thread_id = t.id order by m.created_at desc limit 1) as "lastMessagePreview"

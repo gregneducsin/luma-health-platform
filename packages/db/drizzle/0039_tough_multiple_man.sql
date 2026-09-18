@@ -1,0 +1,1 @@
+ALTER TABLE "unmatched_sms_threads" ADD COLUMN "dtc_reply_notified_at" timestamp with time zone;

@@ -274,6 +274,13 @@
       "when": 1789698148365,
       "tag": "0038_melted_siren",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1789759069731,
+      "tag": "0039_tough_multiple_man",
+      "breakpoints": true
     }
   ]
 }
